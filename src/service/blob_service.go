@@ -1,18 +1,22 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"io"
 
 	"go.uber.org/zap"
 
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 type blobService struct {
 	db         *sql.DB
 	queries    *db.Queries
+	storage    storage.StorageBackend
 	cdnBaseUrl string
 	log        *zap.Logger
 }
@@ -20,12 +24,14 @@ type blobService struct {
 func NewBlobService(
 	db *sql.DB,
 	queries *db.Queries,
+	storageBackend storage.StorageBackend,
 	cdnBaseUrl string,
 	log *zap.Logger,
 ) (core.BlobStorage, error) {
 	return &blobService{
 		db:         db,
 		queries:    queries,
+		storage:    storageBackend,
 		cdnBaseUrl: cdnBaseUrl,
 		log:        log,
 	}, nil
@@ -41,6 +47,16 @@ func (r *blobService) Save(
 	blob []byte,
 	created int64,
 ) (*core.Blob, error) {
+	// Store blob data in the storage backend
+	if r.storage != nil {
+		if err := r.storage.Put(ctx, sha256, bytes.NewReader(blob), size); err != nil {
+			return nil, err
+		}
+	}
+
+	// Store metadata in the database
+	// Note: We still store blob bytes in DB for backwards compatibility
+	// In future versions, we can remove this and only store in StorageBackend
 	_, err := r.queries.InsertBlob(
 		ctx,
 		db.InsertBlobParams{
@@ -53,6 +69,10 @@ func (r *blobService) Save(
 		},
 	)
 	if err != nil {
+		// If DB insert fails, try to clean up storage
+		if r.storage != nil {
+			_ = r.storage.Delete(ctx, sha256)
+		}
 		return nil, err
 	}
 
@@ -78,9 +98,26 @@ func (r *blobService) Exists(ctx context.Context, sha256 string) (bool, error) {
 }
 
 func (r *blobService) GetFromHash(ctx context.Context, sha256 string) (*core.Blob, error) {
-	blob, err := r.queries.GetBlobFromHash(ctx, sha256)
+	dbBlob, err := r.queries.GetBlobFromHash(ctx, sha256)
+	if err != nil {
+		return nil, err
+	}
 
-	return r.dbBlobIntoBlobDescriptor(blob), err
+	blob := r.dbBlobIntoBlobDescriptor(dbBlob)
+
+	// If we have a storage backend and the DB blob data is empty, fetch from storage
+	if r.storage != nil && len(dbBlob.Blob) == 0 {
+		reader, err := r.storage.Get(ctx, sha256)
+		if err == nil {
+			defer reader.Close()
+			data, err := io.ReadAll(reader)
+			if err == nil {
+				blob.Blob = data
+			}
+		}
+	}
+
+	return blob, nil
 }
 
 func (r *blobService) GetFromPubkey(ctx context.Context, pubkey string) ([]*core.Blob, error) {
@@ -98,7 +135,22 @@ func (r *blobService) GetFromPubkey(ctx context.Context, pubkey string) ([]*core
 }
 
 func (r *blobService) DeleteFromHash(ctx context.Context, sha256 string) error {
-	return r.queries.DeleteBlobFromHash(ctx, sha256)
+	// Delete from database first
+	if err := r.queries.DeleteBlobFromHash(ctx, sha256); err != nil {
+		return err
+	}
+
+	// Delete from storage backend
+	if r.storage != nil {
+		if err := r.storage.Delete(ctx, sha256); err != nil {
+			r.log.Warn("failed to delete blob from storage backend",
+				zap.String("hash", sha256),
+				zap.Error(err))
+			// Don't return error - DB is source of truth
+		}
+	}
+
+	return nil
 }
 
 func (r *blobService) dbBlobIntoBlobDescriptor(blob db.Blob) *core.Blob {

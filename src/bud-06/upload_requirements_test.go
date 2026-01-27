@@ -31,6 +31,7 @@ func TestUploadRequirementsUnauth(t *testing.T) {
 		CdnUrl:      "http://localhost:8000",
 		AdminPubkey: pk,
 	}
+	conf.ApplyDefaults()
 
 	logger, err := logging.NewLog(conf.LogLevel)
 	if err != nil {
@@ -45,7 +46,7 @@ func TestUploadRequirementsUnauth(t *testing.T) {
 		t.Fatal(err)
 	}
 	queries := db.New(database)
-	services := service.New(database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, logger)
 
 	err = UploadRequirements(
 		context.TODO(),

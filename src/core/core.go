@@ -9,4 +9,5 @@ type Services interface {
 	Mime() MimeTypeService
 	Settings() SettingService
 	Stats() StatService
+	Quota() QuotaService
 }

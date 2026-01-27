@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	ginApi "git.coldforge.xyz/coldforge/coldforge-blossom/api/gin"
@@ -27,10 +28,24 @@ func main() {
 		log.Fatalf("new logger: %v", err)
 	}
 
-	database, err := db.NewDB(
-		conf.DbPath,
-		"db/migrations",
-	)
+	// Initialize database with new configuration
+	dbConfig := db.DBConfig{
+		Driver:   conf.Database.Driver,
+		Host:     conf.Database.Postgres.Host,
+		Port:     conf.Database.Postgres.Port,
+		User:     conf.Database.Postgres.User,
+		Password: conf.Database.Postgres.Password,
+		Database: conf.Database.Postgres.Database,
+		SSLMode:  conf.Database.Postgres.SSLMode,
+	}
+
+	// For SQLite, use the path as DSN
+	if conf.Database.Driver == "sqlite" || conf.Database.Driver == "" {
+		dbConfig.Driver = "sqlite"
+		dbConfig.DSN = conf.GetDatabasePath()
+	}
+
+	database, err := db.NewDBWithConfig(dbConfig, "db/migrations")
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

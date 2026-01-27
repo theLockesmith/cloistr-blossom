@@ -35,7 +35,9 @@ func TestUpload(t *testing.T) {
 		AccessControlRules: []config.AccessControlRule{
 			{Action: string(core.ACRActionAllow), Pubkey: "ALL", Resource: string(core.ResourceUpload)},
 		},
+		AllowedMimeTypes: []string{"*"},
 	}
+	conf.ApplyDefaults()
 
 	logger, err := logging.NewLog(conf.LogLevel)
 	if err != nil {
@@ -51,7 +53,7 @@ func TestUpload(t *testing.T) {
 	}
 	queries := db.New(database)
 
-	services := service.New(database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, logger)
 	services.Init(context.TODO())
 
 	blobBytes := []byte{}
@@ -85,6 +87,7 @@ func TestUnauthUpload(t *testing.T) {
 		CdnUrl:      "http://localhost:8000",
 		AdminPubkey: pk,
 	}
+	conf.ApplyDefaults()
 
 	logger, err := logging.NewLog(conf.LogLevel)
 	if err != nil {
@@ -100,7 +103,7 @@ func TestUnauthUpload(t *testing.T) {
 	}
 	queries := db.New(database)
 
-	services := service.New(database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, logger)
 
 	blobBytes := []byte{}
 	authHash, _ := hashing.Hash(blobBytes)

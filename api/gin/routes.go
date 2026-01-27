@@ -85,5 +85,8 @@ func SetupRoutes(
 	// server stats
 	r.GET("/stats", getStats(services))
 
+	// Admin dashboard and API
+	RegisterAdminRoutes(r, services, adminPubkey)
+
 	return r
 }

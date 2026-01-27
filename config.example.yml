@@ -1,6 +1,40 @@
-# All the information is saved on a SQLite database.
-# This specifies the path where it will be created.
+# Database configuration
+# Supported drivers: "sqlite" (default), "postgres"
+database:
+  driver: sqlite
+  sqlite:
+    path: "db/database.sqlite3"
+  # postgres:
+  #   host: localhost
+  #   port: 5432
+  #   user: blossom
+  #   password: ${POSTGRES_PASSWORD}
+  #   database: blossom
+  #   ssl_mode: prefer
+
+# Legacy field - use database.sqlite.path instead (backwards compatible)
 db_path: "db/database.sqlite3"
+
+# Storage backend configuration
+# Supported backends: "local" (default), "s3"
+storage:
+  backend: local
+  local:
+    path: "data/blobs"
+  # s3:
+  #   endpoint: https://s3.example.com  # S3-compatible endpoint
+  #   bucket: blossom
+  #   region: us-east-1
+  #   access_key: ${S3_ACCESS_KEY}
+  #   secret_key: ${S3_SECRET_KEY}
+  #   path_style: true  # Required for MinIO/Ceph
+
+# Storage quota configuration
+quota:
+  enabled: false
+  default_bytes: 1073741824    # 1 GB default quota
+  max_bytes: 107374182400      # 100 GB max quota
+  warn_threshold: 80           # Warn at 80% usage
 
 # Log level, adjust accordingly.
 log_level: "TRACE"

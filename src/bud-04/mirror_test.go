@@ -33,6 +33,7 @@ func TestMirrorUnauth(t *testing.T) {
 		CdnUrl:      "http://localhost:8000",
 		AdminPubkey: pk,
 	}
+	conf.ApplyDefaults()
 
 	logger, err := logging.NewLog(conf.LogLevel)
 	if err != nil {
@@ -48,7 +49,7 @@ func TestMirrorUnauth(t *testing.T) {
 	}
 	queries := db.New(database)
 
-	services := service.New(database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, logger)
 
 	blobBytes := make([]byte, 32)
 	authHash, _ := hashing.Hash(blobBytes)

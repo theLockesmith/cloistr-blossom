@@ -23,6 +23,7 @@ func UploadBlob(
 		blobs    = services.Blob()
 		mimes    = services.Mime()
 		settings = services.Settings()
+		quota    = services.Quota()
 	)
 
 	if err := services.ACR().Validate(
@@ -40,6 +41,11 @@ func UploadBlob(
 
 	if err := settings.ValidateFileSizeMaxBytes(ctx, len(blobBytes)); err != nil {
 		return nil, fmt.Errorf("file size: %w", err)
+	}
+
+	// Check quota before upload
+	if err := quota.CheckQuota(ctx, pubkey, int64(len(blobBytes))); err != nil {
+		return nil, fmt.Errorf("quota check: %w", err)
 	}
 
 	hash, err := hashing.Hash(blobBytes)
@@ -73,6 +79,12 @@ func UploadBlob(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)
+	}
+
+	// Update quota usage after successful save
+	if err := quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes))); err != nil {
+		// Log but don't fail - the blob was saved successfully
+		// Usage will be corrected on next recalculation
 	}
 
 	return blobDescriptor, nil

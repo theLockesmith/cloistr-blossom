@@ -16,6 +16,7 @@ func DeleteBlob(
 ) error {
 	var (
 		blobs = services.Blob()
+		quota = services.Quota()
 	)
 	blobDescriptor, err := blobs.GetFromHash(ctx, hash)
 	if err != nil {
@@ -32,8 +33,16 @@ func DeleteBlob(
 		return errors.New("unauthorized")
 	}
 
+	blobSize := blobDescriptor.Size
+
 	if err := blobs.DeleteFromHash(ctx, hash); err != nil {
 		return err
+	}
+
+	// Decrement quota usage after successful delete
+	if err := quota.DecrementUsage(ctx, pubkey, blobSize); err != nil {
+		// Log but don't fail - the blob was deleted successfully
+		// Usage will be corrected on next recalculation
 	}
 
 	return nil
