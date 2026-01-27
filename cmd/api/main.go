@@ -6,11 +6,11 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	ginApi "github.com/sebdeveloper6952/blossom-server/api/gin"
-	"github.com/sebdeveloper6952/blossom-server/db"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/config"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/logging"
-	"github.com/sebdeveloper6952/blossom-server/src/service"
+	ginApi "git.coldforge.xyz/coldforge/coldforge-blossom/api/gin"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/logging"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/service"
 )
 
 func main() {

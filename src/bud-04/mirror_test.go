@@ -9,11 +9,11 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/sebdeveloper6952/blossom-server/db"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/config"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/hashing"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/logging"
-	"github.com/sebdeveloper6952/blossom-server/src/service"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/hashing"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/logging"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/service"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -1,4 +1,4 @@
-module github.com/sebdeveloper6952/blossom-server
+module git.coldforge.xyz/coldforge/coldforge-blossom
 
 go 1.22.1
 

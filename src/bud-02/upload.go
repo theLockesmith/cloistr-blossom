@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/hashing"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/hashing"
 )
 
 func UploadBlob(

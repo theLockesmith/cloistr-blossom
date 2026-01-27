@@ -1,7 +1,7 @@
 package gin
 
 import (
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 // generic api error

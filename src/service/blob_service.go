@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/sebdeveloper6952/blossom-server/db"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 type blobService struct {

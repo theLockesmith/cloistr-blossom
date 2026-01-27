@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 type apiStat struct {

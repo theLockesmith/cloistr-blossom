@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	bud06 "github.com/sebdeveloper6952/blossom-server/src/bud-06"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/hashing"
+	bud06 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-06"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/hashing"
 )
 
 func uploadRequirements(

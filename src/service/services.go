@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/sebdeveloper6952/blossom-server/db"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
-	"github.com/sebdeveloper6952/blossom-server/src/pkg/config"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
 	"go.uber.org/zap"
 )
 

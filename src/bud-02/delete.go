@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 func DeleteBlob(

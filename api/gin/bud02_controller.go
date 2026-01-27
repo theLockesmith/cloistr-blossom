@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	bud02 "github.com/sebdeveloper6952/blossom-server/src/bud-02"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	bud02 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-02"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 func uploadBlob(

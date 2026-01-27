@@ -7,7 +7,7 @@ import (
 	"github.com/gin-contrib/cors"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
-	"github.com/sebdeveloper6952/blossom-server/src/core"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"go.uber.org/zap"
 )
 
