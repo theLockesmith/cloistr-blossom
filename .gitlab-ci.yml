@@ -4,14 +4,14 @@ stages:
   - sync
 
 variables:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.24"
   CONTAINER_REGISTRY: registry.coldforge.xyz
   CONTAINER_IMAGE: ${CONTAINER_REGISTRY}/coldforge/coldforge-blossom
 
 # Cache Go modules between jobs
 .go-cache: &go-cache
   cache:
-    key: go-modules
+    key: go-modules-${CI_COMMIT_REF_SLUG}
     paths:
       - .go/pkg/mod/
     policy: pull-push
@@ -19,13 +19,16 @@ variables:
 # Test stage - run on all branches
 test:
   stage: test
-  image: golang:${GO_VERSION}
+  image: golang:${GO_VERSION}-bookworm
   <<: *go-cache
   variables:
     GOPATH: ${CI_PROJECT_DIR}/.go
+    CGO_ENABLED: "1"
+  before_script:
+    - apt-get update && apt-get install -y gcc libc6-dev
   script:
     - go mod download
-    - go test -v -race ./...
+    - go test -v ./...
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
@@ -34,14 +37,16 @@ test:
 # Build stage - build binary
 build:
   stage: build
-  image: golang:${GO_VERSION}
+  image: golang:${GO_VERSION}-bookworm
   <<: *go-cache
   variables:
     GOPATH: ${CI_PROJECT_DIR}/.go
     CGO_ENABLED: "1"
+  before_script:
+    - apt-get update && apt-get install -y gcc libc6-dev
   script:
     - go mod download
-    - go build -o blossom ./cmd/blossom
+    - go build -o blossom ./cmd/api
   artifacts:
     paths:
       - blossom
