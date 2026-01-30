@@ -2,6 +2,8 @@
 
 **Nostr-native blob storage server (Go) - Blossom protocol implementation**
 
+**Domain:** files.cloistr.xyz (Cloistr is the consumer-facing brand for Coldforge Nostr services)
+
 ## Documentation
 
 Full documentation is maintained at:
