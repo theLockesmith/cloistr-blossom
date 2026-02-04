@@ -17,7 +17,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /go/src/app/bin/blossom /usr/local/bin/blossom
-COPY --from=builder /go/src/app/db/migrations /db/migrations
+COPY --from=builder /go/src/app/db/migrations /app/db/migrations
 
 # Create data directories
 RUN mkdir -p /data/blobs /data/db
