@@ -7,8 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"sync"
+	"time"
 
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
 )
 
@@ -16,54 +17,21 @@ import (
 type MediaService struct {
 	storage   storage.StorageBackend
 	processor *ImageProcessor
-	cache     *variantCache
-}
-
-// variantCache caches processed image variants.
-type variantCache struct {
-	mu    sync.RWMutex
-	items map[string][]byte
-	// maxSize is the maximum cache size in bytes
-	maxSize int64
-	// currentSize is the current cache size
-	currentSize int64
-}
-
-func newVariantCache(maxSize int64) *variantCache {
-	return &variantCache{
-		items:   make(map[string][]byte),
-		maxSize: maxSize,
-	}
-}
-
-func (c *variantCache) get(key string) ([]byte, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	data, ok := c.items[key]
-	return data, ok
-}
-
-func (c *variantCache) set(key string, data []byte) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Simple eviction: if adding this would exceed max, clear cache
-	newSize := int64(len(data))
-	if c.currentSize+newSize > c.maxSize {
-		c.items = make(map[string][]byte)
-		c.currentSize = 0
-	}
-
-	c.items[key] = data
-	c.currentSize += newSize
+	cache     cache.Cache
+	cacheTTL  time.Duration
 }
 
 // NewMediaService creates a new media service.
-func NewMediaService(storage storage.StorageBackend) *MediaService {
+// If c is nil, a 100MB in-memory cache is used as fallback.
+func NewMediaService(storage storage.StorageBackend, c cache.Cache, cacheTTL time.Duration) *MediaService {
+	if c == nil {
+		c = cache.NewMemoryCache(100 * 1024 * 1024) // 100MB fallback
+	}
 	return &MediaService{
 		storage:   storage,
 		processor: NewImageProcessor(),
-		cache:     newVariantCache(100 * 1024 * 1024), // 100MB cache
+		cache:     c,
+		cacheTTL:  cacheTTL,
 	}
 }
 
@@ -73,7 +41,7 @@ func (s *MediaService) GetImage(ctx context.Context, hash string, opts *ProcessO
 	cacheKey := s.variantKey(hash, opts)
 
 	// Check cache first
-	if cached, ok := s.cache.get(cacheKey); ok {
+	if cached, ok := s.cache.Get(ctx, cacheKey); ok {
 		// Parse format from options to return correct content type
 		format := FormatJPEG
 		if opts != nil && opts.Format != "" {
@@ -82,7 +50,7 @@ func (s *MediaService) GetImage(ctx context.Context, hash string, opts *ProcessO
 		return &ProcessResult{
 			Data:        cached,
 			Format:      format,
-			ContentType: formatToContentType(format),
+			ContentType: FormatToContentType(format),
 		}, nil
 	}
 
@@ -112,7 +80,7 @@ func (s *MediaService) GetImage(ctx context.Context, hash string, opts *ProcessO
 	}
 
 	// Cache the result
-	s.cache.set(cacheKey, result.Data)
+	s.cache.Set(ctx, cacheKey, result.Data, s.cacheTTL)
 
 	return result, nil
 }
@@ -167,6 +135,11 @@ func (s *MediaService) StoreThumbnails(ctx context.Context, hash string, data []
 	}
 
 	return hashes, nil
+}
+
+// Close cleans up cache resources.
+func (s *MediaService) Close() error {
+	return s.cache.Close()
 }
 
 // variantKey generates a cache key for a processed variant.

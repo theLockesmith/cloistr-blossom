@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
@@ -19,6 +20,7 @@ type services struct {
 	settings core.SettingService
 	stats    core.StatService
 	quota    core.QuotaService
+	cache    cache.Cache
 	conf     *config.Config
 }
 
@@ -27,6 +29,7 @@ func New(
 	database *sql.DB,
 	queries *db.Queries,
 	conf *config.Config,
+	appCache cache.Cache,
 	log *zap.Logger,
 ) core.Services {
 	// Initialize storage backend
@@ -81,6 +84,11 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	// Default to in-memory cache if none provided
+	if appCache == nil {
+		appCache = cache.NewMemoryCache(100 * 1024 * 1024) // 100MB
+	}
+
 	return &services{
 		blobs:    blobService,
 		acrs:     acrService,
@@ -88,6 +96,7 @@ func New(
 		settings: settingsService,
 		stats:    statService,
 		quota:    quotaService,
+		cache:    appCache,
 		conf:     conf,
 	}
 }
@@ -114,6 +123,10 @@ func (s *services) Stats() core.StatService {
 
 func (s *services) Quota() core.QuotaService {
 	return s.quota
+}
+
+func (s *services) Cache() cache.Cache {
+	return s.cache
 }
 
 func (s *services) Init(ctx context.Context) error {

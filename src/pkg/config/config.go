@@ -64,6 +64,12 @@ type QuotaConfig struct {
 	WarnThreshold int   `yaml:"warn_threshold"` // Percentage at which to warn (e.g., 80)
 }
 
+// CacheConfig defines optional cache settings (Redis/Dragonfly).
+type CacheConfig struct {
+	URL string `yaml:"url"` // Redis URL (e.g. redis://host:6379 or redis://:password@host:6379)
+	TTL int    `yaml:"ttl"` // Default TTL in seconds (0 = no expiration)
+}
+
 type Config struct {
 	// Legacy field for backwards compatibility - use Database.SQLite.Path instead
 	DbPath             string              `yaml:"db_path"`
@@ -79,6 +85,7 @@ type Config struct {
 	Storage  StorageConfig  `yaml:"storage"`
 	Database DatabaseConfig `yaml:"database"`
 	Quota    QuotaConfig    `yaml:"quota"`
+	Cache    CacheConfig    `yaml:"cache"`
 }
 
 func NewConfig(path string) (*Config, error) {

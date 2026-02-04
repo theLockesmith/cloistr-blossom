@@ -29,6 +29,13 @@ storage:
   #   secret_key: ${S3_SECRET_KEY}
   #   path_style: true  # Required for MinIO/Ceph
 
+# Cache configuration (optional)
+# Connect to Redis or Dragonfly for shared caching across replicas.
+# If not configured, an in-memory cache is used (per-process, not shared).
+# cache:
+#   url: "redis://dragonfly.dragonfly.svc.cluster.local:6379"
+#   ttl: 3600  # Default TTL in seconds (0 = no expiration)
+
 # Storage quota configuration
 quota:
   enabled: false

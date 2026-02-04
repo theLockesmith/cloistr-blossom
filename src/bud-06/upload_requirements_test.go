@@ -46,7 +46,7 @@ func TestUploadRequirementsUnauth(t *testing.T) {
 		t.Fatal(err)
 	}
 	queries := db.New(database)
-	services := service.New(context.TODO(), database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, nil, logger)
 
 	err = UploadRequirements(
 		context.TODO(),

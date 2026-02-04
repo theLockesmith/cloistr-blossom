@@ -53,7 +53,7 @@ func TestUpload(t *testing.T) {
 	}
 	queries := db.New(database)
 
-	services := service.New(context.TODO(), database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, nil, logger)
 	services.Init(context.TODO())
 
 	blobBytes := []byte{}
@@ -103,7 +103,7 @@ func TestUnauthUpload(t *testing.T) {
 	}
 	queries := db.New(database)
 
-	services := service.New(context.TODO(), database, queries, conf, logger)
+	services := service.New(context.TODO(), database, queries, conf, nil, logger)
 
 	blobBytes := []byte{}
 	authHash, _ := hashing.Hash(blobBytes)

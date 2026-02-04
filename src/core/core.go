@@ -1,6 +1,10 @@
 package core
 
-import "context"
+import (
+	"context"
+
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
+)
 
 type Services interface {
 	Init(context.Context) error
@@ -10,4 +14,5 @@ type Services interface {
 	Settings() SettingService
 	Stats() StatService
 	Quota() QuotaService
+	Cache() cache.Cache
 }

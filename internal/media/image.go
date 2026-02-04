@@ -145,7 +145,7 @@ func (p *ImageProcessor) Process(data io.Reader, opts ProcessOptions) (*ProcessR
 		Width:       bounds.Dx(),
 		Height:      bounds.Dy(),
 		Format:      outputFormat,
-		ContentType: formatToContentType(outputFormat),
+		ContentType: FormatToContentType(outputFormat),
 	}, nil
 }
 
@@ -189,7 +189,8 @@ func DecodeWebP(data io.Reader) (image.Image, error) {
 	return webp.Decode(data)
 }
 
-func formatToContentType(format ImageFormat) string {
+// FormatToContentType converts an ImageFormat to its MIME content type.
+func FormatToContentType(format ImageFormat) string {
 	switch format {
 	case FormatJPEG:
 		return "image/jpeg"
