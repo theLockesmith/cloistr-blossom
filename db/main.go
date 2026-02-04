@@ -3,6 +3,8 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	migrate "github.com/rubenv/sql-migrate"
 )
@@ -50,6 +52,11 @@ func NewDBWithConfig(cfg DBConfig, migrationsPath string) (*sql.DB, error) {
 		dialect = "postgres"
 
 	case "sqlite", "":
+		if dir := filepath.Dir(cfg.DSN); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, fmt.Errorf("create database directory: %w", err)
+			}
+		}
 		dbi, err = sql.Open("sqlite3", cfg.DSN)
 		dialect = "sqlite3"
 
