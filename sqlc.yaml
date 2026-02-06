@@ -1,8 +1,9 @@
 version: "2"
 sql:
-  - engine: "sqlite"
+  # PostgreSQL for production
+  - engine: "postgresql"
     queries: "db/queries"
-    schema: "db/migrations"
+    schema: "db/migrations/postgres"
     gen:
       go:
         package: "db"

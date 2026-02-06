@@ -22,7 +22,7 @@ type User struct {
 	Pubkey     string
 	QuotaBytes int64
 	UsedBytes  int64
-	IsBanned   int64
+	IsBanned   bool
 	CreatedAt  int64
 	UpdatedAt  int64
 }

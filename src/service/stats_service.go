@@ -31,13 +31,8 @@ func (s *statService) Get(
 }
 
 func (s *statService) dbStatsIntoCore(stats db.GetStatsRow) *core.Stats {
-	bytesStored := 0
-	if stats.BytesStored.Valid {
-		bytesStored = int(stats.BytesStored.Float64)
-	}
-
 	return &core.Stats{
-		BytesStored: bytesStored,
+		BytesStored: int(stats.BytesStored),
 		BlobCount:   int(stats.BlobCount),
 		PubkeyCount: int(stats.PubkeyCount),
 	}

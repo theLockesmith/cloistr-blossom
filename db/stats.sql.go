@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const getStats = `-- name: GetStats :one
@@ -18,7 +17,7 @@ FROM blobs
 `
 
 type GetStatsRow struct {
-	BytesStored sql.NullFloat64
+	BytesStored int64
 	BlobCount   int64
 	PubkeyCount int64
 }

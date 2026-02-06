@@ -192,8 +192,8 @@ func (s *quotaService) UnbanUser(ctx context.Context, pubkey string) error {
 
 func (s *quotaService) ListUsers(ctx context.Context, limit, offset int64) ([]*core.User, error) {
 	dbUsers, err := s.queries.ListUsers(ctx, db.ListUsersParams{
-		Limit:  limit,
-		Offset: offset,
+		Limit:  int32(limit),
+		Offset: int32(offset),
 	})
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func (s *quotaService) dbUserToCoreUser(dbUser db.User) *core.User {
 		Pubkey:     dbUser.Pubkey,
 		QuotaBytes: dbUser.QuotaBytes,
 		UsedBytes:  dbUser.UsedBytes,
-		IsBanned:   dbUser.IsBanned != 0,
+		IsBanned:   dbUser.IsBanned,
 		CreatedAt:  dbUser.CreatedAt,
 		UpdatedAt:  dbUser.UpdatedAt,
 	}

@@ -12,7 +12,7 @@ import (
 const deleteBlobFromHash = `-- name: DeleteBlobFromHash :exec
 delete
 from blobs
-where hash = ?
+where hash = $1
 `
 
 func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
@@ -23,7 +23,7 @@ func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
 const getBlobFromHash = `-- name: GetBlobFromHash :one
 select pubkey, hash, type, size, blob, created
 from blobs
-where hash = ?
+where hash = $1
 limit 1
 `
 
@@ -44,7 +44,7 @@ func (q *Queries) GetBlobFromHash(ctx context.Context, hash string) (Blob, error
 const getBlobsFromPubkey = `-- name: GetBlobsFromPubkey :many
 select pubkey, hash, type, size, blob, created
 from blobs
-where pubkey = ?
+where pubkey = $1
 `
 
 func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob, error) {
@@ -85,7 +85,7 @@ insert into blobs(
   size,
   blob,
   created
-) values (?,?,?,?,?,?)
+) values ($1,$2,$3,$4,$5,$6)
 returning pubkey, hash, type, size, blob, created
 `
 

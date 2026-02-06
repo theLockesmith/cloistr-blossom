@@ -1,12 +1,12 @@
 -- name: GetBlobsFromPubkey :many
 select *
 from blobs
-where pubkey = ?;
+where pubkey = $1;
 
 -- name: GetBlobFromHash :one
 select *
 from blobs
-where hash = ?
+where hash = $1
 limit 1;
 
 -- name: InsertBlob :one
@@ -17,10 +17,10 @@ insert into blobs(
   size,
   blob,
   created
-) values (?,?,?,?,?,?)
+) values ($1,$2,$3,$4,$5,$6)
 returning *;
 
 -- name: DeleteBlobFromHash :exec
 delete
 from blobs
-where hash = ?;
+where hash = $1;

@@ -11,8 +11,8 @@ import (
 
 const banUser = `-- name: BanUser :exec
 UPDATE users
-SET is_banned = 1, updated_at = ?
-WHERE pubkey = ?
+SET is_banned = 1, updated_at = $1
+WHERE pubkey = $2
 `
 
 type BanUserParams struct {
@@ -27,7 +27,7 @@ func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) error {
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES (?, ?, 0, 0, ?, ?)
+VALUES ($1, $2, 0, 0, $3, $4)
 RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 `
 
@@ -60,10 +60,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const decrementUserUsage = `-- name: DecrementUserUsage :exec
 UPDATE users
 SET used_bytes = CASE
-    WHEN used_bytes >= ? THEN used_bytes - ?
+    WHEN used_bytes >= $1 THEN used_bytes - $2
     ELSE 0
-END, updated_at = ?
-WHERE pubkey = ?
+END, updated_at = $3
+WHERE pubkey = $4
 `
 
 type DecrementUserUsageParams struct {
@@ -85,7 +85,7 @@ func (q *Queries) DecrementUserUsage(ctx context.Context, arg DecrementUserUsage
 
 const getOrCreateUser = `-- name: GetOrCreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES (?, ?, 0, 0, ?, ?)
+VALUES ($1, $2, 0, 0, $3, $4)
 ON CONFLICT(pubkey) DO UPDATE SET updated_at = excluded.updated_at
 RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 `
@@ -119,7 +119,7 @@ func (q *Queries) GetOrCreateUser(ctx context.Context, arg GetOrCreateUserParams
 const getUser = `-- name: GetUser :one
 SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 FROM users
-WHERE pubkey = ?
+WHERE pubkey = $1
 LIMIT 1
 `
 
@@ -152,7 +152,7 @@ func (q *Queries) GetUserCount(ctx context.Context) (int64, error) {
 const getUserQuota = `-- name: GetUserQuota :one
 SELECT quota_bytes, used_bytes
 FROM users
-WHERE pubkey = ?
+WHERE pubkey = $1
 LIMIT 1
 `
 
@@ -170,8 +170,8 @@ func (q *Queries) GetUserQuota(ctx context.Context, pubkey string) (GetUserQuota
 
 const incrementUserUsage = `-- name: IncrementUserUsage :exec
 UPDATE users
-SET used_bytes = used_bytes + ?, updated_at = ?
-WHERE pubkey = ?
+SET used_bytes = used_bytes + $1, updated_at = $2
+WHERE pubkey = $3
 `
 
 type IncrementUserUsageParams struct {
@@ -189,12 +189,12 @@ const listUsers = `-- name: ListUsers :many
 SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 FROM users
 ORDER BY created_at DESC
-LIMIT ? OFFSET ?
+LIMIT $1 OFFSET $2
 `
 
 type ListUsersParams struct {
-	Limit  int64
-	Offset int64
+	Limit  int32
+	Offset int32
 }
 
 func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
@@ -233,8 +233,8 @@ SET used_bytes = (
     SELECT COALESCE(SUM(size), 0)
     FROM blobs
     WHERE blobs.pubkey = users.pubkey
-), updated_at = ?
-WHERE users.pubkey = ?
+), updated_at = $1
+WHERE users.pubkey = $2
 `
 
 type RecalculateUserUsageParams struct {
@@ -249,8 +249,8 @@ func (q *Queries) RecalculateUserUsage(ctx context.Context, arg RecalculateUserU
 
 const unbanUser = `-- name: UnbanUser :exec
 UPDATE users
-SET is_banned = 0, updated_at = ?
-WHERE pubkey = ?
+SET is_banned = 0, updated_at = $1
+WHERE pubkey = $2
 `
 
 type UnbanUserParams struct {
@@ -265,8 +265,8 @@ func (q *Queries) UnbanUser(ctx context.Context, arg UnbanUserParams) error {
 
 const updateUserQuota = `-- name: UpdateUserQuota :exec
 UPDATE users
-SET quota_bytes = ?, updated_at = ?
-WHERE pubkey = ?
+SET quota_bytes = $1, updated_at = $2
+WHERE pubkey = $3
 `
 
 type UpdateUserQuotaParams struct {
@@ -282,8 +282,8 @@ func (q *Queries) UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams
 
 const updateUserUsage = `-- name: UpdateUserUsage :exec
 UPDATE users
-SET used_bytes = ?, updated_at = ?
-WHERE pubkey = ?
+SET used_bytes = $1, updated_at = $2
+WHERE pubkey = $3
 `
 
 type UpdateUserUsageParams struct {

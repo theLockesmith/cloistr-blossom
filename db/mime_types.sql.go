@@ -40,7 +40,7 @@ func (q *Queries) GetAllMimeTypes(ctx context.Context) ([]MimeType, error) {
 const getMimeType = `-- name: GetMimeType :one
 SELECT extension, mime_type
 FROM mime_types
-WHERE mime_type = ?
+WHERE mime_type = $1
 LIMIT 1
 `
 
