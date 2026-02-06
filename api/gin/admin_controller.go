@@ -215,17 +215,31 @@ func adminDashboard(services core.Services) gin.HandlerFunc {
 		stats := services.Stats()
 		quota := services.Quota()
 
-		serverStats, _ := stats.Get(ctx.Request.Context())
+		serverStats, err := stats.Get(ctx.Request.Context())
 		userCount, _ := quota.GetUserCount(ctx.Request.Context())
 
+		// Handle case where stats retrieval fails
+		var adminStats AdminStats
+		if err != nil || serverStats == nil {
+			adminStats = AdminStats{
+				BytesStored:   0,
+				BlobCount:     0,
+				UserCount:     userCount,
+				StorageUsed:   "0 B",
+				QuotasEnabled: quota.IsEnabled(),
+			}
+		} else {
+			adminStats = AdminStats{
+				BytesStored:   int64(serverStats.BytesStored),
+				BlobCount:     int64(serverStats.BlobCount),
+				UserCount:     userCount,
+				StorageUsed:   formatBytes(int64(serverStats.BytesStored)),
+				QuotasEnabled: quota.IsEnabled(),
+			}
+		}
+
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
-		ctx.String(http.StatusOK, adminDashboardHTML(AdminStats{
-			BytesStored:   int64(serverStats.BytesStored),
-			BlobCount:     int64(serverStats.BlobCount),
-			UserCount:     userCount,
-			StorageUsed:   formatBytes(int64(serverStats.BytesStored)),
-			QuotasEnabled: quota.IsEnabled(),
-		}))
+		ctx.String(http.StatusOK, adminDashboardHTML(adminStats))
 	}
 }
 
