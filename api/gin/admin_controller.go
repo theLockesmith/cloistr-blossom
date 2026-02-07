@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"go.uber.org/zap"
 )
 
 // AdminStats represents server statistics for the admin dashboard.
@@ -286,18 +287,28 @@ func adminDashboardHTML(stats AdminStats) string {
         .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #6366f1; color: white; }
         .btn-danger { background: #ef4444; color: white; }
+        .btn-secondary { background: #6b7280; color: white; }
         .btn:hover { opacity: 0.9; }
         #users-list { min-height: 200px; }
         .loading { text-align: center; padding: 40px; color: #666; }
         .pubkey { font-family: monospace; font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
         .progress-bar-fill { height: 100%; background: #6366f1; transition: width 0.3s; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .admin-info { font-size: 12px; opacity: 0.9; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Blossom Admin Dashboard</h1>
+            <div class="header-content">
+                <h1>🌸 Blossom Admin</h1>
+                <div class="header-right">
+                    <span class="admin-info" id="admin-info"></span>
+                    <button class="btn btn-secondary" onclick="logout()">Logout</button>
+                </div>
+            </div>
         </header>
 
         <div class="stats-grid">
@@ -328,9 +339,32 @@ func adminDashboardHTML(stats AdminStats) string {
     </div>
 
     <script>
+        // Check auth status and show admin info
+        async function checkAuth() {
+            try {
+                const resp = await fetch('/admin/api/session');
+                const data = await resp.json();
+                if (data.authenticated && data.pubkey) {
+                    const shortKey = data.pubkey.slice(0, 8) + '...' + data.pubkey.slice(-4);
+                    document.getElementById('admin-info').textContent = 'Admin: ' + shortKey;
+                }
+            } catch (e) {}
+        }
+
+        async function logout() {
+            try {
+                await fetch('/admin/api/logout', { method: 'POST' });
+            } catch (e) {}
+            window.location.href = '/admin/login';
+        }
+
         async function loadUsers() {
             try {
                 const resp = await fetch('/admin/api/users');
+                if (resp.status === 401) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
                 const users = await resp.json();
                 renderUsers(users);
             } catch (err) {
@@ -382,6 +416,8 @@ func adminDashboardHTML(stats AdminStats) string {
             loadUsers();
         }
 
+        // Initialize
+        checkAuth();
         loadUsers();
     </script>
 </body>
@@ -389,22 +425,39 @@ func adminDashboardHTML(stats AdminStats) string {
 }
 
 // RegisterAdminRoutes registers admin routes on the router.
-func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey string) {
-	// Time-based token for simple admin auth (not Nostr for dashboard UI)
-	// In production, use proper session management
+func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey string, log *zap.Logger) {
+	// Create auth manager for session handling
+	authManager := NewAdminAuthManager(adminPubkey, log)
 
 	admin := r.Group("/admin")
 
-	// Dashboard page (no auth for now - add session auth for production)
-	admin.GET("/", adminDashboard(services))
+	// Public routes (no auth required)
+	admin.GET("/login", func(c *gin.Context) {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.String(http.StatusOK, adminLoginPageHTML(adminPubkey))
+	})
 
-	// API routes
+	// API routes that don't require auth
 	api := admin.Group("/api")
-	api.GET("/stats", getAdminStats(services))
-	api.GET("/users", listAdminUsers(services))
-	api.GET("/users/:pubkey", getAdminUser(services))
-	api.PUT("/users/:pubkey/quota", setUserQuota(services))
-	api.POST("/users/:pubkey/ban", banUser(services))
-	api.POST("/users/:pubkey/unban", unbanUser(services))
-	api.POST("/users/:pubkey/recalculate", recalculateUserUsage(services))
+	api.POST("/login", adminLogin(authManager))
+	api.GET("/session", adminCheckSession(authManager))
+	api.POST("/logout", adminLogout(authManager))
+
+	// Protected routes (require session auth)
+	protected := admin.Group("")
+	protected.Use(AdminSessionMiddleware(authManager))
+
+	// Dashboard page
+	protected.GET("/", adminDashboard(services))
+
+	// Protected API routes
+	protectedAPI := api.Group("")
+	protectedAPI.Use(AdminSessionMiddleware(authManager))
+	protectedAPI.GET("/stats", getAdminStats(services))
+	protectedAPI.GET("/users", listAdminUsers(services))
+	protectedAPI.GET("/users/:pubkey", getAdminUser(services))
+	protectedAPI.PUT("/users/:pubkey/quota", setUserQuota(services))
+	protectedAPI.POST("/users/:pubkey/ban", banUser(services))
+	protectedAPI.POST("/users/:pubkey/unban", unbanUser(services))
+	protectedAPI.POST("/users/:pubkey/recalculate", recalculateUserUsage(services))
 }
