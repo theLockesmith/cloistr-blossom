@@ -17,6 +17,18 @@ func mirrorBlob(
 		pubkey := ctx.GetString("pk")
 		authSha256 := ctx.GetString("x")
 
+		// Check if pubkey is blocked
+		if pubkey != "" {
+			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
+			if err == nil && isBlocked {
+				ctx.AbortWithStatusJSON(
+					http.StatusForbidden,
+					apiError{Message: "your account has been blocked due to terms of service violation"},
+				)
+				return
+			}
+		}
+
 		if pubkey == "" {
 			ctx.AbortWithStatusJSON(
 				http.StatusInternalServerError,

@@ -15,6 +15,19 @@ func uploadBlob(
 	cdnBaseUrl string,
 ) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		// Check if pubkey is blocked
+		pubkey := ctx.GetString("pk")
+		if pubkey != "" {
+			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
+			if err == nil && isBlocked {
+				ctx.AbortWithStatusJSON(
+					http.StatusForbidden,
+					apiError{Message: "your account has been blocked due to terms of service violation"},
+				)
+				return
+			}
+		}
+
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		defer func(body io.ReadCloser) {
 			err := body.Close()

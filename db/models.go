@@ -4,6 +4,10 @@
 
 package db
 
+import (
+	"database/sql"
+)
+
 type Blob struct {
 	Pubkey  string
 	Hash    string
@@ -13,9 +17,40 @@ type Blob struct {
 	Created int64
 }
 
+type Blocklist struct {
+	Pubkey    string
+	Reason    string
+	BlockedBy string
+	CreatedAt int64
+}
+
 type MimeType struct {
 	Extension string
 	MimeType  string
+}
+
+type Report struct {
+	ID             int32
+	ReporterPubkey sql.NullString
+	BlobHash       string
+	BlobUrl        string
+	Reason         string
+	Details        sql.NullString
+	Status         string
+	ActionTaken    sql.NullString
+	ReviewedBy     sql.NullString
+	CreatedAt      int64
+	ReviewedAt     sql.NullInt64
+}
+
+type TransparencyStat struct {
+	ID               int32
+	TotalReports     int64
+	ReportsActioned  int64
+	ReportsDismissed int64
+	BlobsRemoved     int64
+	UsersBanned      int64
+	LastUpdated      int64
 }
 
 type User struct {

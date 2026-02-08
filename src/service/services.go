@@ -14,14 +14,15 @@ import (
 )
 
 type services struct {
-	blobs    core.BlobStorage
-	acrs     core.ACRStorage
-	mimes    core.MimeTypeService
-	settings core.SettingService
-	stats    core.StatService
-	quota    core.QuotaService
-	cache    cache.Cache
-	conf     *config.Config
+	blobs      core.BlobStorage
+	acrs       core.ACRStorage
+	mimes      core.MimeTypeService
+	settings   core.SettingService
+	stats      core.StatService
+	quota      core.QuotaService
+	moderation core.ModerationService
+	cache      cache.Cache
+	conf       *config.Config
 }
 
 func New(
@@ -84,20 +85,26 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	moderationService, err := NewModerationService(queries, blobService, quotaService, log)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	// Default to in-memory cache if none provided
 	if appCache == nil {
 		appCache = cache.NewMemoryCache(100 * 1024 * 1024) // 100MB
 	}
 
 	return &services{
-		blobs:    blobService,
-		acrs:     acrService,
-		mimes:    mimeTypeService,
-		settings: settingsService,
-		stats:    statService,
-		quota:    quotaService,
-		cache:    appCache,
-		conf:     conf,
+		blobs:      blobService,
+		acrs:       acrService,
+		mimes:      mimeTypeService,
+		settings:   settingsService,
+		stats:      statService,
+		quota:      quotaService,
+		moderation: moderationService,
+		cache:      appCache,
+		conf:       conf,
 	}
 }
 
@@ -123,6 +130,10 @@ func (s *services) Stats() core.StatService {
 
 func (s *services) Quota() core.QuotaService {
 	return s.quota
+}
+
+func (s *services) Moderation() core.ModerationService {
+	return s.moderation
 }
 
 func (s *services) Cache() cache.Cache {

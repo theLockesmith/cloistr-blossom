@@ -34,6 +34,40 @@ type SetQuotaRequest struct {
 	QuotaBytes int64 `json:"quota_bytes"`
 }
 
+// AdminReport represents a report in admin views.
+type AdminReport struct {
+	ID             int32  `json:"id"`
+	ReporterPubkey string `json:"reporter_pubkey,omitempty"`
+	BlobHash       string `json:"blob_hash"`
+	BlobURL        string `json:"blob_url"`
+	Reason         string `json:"reason"`
+	Details        string `json:"details,omitempty"`
+	Status         string `json:"status"`
+	ActionTaken    string `json:"action_taken,omitempty"`
+	ReviewedBy     string `json:"reviewed_by,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
+	ReviewedAt     int64  `json:"reviewed_at,omitempty"`
+}
+
+// ReportActionRequest is the request body for taking action on a report.
+type ReportActionRequest struct {
+	Action string `json:"action" binding:"required"` // "removed", "user_banned", "dismissed"
+}
+
+// BlocklistAddRequest is the request body for adding to the blocklist.
+type BlocklistAddRequest struct {
+	Pubkey string `json:"pubkey" binding:"required"`
+	Reason string `json:"reason" binding:"required"`
+}
+
+// AdminBlocklistEntry represents a blocklist entry in admin views.
+type AdminBlocklistEntry struct {
+	Pubkey    string `json:"pubkey"`
+	Reason    string `json:"reason"`
+	BlockedBy string `json:"blocked_by"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 // adminAuthMiddleware ensures the request is from an admin.
 func adminAuthMiddleware(adminPubkey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -424,6 +458,240 @@ func adminDashboardHTML(stats AdminStats) string {
 </html>`
 }
 
+// listReports returns a paginated list of reports.
+func listReports(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "50"), 10, 64)
+		offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
+		status := ctx.Query("status")
+
+		if limit > 100 {
+			limit = 100
+		}
+
+		var reports []*core.Report
+		var err error
+
+		if status != "" {
+			reports, err = services.Moderation().ListReportsByStatus(
+				ctx.Request.Context(),
+				core.ReportStatus(status),
+				int(limit),
+				int(offset),
+			)
+		} else {
+			reports, err = services.Moderation().ListAllReports(ctx.Request.Context(), int(limit), int(offset))
+		}
+
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		adminReports := make([]AdminReport, len(reports))
+		for i, r := range reports {
+			adminReports[i] = AdminReport{
+				ID:             r.ID,
+				ReporterPubkey: r.ReporterPubkey,
+				BlobHash:       r.BlobHash,
+				BlobURL:        r.BlobURL,
+				Reason:         string(r.Reason),
+				Details:        r.Details,
+				Status:         string(r.Status),
+				ActionTaken:    string(r.ActionTaken),
+				ReviewedBy:     r.ReviewedBy,
+				CreatedAt:      r.CreatedAt,
+				ReviewedAt:     r.ReviewedAt,
+			}
+		}
+
+		ctx.JSON(http.StatusOK, adminReports)
+	}
+}
+
+// getReport returns details for a specific report.
+func getReport(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		idStr := ctx.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 32)
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid report ID"})
+			return
+		}
+
+		report, err := services.Moderation().GetReport(ctx.Request.Context(), int32(id))
+		if err != nil {
+			if err == core.ErrReportNotFound {
+				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "report not found"})
+				return
+			}
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, AdminReport{
+			ID:             report.ID,
+			ReporterPubkey: report.ReporterPubkey,
+			BlobHash:       report.BlobHash,
+			BlobURL:        report.BlobURL,
+			Reason:         string(report.Reason),
+			Details:        report.Details,
+			Status:         string(report.Status),
+			ActionTaken:    string(report.ActionTaken),
+			ReviewedBy:     report.ReviewedBy,
+			CreatedAt:      report.CreatedAt,
+			ReviewedAt:     report.ReviewedAt,
+		})
+	}
+}
+
+// actionReport takes action on a report.
+func actionReport(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		idStr := ctx.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 32)
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid report ID"})
+			return
+		}
+
+		var req ReportActionRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			return
+		}
+
+		// Get admin pubkey from session
+		adminPubkey := ""
+		if session, exists := ctx.Get("admin_session"); exists {
+			if s, ok := session.(*AdminSession); ok {
+				adminPubkey = s.Pubkey
+			}
+		}
+
+		var action core.ReportAction
+		switch req.Action {
+		case "removed":
+			action = core.ReportActionRemoved
+		case "user_banned":
+			action = core.ReportActionUserBanned
+		case "dismissed":
+			// Just update status, no action
+			if err := services.Moderation().ReviewReport(
+				ctx.Request.Context(),
+				int32(id),
+				core.ReportStatusDismissed,
+				core.ReportActionNone,
+				adminPubkey,
+			); err != nil {
+				ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+				return
+			}
+			ctx.JSON(http.StatusOK, gin.H{"message": "report dismissed"})
+			return
+		default:
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid action"})
+			return
+		}
+
+		if err := services.Moderation().ActionReport(ctx.Request.Context(), int32(id), action, adminPubkey); err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"message": "action taken on report"})
+	}
+}
+
+// getPendingReportCount returns the number of pending reports.
+func getPendingReportCount(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		count, err := services.Moderation().GetPendingReportCount(ctx.Request.Context())
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"count": count})
+	}
+}
+
+// listBlocklist returns all blocked pubkeys.
+func listBlocklist(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "50"), 10, 64)
+		offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
+
+		if limit > 100 {
+			limit = 100
+		}
+
+		entries, err := services.Moderation().ListBlocklist(ctx.Request.Context(), int(limit), int(offset))
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		adminEntries := make([]AdminBlocklistEntry, len(entries))
+		for i, e := range entries {
+			adminEntries[i] = AdminBlocklistEntry{
+				Pubkey:    e.Pubkey,
+				Reason:    e.Reason,
+				BlockedBy: e.BlockedBy,
+				CreatedAt: e.CreatedAt,
+			}
+		}
+
+		ctx.JSON(http.StatusOK, adminEntries)
+	}
+}
+
+// addToBlocklist adds a pubkey to the blocklist.
+func addToBlocklist(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var req BlocklistAddRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			return
+		}
+
+		// Get admin pubkey from session
+		adminPubkey := ""
+		if session, exists := ctx.Get("admin_session"); exists {
+			if s, ok := session.(*AdminSession); ok {
+				adminPubkey = s.Pubkey
+			}
+		}
+
+		entry, err := services.Moderation().AddToBlocklist(ctx.Request.Context(), req.Pubkey, req.Reason, adminPubkey)
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusCreated, AdminBlocklistEntry{
+			Pubkey:    entry.Pubkey,
+			Reason:    entry.Reason,
+			BlockedBy: entry.BlockedBy,
+			CreatedAt: entry.CreatedAt,
+		})
+	}
+}
+
+// removeFromBlocklist removes a pubkey from the blocklist.
+func removeFromBlocklist(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		pubkey := ctx.Param("pubkey")
+
+		if err := services.Moderation().RemoveFromBlocklist(ctx.Request.Context(), pubkey); err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"message": "removed from blocklist"})
+	}
+}
+
 // RegisterAdminRoutes registers admin routes on the router.
 func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey string, log *zap.Logger) {
 	// Create auth manager for session handling
@@ -460,4 +728,15 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 	protectedAPI.POST("/users/:pubkey/ban", banUser(services))
 	protectedAPI.POST("/users/:pubkey/unban", unbanUser(services))
 	protectedAPI.POST("/users/:pubkey/recalculate", recalculateUserUsage(services))
+
+	// Report management
+	protectedAPI.GET("/reports", listReports(services))
+	protectedAPI.GET("/reports/pending/count", getPendingReportCount(services))
+	protectedAPI.GET("/reports/:id", getReport(services))
+	protectedAPI.POST("/reports/:id/action", actionReport(services))
+
+	// Blocklist management
+	protectedAPI.GET("/blocklist", listBlocklist(services))
+	protectedAPI.POST("/blocklist", addToBlocklist(services))
+	protectedAPI.DELETE("/blocklist/:pubkey", removeFromBlocklist(services))
 }

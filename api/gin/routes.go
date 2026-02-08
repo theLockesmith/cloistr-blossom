@@ -24,7 +24,7 @@ func SetupRoutes(
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
-		AllowMethods:    []string{"GET", "PUT", "HEAD", "DELETE"},
+		AllowMethods:    []string{"GET", "PUT", "POST", "HEAD", "DELETE"},
 		AllowHeaders: []string{
 			HeaderAuthorization,
 			HeaderContentType,
@@ -84,6 +84,10 @@ func SetupRoutes(
 
 	// server stats
 	r.GET("/stats", getStats(services))
+
+	// Content reporting and transparency
+	r.POST("/report", submitReport(services))
+	r.GET("/transparency", getTransparencyPage(services))
 
 	// Admin dashboard and API
 	RegisterAdminRoutes(r, services, adminPubkey, log)

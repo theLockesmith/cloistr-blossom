@@ -14,5 +14,6 @@ type Services interface {
 	Settings() SettingService
 	Stats() StatService
 	Quota() QuotaService
+	Moderation() ModerationService
 	Cache() cache.Cache
 }
