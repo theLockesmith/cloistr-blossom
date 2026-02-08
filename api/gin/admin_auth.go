@@ -371,7 +371,7 @@ func adminCheckSession(authManager *AdminAuthManager) gin.HandlerFunc {
 	}
 }
 
-// adminLoginPageHTML returns the admin login page HTML with NIP-07 support.
+// adminLoginPageHTML returns the admin login page HTML with NIP-07 and NIP-46 support.
 func adminLoginPageHTML(adminPubkey string) string {
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -379,6 +379,8 @@ func adminLoginPageHTML(adminPubkey string) string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blossom Admin Login</title>
+    <script src="https://unpkg.com/@noble/hashes@1.3.3/sha256.js"></script>
+    <script src="https://unpkg.com/@noble/secp256k1@2.0.0/index.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -395,7 +397,7 @@ func adminLoginPageHTML(adminPubkey string) string {
             border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             width: 100%;
-            max-width: 420px;
+            max-width: 480px;
             text-align: center;
         }
         h1 {
@@ -434,6 +436,11 @@ func adminLoginPageHTML(adminPubkey string) string {
             color: #374151;
         }
         .btn-secondary:hover { background: #e5e7eb; }
+        .btn-bunker {
+            background: #8b5cf6;
+            color: white;
+        }
+        .btn-bunker:hover { background: #7c3aed; }
         .status {
             margin-top: 20px;
             padding: 12px;
@@ -481,27 +488,105 @@ func adminLoginPageHTML(adminPubkey string) string {
             color: #9ca3af;
             font-size: 12px;
         }
+        .input-group {
+            margin-top: 15px;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            font-size: 13px;
+            color: #374151;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        .input-group .hint {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background: #f3f4f6;
+            padding: 4px;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            background: white;
+            color: #374151;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <h1>🌸 Blossom Admin</h1>
+        <h1>Blossom Admin</h1>
         <p class="subtitle">Authenticate with your Nostr key</p>
 
-        <button id="nip07-login" class="btn btn-primary" onclick="loginWithNip07()">
-            Login with Browser Extension (NIP-07)
-        </button>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('nip07')">Browser Extension</button>
+            <button class="tab" onclick="switchTab('nip46')">Remote Signer</button>
+            <button class="tab" onclick="switchTab('manual')">Manual</button>
+        </div>
 
-        <div class="divider"><span>or</span></div>
+        <!-- NIP-07 Tab -->
+        <div id="tab-nip07" class="tab-content active">
+            <button id="nip07-login" class="btn btn-primary" onclick="loginWithNip07()">
+                Login with NIP-07 Extension
+            </button>
+            <p class="hint" style="text-align: center; margin-top: 10px;">
+                Works with nos2x, Alby, Nostr Connect, etc.
+            </p>
+        </div>
 
-        <button id="manual-toggle" class="btn btn-secondary" onclick="showManualLogin()">
-            Paste Signed Event
-        </button>
+        <!-- NIP-46 Tab -->
+        <div id="tab-nip46" class="tab-content">
+            <div class="input-group">
+                <label for="bunker-uri">Bunker URI or Nostr Connect URI</label>
+                <input type="text" id="bunker-uri" placeholder="bunker://... or nostr+connect://...">
+                <p class="hint">Paste your connection URI from nsecBunker, Amber, or another NIP-46 signer</p>
+            </div>
+            <button id="nip46-login" class="btn btn-bunker" onclick="loginWithNip46()" style="margin-top: 15px;">
+                Connect to Signer
+            </button>
+        </div>
 
-        <div id="manual-login" class="hidden" style="margin-top: 20px;">
-            <textarea id="auth-event" placeholder="Paste base64-encoded signed auth event..."
-                style="width: 100%; height: 100px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
-            <button class="btn btn-primary" onclick="loginWithEvent()" style="margin-top: 10px;">
+        <!-- Manual Tab -->
+        <div id="tab-manual" class="tab-content">
+            <div class="input-group">
+                <label for="auth-event">Signed Auth Event (Base64)</label>
+                <textarea id="auth-event" placeholder="Paste base64-encoded signed kind 24242 event..."
+                    style="width: 100%; height: 100px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
+                <p class="hint">Generate with: t=admin, expiration=5min from now</p>
+            </div>
+            <button class="btn btn-primary" onclick="loginWithEvent()" style="margin-top: 15px;">
                 Login
             </button>
         </div>
@@ -515,6 +600,15 @@ func adminLoginPageHTML(adminPubkey string) string {
 
     <script>
         const ADMIN_PUBKEY = '` + adminPubkey + `';
+        let nip46State = null;
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector('.tab:nth-child(' + ({'nip07': 1, 'nip46': 2, 'manual': 3}[tabName]) + ')').classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+            hideStatus();
+        }
 
         function showStatus(message, type) {
             const status = document.getElementById('status');
@@ -522,10 +616,11 @@ func adminLoginPageHTML(adminPubkey string) string {
             status.className = 'status ' + type;
         }
 
-        function showManualLogin() {
-            document.getElementById('manual-login').classList.toggle('hidden');
+        function hideStatus() {
+            document.getElementById('status').className = 'status hidden';
         }
 
+        // ============ NIP-07 Login ============
         async function loginWithNip07() {
             const btn = document.getElementById('nip07-login');
             btn.disabled = true;
@@ -536,41 +631,169 @@ func adminLoginPageHTML(adminPubkey string) string {
                     throw new Error('No NIP-07 extension found. Install nos2x, Alby, or similar.');
                 }
 
-                // Get public key
                 const pubkey = await window.nostr.getPublicKey();
-
                 if (pubkey !== ADMIN_PUBKEY) {
                     throw new Error('Your pubkey is not authorized as admin.');
                 }
 
                 btn.textContent = 'Signing...';
-
-                // Create auth event
-                const event = {
-                    kind: 24242,
-                    created_at: Math.floor(Date.now() / 1000),
-                    tags: [
-                        ['t', 'admin'],
-                        ['expiration', String(Math.floor(Date.now() / 1000) + 300)] // 5 min expiry
-                    ],
-                    content: ''
-                };
-
-                // Sign with extension
-                const signedEvent = await window.nostr.signEvent(event);
-
-                // Base64 encode
+                const signedEvent = await window.nostr.signEvent(createAuthEvent());
                 const eventBase64 = btoa(JSON.stringify(signedEvent));
-
                 await submitLogin(eventBase64);
 
             } catch (err) {
                 showStatus(err.message, 'error');
                 btn.disabled = false;
-                btn.textContent = 'Login with Browser Extension (NIP-07)';
+                btn.textContent = 'Login with NIP-07 Extension';
             }
         }
 
+        // ============ NIP-46 Login ============
+        async function loginWithNip46() {
+            const btn = document.getElementById('nip46-login');
+            const uriInput = document.getElementById('bunker-uri').value.trim();
+
+            if (!uriInput) {
+                showStatus('Please enter a bunker or nostr+connect URI', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+
+            try {
+                const connInfo = parseNip46Uri(uriInput);
+                showStatus('Connecting to relay: ' + connInfo.relay, 'info');
+
+                // Generate ephemeral keypair for this session
+                const clientPrivkey = generatePrivateKey();
+                const clientPubkey = getPublicKey(clientPrivkey);
+
+                // Connect to relay
+                const ws = new WebSocket(connInfo.relay);
+
+                await new Promise((resolve, reject) => {
+                    ws.onopen = resolve;
+                    ws.onerror = () => reject(new Error('Failed to connect to relay'));
+                    setTimeout(() => reject(new Error('Connection timeout')), 10000);
+                });
+
+                showStatus('Connected! Requesting signature...', 'info');
+
+                // Subscribe to responses
+                const subId = generateSubId();
+                ws.send(JSON.stringify(['REQ', subId, {
+                    kinds: [24133],
+                    '#p': [clientPubkey],
+                    since: Math.floor(Date.now() / 1000) - 10
+                }]));
+
+                // Create the auth event to be signed
+                const authEvent = createAuthEvent();
+                authEvent.pubkey = connInfo.remotePubkey;
+
+                // Send sign_event request
+                const requestId = crypto.randomUUID();
+                const request = {
+                    id: requestId,
+                    method: 'sign_event',
+                    params: [JSON.stringify(authEvent)]
+                };
+
+                const encryptedContent = await nip04Encrypt(
+                    clientPrivkey,
+                    connInfo.remotePubkey,
+                    JSON.stringify(request)
+                );
+
+                const requestEvent = {
+                    kind: 24133,
+                    pubkey: clientPubkey,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [['p', connInfo.remotePubkey]],
+                    content: encryptedContent
+                };
+
+                const signedRequest = await signEvent(requestEvent, clientPrivkey);
+                ws.send(JSON.stringify(['EVENT', signedRequest]));
+
+                btn.textContent = 'Waiting for signer...';
+
+                // Wait for response
+                const response = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Signer timeout - check your signer app'));
+                    }, 60000);
+
+                    ws.onmessage = async (msg) => {
+                        try {
+                            const data = JSON.parse(msg.data);
+                            if (data[0] === 'EVENT' && data[2]?.kind === 24133) {
+                                const evt = data[2];
+                                if (evt.pubkey === connInfo.remotePubkey) {
+                                    const decrypted = await nip04Decrypt(
+                                        clientPrivkey,
+                                        connInfo.remotePubkey,
+                                        evt.content
+                                    );
+                                    const resp = JSON.parse(decrypted);
+                                    if (resp.id === requestId) {
+                                        clearTimeout(timeout);
+                                        ws.close();
+                                        resolve(resp);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Parse error:', e);
+                        }
+                    };
+                });
+
+                if (response.error) {
+                    throw new Error(response.error.message || 'Signer rejected request');
+                }
+
+                const signedEvent = typeof response.result === 'string'
+                    ? JSON.parse(response.result)
+                    : response.result;
+
+                const eventBase64 = btoa(JSON.stringify(signedEvent));
+                await submitLogin(eventBase64);
+
+            } catch (err) {
+                showStatus(err.message, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Connect to Signer';
+            }
+        }
+
+        function parseNip46Uri(uri) {
+            // Handle both bunker:// and nostr+connect:// formats
+            let url;
+            if (uri.startsWith('bunker://')) {
+                url = new URL(uri.replace('bunker://', 'https://'));
+            } else if (uri.startsWith('nostr+connect://')) {
+                url = new URL(uri.replace('nostr+connect://', 'https://'));
+            } else {
+                throw new Error('Invalid URI format. Use bunker:// or nostr+connect://');
+            }
+
+            const remotePubkey = url.hostname || url.pathname.replace(/^\/+/, '');
+            const relay = url.searchParams.get('relay');
+            const secret = url.searchParams.get('secret');
+
+            if (!remotePubkey || remotePubkey.length !== 64) {
+                throw new Error('Invalid pubkey in URI');
+            }
+            if (!relay) {
+                throw new Error('No relay specified in URI');
+            }
+
+            return { remotePubkey, relay, secret };
+        }
+
+        // ============ Manual Login ============
         async function loginWithEvent() {
             const eventBase64 = document.getElementById('auth-event').value.trim();
             if (!eventBase64) {
@@ -578,6 +801,19 @@ func adminLoginPageHTML(adminPubkey string) string {
                 return;
             }
             await submitLogin(eventBase64);
+        }
+
+        // ============ Common Functions ============
+        function createAuthEvent() {
+            return {
+                kind: 24242,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [
+                    ['t', 'admin'],
+                    ['expiration', String(Math.floor(Date.now() / 1000) + 300)]
+                ],
+                content: ''
+            };
         }
 
         async function submitLogin(eventBase64) {
@@ -589,23 +825,121 @@ func adminLoginPageHTML(adminPubkey string) string {
                 });
 
                 const data = await resp.json();
-
                 if (!resp.ok) {
                     throw new Error(data.message || 'Login failed');
                 }
 
                 showStatus('Login successful! Redirecting...', 'success');
-
-                // Redirect to dashboard
-                setTimeout(() => {
-                    window.location.href = '/admin/';
-                }, 1000);
+                setTimeout(() => { window.location.href = '/admin/'; }, 1000);
 
             } catch (err) {
                 showStatus(err.message, 'error');
-                document.getElementById('nip07-login').disabled = false;
-                document.getElementById('nip07-login').textContent = 'Login with Browser Extension (NIP-07)';
+                resetButtons();
             }
+        }
+
+        function resetButtons() {
+            const nip07Btn = document.getElementById('nip07-login');
+            const nip46Btn = document.getElementById('nip46-login');
+            if (nip07Btn) {
+                nip07Btn.disabled = false;
+                nip07Btn.textContent = 'Login with NIP-07 Extension';
+            }
+            if (nip46Btn) {
+                nip46Btn.disabled = false;
+                nip46Btn.textContent = 'Connect to Signer';
+            }
+        }
+
+        // ============ Crypto Helpers ============
+        function generatePrivateKey() {
+            const bytes = new Uint8Array(32);
+            crypto.getRandomValues(bytes);
+            return bytesToHex(bytes);
+        }
+
+        function getPublicKey(privkey) {
+            const privBytes = hexToBytes(privkey);
+            const pubBytes = nobleSecp256k1.getPublicKey(privBytes, true).slice(1);
+            return bytesToHex(pubBytes);
+        }
+
+        function generateSubId() {
+            return Math.random().toString(36).substring(2, 10);
+        }
+
+        async function signEvent(event, privkey) {
+            event.id = await getEventHash(event);
+            const sig = await nobleSecp256k1.sign(
+                hexToBytes(event.id),
+                hexToBytes(privkey)
+            );
+            event.sig = bytesToHex(sig.toCompactRawBytes());
+            return event;
+        }
+
+        async function getEventHash(event) {
+            const serialized = JSON.stringify([
+                0,
+                event.pubkey,
+                event.created_at,
+                event.kind,
+                event.tags,
+                event.content
+            ]);
+            const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
+            return bytesToHex(new Uint8Array(hash));
+        }
+
+        // NIP-04 encryption (simplified - uses Web Crypto)
+        async function nip04Encrypt(privkey, pubkey, text) {
+            const sharedSecret = nobleSecp256k1.getSharedSecret(hexToBytes(privkey), '02' + pubkey);
+            const key = await crypto.subtle.importKey(
+                'raw',
+                sharedSecret.slice(1, 33),
+                { name: 'AES-CBC' },
+                false,
+                ['encrypt']
+            );
+            const iv = crypto.getRandomValues(new Uint8Array(16));
+            const encrypted = await crypto.subtle.encrypt(
+                { name: 'AES-CBC', iv },
+                key,
+                new TextEncoder().encode(text)
+            );
+            return btoa(String.fromCharCode(...new Uint8Array(encrypted))) + '?iv=' + btoa(String.fromCharCode(...iv));
+        }
+
+        async function nip04Decrypt(privkey, pubkey, data) {
+            const [encryptedB64, ivB64] = data.split('?iv=');
+            const sharedSecret = nobleSecp256k1.getSharedSecret(hexToBytes(privkey), '02' + pubkey);
+            const key = await crypto.subtle.importKey(
+                'raw',
+                sharedSecret.slice(1, 33),
+                { name: 'AES-CBC' },
+                false,
+                ['decrypt']
+            );
+            const encrypted = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
+            const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-CBC', iv },
+                key,
+                encrypted
+            );
+            return new TextDecoder().decode(decrypted);
+        }
+
+        function hexToBytes(hex) {
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+            }
+            return bytes;
+        }
+
+        function bytesToHex(bytes) {
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
         // Check if already logged in
@@ -616,9 +950,7 @@ func adminLoginPageHTML(adminPubkey string) string {
                 if (data.authenticated) {
                     window.location.href = '/admin/';
                 }
-            } catch (e) {
-                // Not logged in
-            }
+            } catch (e) {}
         }
 
         checkSession();
