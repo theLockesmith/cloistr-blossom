@@ -20,6 +20,7 @@ func MirrorBlob(
 	pubkey string,
 	authHash string,
 	blobUrl url.URL,
+	encryptionMode core.EncryptionMode,
 ) (*core.Blob, error) {
 	var (
 		blobs    = services.Blob()
@@ -85,6 +86,7 @@ func MirrorBlob(
 		mimeType.String(),
 		blobBytes,
 		time.Now().Unix(),
+		encryptionMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)

@@ -10,6 +10,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/nbd-wtf/go-nostr"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/hashing"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/logging"
@@ -62,6 +63,7 @@ func TestMirrorUnauth(t *testing.T) {
 		pk,
 		authHash,
 		blobURL,
+		core.EncryptionModeNone,
 	)
 
 	assert.Error(t, err, "expected unauthorized error")

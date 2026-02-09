@@ -67,6 +67,19 @@ func mirrorBlob(
 			)
 		}
 
+		// Determine encryption mode from header
+		encryptionMode := core.EncryptionModeNone
+		if encHeader := ctx.GetHeader("X-Encryption"); encHeader != "" {
+			switch encHeader {
+			case "server":
+				encryptionMode = core.EncryptionModeServer
+			case "e2e":
+				encryptionMode = core.EncryptionModeE2E
+			case "none":
+				encryptionMode = core.EncryptionModeNone
+			}
+		}
+
 		blobDescriptor, err := bud04.MirrorBlob(
 			ctx,
 			services,
@@ -74,6 +87,7 @@ func mirrorBlob(
 			pubkey,
 			authSha256,
 			*blobUrl,
+			encryptionMode,
 		)
 		if err != nil {
 			ctx.AbortWithStatusJSON(

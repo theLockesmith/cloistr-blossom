@@ -9,12 +9,16 @@ import (
 )
 
 type Blob struct {
-	Pubkey  string
-	Hash    string
-	Type    string
-	Size    int64
-	Blob    []byte
-	Created int64
+	Pubkey          string
+	Hash            string
+	Type            string
+	Size            int64
+	Blob            []byte
+	Created         int64
+	EncryptionMode  string
+	EncryptedDek    sql.NullString
+	EncryptionNonce sql.NullString
+	OriginalSize    sql.NullInt64
 }
 
 type Blocklist struct {

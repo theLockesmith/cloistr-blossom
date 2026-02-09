@@ -7,6 +7,7 @@ import (
 
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/encryption"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
@@ -39,10 +40,23 @@ func New(
 		log.Fatal("failed to initialize storage backend", zap.Error(err))
 	}
 
+	// Initialize encryption if configured
+	var encryptor *encryption.Encryptor
+	if conf.Encryption.Enabled && conf.Encryption.MasterKey != "" {
+		encryptor, err = encryption.NewEncryptor(conf.Encryption.MasterKey)
+		if err != nil {
+			log.Fatal("failed to initialize encryption", zap.Error(err))
+		}
+		log.Info("server-side encryption enabled")
+	} else {
+		log.Info("server-side encryption disabled")
+	}
+
 	blobService, err := NewBlobService(
 		database,
 		queries,
 		storageBackend,
+		encryptor,
 		conf.CdnUrl,
 		log,
 	)

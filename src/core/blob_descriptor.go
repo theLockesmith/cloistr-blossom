@@ -9,15 +9,28 @@ var (
 	ErrBlobNotFound = errors.New("blob not found")
 )
 
+// EncryptionMode represents the encryption state of a blob.
+type EncryptionMode string
+
+const (
+	// EncryptionModeNone indicates plaintext storage (no encryption).
+	EncryptionModeNone EncryptionMode = "none"
+	// EncryptionModeServer indicates server-side encryption at rest.
+	EncryptionModeServer EncryptionMode = "server"
+	// EncryptionModeE2E indicates end-to-end encryption (client-encrypted, server cannot decrypt).
+	EncryptionModeE2E EncryptionMode = "e2e"
+)
+
 type Blob struct {
-	Pubkey   string
-	Url      string
-	Sha256   string
-	Size     int64
-	Type     string
-	Blob     []byte
-	Uploaded int64
-	NIP94    *NIP94FileMetadata
+	Pubkey         string
+	Url            string
+	Sha256         string
+	Size           int64
+	Type           string
+	Blob           []byte
+	Uploaded       int64
+	NIP94          *NIP94FileMetadata
+	EncryptionMode EncryptionMode // Encryption mode for this blob
 }
 
 type NIP94FileMetadata struct {
@@ -48,9 +61,12 @@ type BlobStorage interface {
 		mimeType string,
 		blob []byte,
 		created int64,
+		encryptionMode EncryptionMode, // "none", "server", or "e2e"
 	) (*Blob, error)
 	Exists(ctx context.Context, sha256 string) (bool, error)
 	GetFromHash(ctx context.Context, sha256 string) (*Blob, error)
 	GetFromPubkey(ctx context.Context, pubkey string) ([]*Blob, error)
 	DeleteFromHash(ctx context.Context, sha256 string) error
+	// IsEncryptionEnabled returns true if server-side encryption is available.
+	IsEncryptionEnabled() bool
 }

@@ -45,6 +45,21 @@ func uploadBlob(
 			return
 		}
 
+		// Determine encryption mode from header
+		// Valid values: "none", "server", "e2e"
+		// Default to "none" which will use server encryption if enabled
+		encryptionMode := core.EncryptionModeNone
+		if encHeader := ctx.GetHeader("X-Encryption"); encHeader != "" {
+			switch encHeader {
+			case "server":
+				encryptionMode = core.EncryptionModeServer
+			case "e2e":
+				encryptionMode = core.EncryptionModeE2E
+			case "none":
+				encryptionMode = core.EncryptionModeNone
+			}
+		}
+
 		blobDescriptor, err := bud02.UploadBlob(
 			ctx.Request.Context(),
 			services,
@@ -52,6 +67,7 @@ func uploadBlob(
 			ctx.GetString("x"),
 			ctx.GetString("pk"),
 			bodyBytes,
+			encryptionMode,
 		)
 		if err != nil {
 			ctx.AbortWithStatusJSON(

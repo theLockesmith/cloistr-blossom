@@ -66,6 +66,7 @@ func TestUpload(t *testing.T) {
 		authHash,
 		pk,
 		blobBytes,
+		core.EncryptionModeNone,
 	)
 
 	assert.NoError(t, err, "no error expected")
@@ -115,6 +116,7 @@ func TestUnauthUpload(t *testing.T) {
 		authHash,
 		pk,
 		blobBytes,
+		core.EncryptionModeNone,
 	)
 
 	assert.Error(t, err, "expected unauthorized error")

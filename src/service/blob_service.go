@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/encryption"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
@@ -17,6 +18,7 @@ type blobService struct {
 	db         *sql.DB
 	queries    *db.Queries
 	storage    storage.StorageBackend
+	encryptor  *encryption.Encryptor
 	cdnBaseUrl string
 	log        *zap.Logger
 }
@@ -25,6 +27,7 @@ func NewBlobService(
 	db *sql.DB,
 	queries *db.Queries,
 	storageBackend storage.StorageBackend,
+	encryptor *encryption.Encryptor,
 	cdnBaseUrl string,
 	log *zap.Logger,
 ) (core.BlobStorage, error) {
@@ -32,6 +35,7 @@ func NewBlobService(
 		db:         db,
 		queries:    queries,
 		storage:    storageBackend,
+		encryptor:  encryptor,
 		cdnBaseUrl: cdnBaseUrl,
 		log:        log,
 	}, nil
@@ -46,26 +50,87 @@ func (r *blobService) Save(
 	mimeType string,
 	blob []byte,
 	created int64,
+	encryptionMode core.EncryptionMode,
 ) (*core.Blob, error) {
+	var dataToStore []byte
+	var encryptedDEK sql.NullString
+	var encryptionNonce sql.NullString
+	var originalSize sql.NullInt64
+	finalEncryptionMode := string(encryptionMode)
+
+	// Handle encryption based on mode
+	switch encryptionMode {
+	case core.EncryptionModeServer:
+		// Server-side encryption requested
+		if r.encryptor != nil && r.encryptor.IsEnabled() {
+			encrypted, err := r.encryptor.Encrypt(blob)
+			if err != nil {
+				r.log.Error("failed to encrypt blob", zap.Error(err))
+				return nil, err
+			}
+			dataToStore = encrypted.Ciphertext
+			encryptedDEK = sql.NullString{String: encrypted.EncryptedDEK, Valid: true}
+			encryptionNonce = sql.NullString{String: encrypted.Nonce, Valid: true}
+			originalSize = sql.NullInt64{Int64: encrypted.OriginalSize, Valid: true}
+			finalEncryptionMode = "server"
+		} else {
+			// Encryption requested but not available, store plaintext
+			r.log.Warn("encryption requested but not enabled, storing plaintext")
+			dataToStore = blob
+			finalEncryptionMode = "none"
+		}
+
+	case core.EncryptionModeE2E:
+		// Client already encrypted, store as-is
+		dataToStore = blob
+		originalSize = sql.NullInt64{Int64: size, Valid: true}
+		finalEncryptionMode = "e2e"
+
+	case core.EncryptionModeNone:
+		// Plaintext storage - but check if server-side encryption is the default
+		if r.encryptor != nil && r.encryptor.IsEnabled() {
+			// Encrypt by default when encryption is enabled
+			encrypted, err := r.encryptor.Encrypt(blob)
+			if err != nil {
+				r.log.Error("failed to encrypt blob", zap.Error(err))
+				return nil, err
+			}
+			dataToStore = encrypted.Ciphertext
+			encryptedDEK = sql.NullString{String: encrypted.EncryptedDEK, Valid: true}
+			encryptionNonce = sql.NullString{String: encrypted.Nonce, Valid: true}
+			originalSize = sql.NullInt64{Int64: encrypted.OriginalSize, Valid: true}
+			finalEncryptionMode = "server"
+		} else {
+			dataToStore = blob
+			finalEncryptionMode = "none"
+		}
+
+	default:
+		dataToStore = blob
+		finalEncryptionMode = "none"
+	}
+
 	// Store blob data in the storage backend
 	if r.storage != nil {
-		if err := r.storage.Put(ctx, sha256, bytes.NewReader(blob), size); err != nil {
+		if err := r.storage.Put(ctx, sha256, bytes.NewReader(dataToStore), int64(len(dataToStore))); err != nil {
 			return nil, err
 		}
 	}
 
 	// Store metadata in the database
-	// Note: We still store blob bytes in DB for backwards compatibility
-	// In future versions, we can remove this and only store in StorageBackend
 	_, err := r.queries.InsertBlob(
 		ctx,
 		db.InsertBlobParams{
-			Pubkey:  pubkey,
-			Hash:    sha256,
-			Type:    mimeType,
-			Size:    size,
-			Blob:    blob,
-			Created: created,
+			Pubkey:          pubkey,
+			Hash:            sha256,
+			Type:            mimeType,
+			Size:            int64(len(dataToStore)),
+			Blob:            dataToStore,
+			Created:         created,
+			EncryptionMode:  finalEncryptionMode,
+			EncryptedDek:    encryptedDEK,
+			EncryptionNonce: encryptionNonce,
+			OriginalSize:    originalSize,
 		},
 	)
 	if err != nil {
@@ -76,12 +141,19 @@ func (r *blobService) Save(
 		return nil, err
 	}
 
+	// Return original size for encrypted blobs
+	returnSize := size
+	if originalSize.Valid {
+		returnSize = originalSize.Int64
+	}
+
 	return &core.Blob{
-		Url:      url,
-		Sha256:   sha256,
-		Size:     size,
-		Type:     mimeType,
-		Uploaded: created,
+		Url:            url,
+		Sha256:         sha256,
+		Size:           returnSize,
+		Type:           mimeType,
+		Uploaded:       created,
+		EncryptionMode: core.EncryptionMode(finalEncryptionMode),
 		NIP94: &core.NIP94FileMetadata{
 			Url:            url,
 			MimeType:       mimeType,
@@ -114,6 +186,28 @@ func (r *blobService) GetFromHash(ctx context.Context, sha256 string) (*core.Blo
 			if err == nil {
 				blob.Blob = data
 			}
+		}
+	}
+
+	// Decrypt if server-side encrypted
+	if dbBlob.EncryptionMode == "server" && r.encryptor != nil && r.encryptor.IsEnabled() {
+		encryptedBlob := &encryption.EncryptedBlob{
+			Ciphertext:     blob.Blob,
+			EncryptedDEK:   dbBlob.EncryptedDek.String,
+			Nonce:          dbBlob.EncryptionNonce.String,
+			EncryptionMode: encryption.ModeServer,
+		}
+
+		decrypted, err := r.encryptor.Decrypt(encryptedBlob)
+		if err != nil {
+			r.log.Error("failed to decrypt blob", zap.String("hash", sha256), zap.Error(err))
+			return nil, err
+		}
+		blob.Blob = decrypted
+
+		// Use original size
+		if dbBlob.OriginalSize.Valid {
+			blob.Size = dbBlob.OriginalSize.Int64
 		}
 	}
 
@@ -153,15 +247,28 @@ func (r *blobService) DeleteFromHash(ctx context.Context, sha256 string) error {
 	return nil
 }
 
+func (r *blobService) IsEncryptionEnabled() bool {
+	return r.encryptor != nil && r.encryptor.IsEnabled()
+}
+
 func (r *blobService) dbBlobIntoBlobDescriptor(blob db.Blob) *core.Blob {
 	url := r.cdnBaseUrl + "/" + blob.Hash
+
+	// Use original size for encrypted blobs
+	size := blob.Size
+	if blob.OriginalSize.Valid {
+		size = blob.OriginalSize.Int64
+	}
+
 	return &core.Blob{
-		Url:      url,
-		Sha256:   blob.Hash,
-		Size:     blob.Size,
-		Type:     blob.Type,
-		Blob:     blob.Blob,
-		Uploaded: blob.Created,
+		Pubkey:         blob.Pubkey,
+		Url:            url,
+		Sha256:         blob.Hash,
+		Size:           size,
+		Type:           blob.Type,
+		Blob:           blob.Blob,
+		Uploaded:       blob.Created,
+		EncryptionMode: core.EncryptionMode(blob.EncryptionMode),
 		NIP94: &core.NIP94FileMetadata{
 			Url:            url,
 			MimeType:       blob.Type,

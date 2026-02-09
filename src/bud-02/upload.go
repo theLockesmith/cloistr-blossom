@@ -18,6 +18,7 @@ func UploadBlob(
 	authHash string,
 	pubkey string,
 	blobBytes []byte,
+	encryptionMode core.EncryptionMode,
 ) (*core.Blob, error) {
 	var (
 		blobs    = services.Blob()
@@ -76,6 +77,7 @@ func UploadBlob(
 		mimeType.String(),
 		blobBytes,
 		time.Now().Unix(),
+		encryptionMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)

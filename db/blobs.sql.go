@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
 const deleteBlobFromHash = `-- name: DeleteBlobFromHash :exec
@@ -21,7 +22,7 @@ func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
 }
 
 const getBlobFromHash = `-- name: GetBlobFromHash :one
-select pubkey, hash, type, size, blob, created
+select pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
 from blobs
 where hash = $1
 limit 1
@@ -37,12 +38,16 @@ func (q *Queries) GetBlobFromHash(ctx context.Context, hash string) (Blob, error
 		&i.Size,
 		&i.Blob,
 		&i.Created,
+		&i.EncryptionMode,
+		&i.EncryptedDek,
+		&i.EncryptionNonce,
+		&i.OriginalSize,
 	)
 	return i, err
 }
 
 const getBlobsFromPubkey = `-- name: GetBlobsFromPubkey :many
-select pubkey, hash, type, size, blob, created
+select pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
 from blobs
 where pubkey = $1
 `
@@ -63,6 +68,10 @@ func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob
 			&i.Size,
 			&i.Blob,
 			&i.Created,
+			&i.EncryptionMode,
+			&i.EncryptedDek,
+			&i.EncryptionNonce,
+			&i.OriginalSize,
 		); err != nil {
 			return nil, err
 		}
@@ -84,18 +93,26 @@ insert into blobs(
   type,
   size,
   blob,
-  created
-) values ($1,$2,$3,$4,$5,$6)
-returning pubkey, hash, type, size, blob, created
+  created,
+  encryption_mode,
+  encrypted_dek,
+  encryption_nonce,
+  original_size
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+returning pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
 `
 
 type InsertBlobParams struct {
-	Pubkey  string
-	Hash    string
-	Type    string
-	Size    int64
-	Blob    []byte
-	Created int64
+	Pubkey          string
+	Hash            string
+	Type            string
+	Size            int64
+	Blob            []byte
+	Created         int64
+	EncryptionMode  string
+	EncryptedDek    sql.NullString
+	EncryptionNonce sql.NullString
+	OriginalSize    sql.NullInt64
 }
 
 func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, error) {
@@ -106,6 +123,10 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 		arg.Size,
 		arg.Blob,
 		arg.Created,
+		arg.EncryptionMode,
+		arg.EncryptedDek,
+		arg.EncryptionNonce,
+		arg.OriginalSize,
 	)
 	var i Blob
 	err := row.Scan(
@@ -115,6 +136,10 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 		&i.Size,
 		&i.Blob,
 		&i.Created,
+		&i.EncryptionMode,
+		&i.EncryptedDek,
+		&i.EncryptionNonce,
+		&i.OriginalSize,
 	)
 	return i, err
 }

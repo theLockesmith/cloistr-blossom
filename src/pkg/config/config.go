@@ -70,6 +70,14 @@ type CacheConfig struct {
 	TTL int    `yaml:"ttl"` // Default TTL in seconds (0 = no expiration)
 }
 
+// EncryptionConfig defines encryption settings for stored blobs.
+type EncryptionConfig struct {
+	Enabled   bool   `yaml:"enabled"`    // Enable server-side encryption at rest
+	MasterKey string `yaml:"master_key"` // 32-byte hex-encoded master key (KEK)
+	// If MasterKey is empty, one will be auto-generated on first run
+	// WARNING: Losing the master key means losing access to all encrypted data
+}
+
 type Config struct {
 	// Legacy field for backwards compatibility - use Database.SQLite.Path instead
 	DbPath             string              `yaml:"db_path"`
@@ -82,10 +90,11 @@ type Config struct {
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
 	// New configuration sections
-	Storage  StorageConfig  `yaml:"storage"`
-	Database DatabaseConfig `yaml:"database"`
-	Quota    QuotaConfig    `yaml:"quota"`
-	Cache    CacheConfig    `yaml:"cache"`
+	Storage    StorageConfig    `yaml:"storage"`
+	Database   DatabaseConfig   `yaml:"database"`
+	Quota      QuotaConfig      `yaml:"quota"`
+	Cache      CacheConfig      `yaml:"cache"`
+	Encryption EncryptionConfig `yaml:"encryption"`
 }
 
 func NewConfig(path string) (*Config, error) {
