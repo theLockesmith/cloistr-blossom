@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	bud02 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-02"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/metrics"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
@@ -20,6 +21,7 @@ func uploadBlob(
 		if pubkey != "" {
 			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
 			if err == nil && isBlocked {
+				metrics.BlockedUploadsTotal.Inc()
 				ctx.AbortWithStatusJSON(
 					http.StatusForbidden,
 					apiError{Message: "your account has been blocked due to terms of service violation"},
@@ -70,6 +72,7 @@ func uploadBlob(
 			encryptionMode,
 		)
 		if err != nil {
+			metrics.UploadsTotal.WithLabelValues("error", string(encryptionMode)).Inc()
 			ctx.AbortWithStatusJSON(
 				http.StatusBadRequest,
 				apiError{
@@ -78,6 +81,10 @@ func uploadBlob(
 			)
 			return
 		}
+
+		// Record successful upload metrics
+		metrics.UploadsTotal.WithLabelValues("success", string(blobDescriptor.EncryptionMode)).Inc()
+		metrics.UploadBytes.Add(float64(len(bodyBytes)))
 
 		ctx.JSON(
 			http.StatusOK,

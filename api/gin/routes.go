@@ -7,6 +7,7 @@ import (
 	"github.com/gin-contrib/cors"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"go.uber.org/zap"
 )
@@ -21,6 +22,7 @@ func SetupRoutes(
 
 	r.Use(ginzap.Ginzap(log, time.RFC3339, true))
 	r.Use(ginzap.RecoveryWithZap(log, true))
+	r.Use(MetricsMiddleware())
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
@@ -38,6 +40,9 @@ func SetupRoutes(
 	r.GET("/.well-known/health", func(ctx *gin.Context) {
 		ctx.Status(http.StatusOK)
 	})
+
+	// Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	r.HEAD(
 		"/upload",

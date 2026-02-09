@@ -11,8 +11,9 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/gin-gonic/gin"
 	bud01 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-01"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/media"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/metrics"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 )
 
 // variantCacheKey generates a cache key for a processed image variant.
@@ -77,6 +78,8 @@ func getBlob(
 				ctx.Header("X-Cache", "HIT")
 				_, _ = ctx.Writer.Write(cached)
 				ctx.Status(http.StatusOK)
+				metrics.DownloadsTotal.WithLabelValues("success").Inc()
+				metrics.DownloadBytes.Add(float64(len(cached)))
 				return
 			}
 		}
@@ -87,6 +90,7 @@ func getBlob(
 			hash,
 		)
 		if err != nil {
+			metrics.DownloadsTotal.WithLabelValues("error").Inc()
 			ctx.AbortWithStatusJSON(
 				http.StatusBadRequest,
 				apiError{
@@ -102,6 +106,8 @@ func getBlob(
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
+			metrics.DownloadsTotal.WithLabelValues("success").Inc()
+			metrics.DownloadBytes.Add(float64(len(fileBytes)))
 			return
 		}
 
@@ -111,6 +117,8 @@ func getBlob(
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
+			metrics.DownloadsTotal.WithLabelValues("success").Inc()
+			metrics.DownloadBytes.Add(float64(len(fileBytes)))
 			return
 		}
 
@@ -121,6 +129,8 @@ func getBlob(
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
+			metrics.DownloadsTotal.WithLabelValues("success").Inc()
+			metrics.DownloadBytes.Add(float64(len(fileBytes)))
 			return
 		}
 
@@ -134,6 +144,8 @@ func getBlob(
 		ctx.Header("X-Image-Height", strconv.Itoa(result.Height))
 		_, _ = ctx.Writer.Write(result.Data)
 		ctx.Status(http.StatusOK)
+		metrics.DownloadsTotal.WithLabelValues("success").Inc()
+		metrics.DownloadBytes.Add(float64(len(result.Data)))
 	}
 }
 
