@@ -11,7 +11,7 @@ import (
 
 const banUser = `-- name: BanUser :exec
 UPDATE users
-SET is_banned = 1, updated_at = $1
+SET is_banned = TRUE, updated_at = $1
 WHERE pubkey = $2
 `
 
@@ -27,7 +27,7 @@ func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) error {
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES ($1, $2, 0, 0, $3, $4)
+VALUES ($1, $2, 0, FALSE, $3, $4)
 RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 `
 
@@ -85,7 +85,7 @@ func (q *Queries) DecrementUserUsage(ctx context.Context, arg DecrementUserUsage
 
 const getOrCreateUser = `-- name: GetOrCreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES ($1, $2, 0, 0, $3, $4)
+VALUES ($1, $2, 0, FALSE, $3, $4)
 ON CONFLICT(pubkey) DO UPDATE SET updated_at = excluded.updated_at
 RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
 `
@@ -249,7 +249,7 @@ func (q *Queries) RecalculateUserUsage(ctx context.Context, arg RecalculateUserU
 
 const unbanUser = `-- name: UnbanUser :exec
 UPDATE users
-SET is_banned = 0, updated_at = $1
+SET is_banned = FALSE, updated_at = $1
 WHERE pubkey = $2
 `
 

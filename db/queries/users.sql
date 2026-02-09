@@ -12,7 +12,7 @@ LIMIT 1;
 
 -- name: CreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES ($1, $2, 0, 0, $3, $4)
+VALUES ($1, $2, 0, FALSE, $3, $4)
 RETURNING *;
 
 -- name: UpdateUserUsage :exec
@@ -40,12 +40,12 @@ WHERE pubkey = $3;
 
 -- name: BanUser :exec
 UPDATE users
-SET is_banned = 1, updated_at = $1
+SET is_banned = TRUE, updated_at = $1
 WHERE pubkey = $2;
 
 -- name: UnbanUser :exec
 UPDATE users
-SET is_banned = 0, updated_at = $1
+SET is_banned = FALSE, updated_at = $1
 WHERE pubkey = $2;
 
 -- name: ListUsers :many
@@ -60,7 +60,7 @@ FROM users;
 
 -- name: GetOrCreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
-VALUES ($1, $2, 0, 0, $3, $4)
+VALUES ($1, $2, 0, FALSE, $3, $4)
 ON CONFLICT(pubkey) DO UPDATE SET updated_at = excluded.updated_at
 RETURNING *;
 
