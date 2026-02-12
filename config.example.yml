@@ -43,6 +43,12 @@ quota:
   max_bytes: 107374182400      # 100 GB max quota
   warn_threshold: 80           # Warn at 80% usage
 
+# Server-side encryption at rest (optional)
+# When enabled, all blobs are encrypted with AES-256-GCM before storage.
+# encryption:
+#   enabled: true
+#   master_key: ${ENCRYPTION_MASTER_KEY}  # 32-byte hex (generate: openssl rand -hex 32)
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 
