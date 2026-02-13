@@ -153,4 +153,13 @@ func Init() {
 	ReportsTotal.WithLabelValues("illegal").Add(0)
 	ReportsTotal.WithLabelValues("copyright").Add(0)
 	ReportsTotal.WithLabelValues("other").Add(0)
+
+	// Initialize requests counters with common status codes (for HTTP error rate calculation)
+	commonPaths := []string{"/upload", "/metrics", "/.well-known/health", "/stats"}
+	commonStatuses := []string{"200", "400", "401", "403", "404", "500", "502", "503"}
+	for _, path := range commonPaths {
+		for _, status := range commonStatuses {
+			RequestsTotal.WithLabelValues("GET", path, status).Add(0)
+		}
+	}
 }
