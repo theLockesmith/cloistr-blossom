@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -10,6 +11,8 @@ import (
 	ginApi "git.coldforge.xyz/coldforge/coldforge-blossom/api/gin"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/metrics"
+	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/logging"
 	"git.coldforge.xyz/coldforge/coldforge-blossom/src/service"
@@ -77,6 +80,9 @@ func main() {
 		logger.Error(err.Error())
 	}
 
+	// Start background metrics updater
+	go updateMetricsPeriodically(ctx, services)
+
 	api := ginApi.SetupRoutes(
 		services,
 		conf.CdnUrl,
@@ -84,4 +90,33 @@ func main() {
 		logger,
 	)
 	api.Run(conf.ApiAddr)
+}
+
+// updateMetricsPeriodically updates Prometheus gauges with current stats
+func updateMetricsPeriodically(ctx context.Context, services core.Services) {
+	// Update immediately on startup
+	updateMetrics(ctx, services)
+
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			updateMetrics(ctx, services)
+		}
+	}
+}
+
+func updateMetrics(ctx context.Context, services core.Services) {
+	stats, err := services.Stats().Get(ctx)
+	if err != nil {
+		return
+	}
+
+	metrics.StorageBytes.Set(float64(stats.BytesStored))
+	metrics.StoredBlobs.Set(float64(stats.BlobCount))
+	metrics.ActiveUsers.Set(float64(stats.PubkeyCount))
 }
