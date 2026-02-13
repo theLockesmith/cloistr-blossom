@@ -80,6 +80,9 @@ func main() {
 		logger.Error(err.Error())
 	}
 
+	// Initialize metrics with default label values (so they show 0 instead of "no data")
+	metrics.Init()
+
 	// Start background metrics updater
 	go updateMetricsPeriodically(ctx, services)
 

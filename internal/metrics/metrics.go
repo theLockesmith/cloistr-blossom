@@ -124,3 +124,33 @@ var (
 		},
 	)
 )
+
+// Init initializes all CounterVec metrics with default label values.
+// This ensures they appear in Prometheus output as 0 instead of "no data".
+func Init() {
+	// Initialize uploads counters
+	UploadsTotal.WithLabelValues("success", "none").Add(0)
+	UploadsTotal.WithLabelValues("success", "server").Add(0)
+	UploadsTotal.WithLabelValues("success", "e2e").Add(0)
+	UploadsTotal.WithLabelValues("error", "none").Add(0)
+	UploadsTotal.WithLabelValues("error", "server").Add(0)
+	UploadsTotal.WithLabelValues("error", "e2e").Add(0)
+
+	// Initialize downloads counters
+	DownloadsTotal.WithLabelValues("success").Add(0)
+	DownloadsTotal.WithLabelValues("error").Add(0)
+	DownloadsTotal.WithLabelValues("not_found").Add(0)
+
+	// Initialize errors counters
+	ErrorsTotal.WithLabelValues("upload").Add(0)
+	ErrorsTotal.WithLabelValues("download").Add(0)
+	ErrorsTotal.WithLabelValues("storage").Add(0)
+	ErrorsTotal.WithLabelValues("database").Add(0)
+	ErrorsTotal.WithLabelValues("auth").Add(0)
+
+	// Initialize reports counters
+	ReportsTotal.WithLabelValues("spam").Add(0)
+	ReportsTotal.WithLabelValues("illegal").Add(0)
+	ReportsTotal.WithLabelValues("copyright").Add(0)
+	ReportsTotal.WithLabelValues("other").Add(0)
+}
