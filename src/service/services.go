@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/encryption"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/storage"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/encryption"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
 	"go.uber.org/zap"
 )
 

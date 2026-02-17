@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/nbd-wtf/go-nostr"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 	"github.com/stretchr/testify/assert"
 )
 

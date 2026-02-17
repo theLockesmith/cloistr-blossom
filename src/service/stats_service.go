@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 type statService struct {

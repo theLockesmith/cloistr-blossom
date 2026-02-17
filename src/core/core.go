@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
 )
 
 type Services interface {

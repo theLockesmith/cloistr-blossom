@@ -1,7 +1,7 @@
 package gin
 
 import (
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // generic api error

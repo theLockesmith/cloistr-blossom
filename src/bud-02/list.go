@@ -3,7 +3,7 @@ package bud02
 import (
 	"context"
 
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 func ListBlobs(

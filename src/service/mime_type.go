@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"git.coldforge.xyz/coldforge/coldforge-blossom/db"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/pkg/config"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
 	"go.uber.org/zap"
 )
 

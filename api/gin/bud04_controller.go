@@ -5,8 +5,8 @@ import (
 	"net/url"
 
 	"github.com/gin-gonic/gin"
-	bud04 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-04"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	bud04 "git.coldforge.xyz/coldforge/cloistr-blossom/src/bud-04"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 func mirrorBlob(

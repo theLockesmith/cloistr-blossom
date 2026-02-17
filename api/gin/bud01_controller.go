@@ -10,10 +10,10 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/gin-gonic/gin"
-	bud01 "git.coldforge.xyz/coldforge/coldforge-blossom/src/bud-01"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/media"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	bud01 "git.coldforge.xyz/coldforge/cloistr-blossom/src/bud-01"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/media"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // variantCacheKey generates a cache key for a processed image variant.

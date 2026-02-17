@@ -8,7 +8,7 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 	"go.uber.org/zap"
 )
 

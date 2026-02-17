@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/coldforge-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 type apiStat struct {
