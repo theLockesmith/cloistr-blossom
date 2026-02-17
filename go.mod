@@ -1,4 +1,4 @@
-module git.coldforge.xyz/coldforge/coldforge-blossom
+module git.coldforge.xyz/coldforge/cloistr-blossom
 
 go 1.24.0
 
