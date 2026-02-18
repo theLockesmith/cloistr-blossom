@@ -66,6 +66,17 @@ func getBlob(
 
 		needsProcessing := opts.Width > 0 || opts.Height > 0 || opts.Format != ""
 
+		// CDN redirect for unprocessed blobs
+		// Only redirect if CDN is enabled, redirect is configured, and no processing is needed
+		if !needsProcessing && services.CDN().ShouldRedirect() {
+			cdnURL, err := services.CDN().GetBlobURL(ctx.Request.Context(), hash, "")
+			if err == nil && cdnURL != "" {
+				ctx.Redirect(http.StatusFound, cdnURL)
+				metrics.DownloadsTotal.WithLabelValues("cdn_redirect").Inc()
+				return
+			}
+		}
+
 		// Check cache for processed variants
 		if needsProcessing {
 			cacheKey := variantCacheKey(hash, opts)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -21,12 +22,18 @@ type S3Config struct {
 	AccessKey string // Access key ID
 	SecretKey string // Secret access key
 	PathStyle bool   // Use path-style addressing (required for MinIO/Ceph)
+
+	// CDN configuration
+	PublicURL        string // Public URL for direct access (e.g., https://cdn.example.com)
+	PresignedEnabled bool   // Enable presigned URL generation
 }
 
 // S3Storage implements StorageBackend using S3-compatible object storage.
 type S3Storage struct {
-	client *s3.Client
-	bucket string
+	client    *s3.Client
+	presigner *s3.PresignClient
+	bucket    string
+	publicURL string
 }
 
 // NewS3Storage creates a new S3Storage instance.
@@ -62,9 +69,14 @@ func NewS3Storage(ctx context.Context, cfg S3Config) (*S3Storage, error) {
 		o.UsePathStyle = cfg.PathStyle
 	})
 
+	// Create presign client for generating presigned URLs
+	presigner := s3.NewPresignClient(client)
+
 	return &S3Storage{
-		client: client,
-		bucket: cfg.Bucket,
+		client:    client,
+		presigner: presigner,
+		bucket:    cfg.Bucket,
+		publicURL: cfg.PublicURL,
 	}, nil
 }
 
@@ -170,4 +182,35 @@ func (s *S3Storage) Size(ctx context.Context, hash string) (int64, error) {
 	}
 
 	return *output.ContentLength, nil
+}
+
+// GetPresignedURL generates a presigned URL for direct access to a blob.
+// The URL is valid for the specified duration.
+func (s *S3Storage) GetPresignedURL(ctx context.Context, hash string, expiry time.Duration) (string, error) {
+	key := s.objectKey(hash)
+
+	request, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(expiry))
+	if err != nil {
+		return "", fmt.Errorf("presign get object: %w", err)
+	}
+
+	return request.URL, nil
+}
+
+// GetPublicURL returns the public URL for a blob if a public URL base is configured.
+// Returns empty string if public access is not configured.
+func (s *S3Storage) GetPublicURL(hash string) string {
+	if s.publicURL == "" {
+		return ""
+	}
+	key := s.objectKey(hash)
+	return fmt.Sprintf("%s/%s", s.publicURL, key)
+}
+
+// SupportsPresignedURLs returns true if the storage backend supports presigned URLs.
+func (s *S3Storage) SupportsPresignedURLs() bool {
+	return s.presigner != nil
 }

@@ -73,6 +73,7 @@ git merge upstream/master
 | Content Moderation | ✅ | Reporting, blocklist, transparency |
 | Admin Dashboard | ✅ | NIP-86 auth, /admin routes |
 | Redis/Dragonfly Cache | ✅ | Optional shared cache |
+| CDN Integration | ✅ | Presigned URLs, redirect support |
 
 ## Project Structure
 
@@ -244,6 +245,13 @@ quota:
   enabled: true
   default_bytes: 1073741824  # 1 GB
   max_bytes: 107374182400    # 100 GB
+
+cdn:
+  enabled: true
+  public_url: https://cdn.example.com  # or use presigned_urls for private buckets
+  presigned_urls: false
+  presigned_expiry: 1h
+  redirect: true  # 302 redirect to CDN instead of proxying
 ```
 
 ## Next Steps (Roadmap)
@@ -254,16 +262,15 @@ quota:
 
 ### P2 - Medium Priority
 
-2. **CDN Integration** - Cloudflare R2 or similar
-3. **Bandwidth Throttling** - Rate limiting per pubkey
-4. **DASH Support** - Add DASH streaming (currently HLS only)
+2. **Bandwidth Throttling** - Rate limiting per pubkey
+3. **DASH Support** - Add DASH streaming (currently HLS only)
 
 ### P3 - Nice to Have
 
-5. **IPFS Pinning** - Pin blobs to IPFS
-6. **Torrent Seeds** - Generate .torrent files
-7. **Deduplication** - Content-addressable dedup
-8. **GPU Transcoding** - Hardware acceleration for video
+4. **IPFS Pinning** - Pin blobs to IPFS
+5. **Torrent Seeds** - Generate .torrent files
+6. **Deduplication** - Content-addressable dedup
+7. **GPU Transcoding** - Hardware acceleration for video
 
 ## Monitoring
 

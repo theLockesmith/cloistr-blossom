@@ -49,6 +49,33 @@ quota:
 #   enabled: true
 #   master_key: ${ENCRYPTION_MASTER_KEY}  # 32-byte hex (generate: openssl rand -hex 32)
 
+# CDN integration (optional)
+# Configure content delivery for better performance and reduced bandwidth costs.
+# Supports Cloudflare R2, AWS CloudFront, or any S3-compatible CDN.
+# cdn:
+#   enabled: true
+#
+#   # Public URL for direct CDN access (e.g., https://cdn.example.com)
+#   # Used when bucket is publicly accessible via CDN
+#   public_url: "https://cdn.example.com"
+#
+#   # Use presigned URLs for private bucket access
+#   # Generates time-limited signed URLs for secure downloads
+#   presigned_urls: false
+#
+#   # Presigned URL expiry duration (e.g., "1h", "24h", "7d")
+#   # Default: 1h
+#   presigned_expiry: "1h"
+#
+#   # Redirect to CDN instead of proxying content
+#   # true: Returns 302 redirect to CDN URL (saves bandwidth)
+#   # false: Proxies content through the API (maintains control)
+#   redirect: true
+#
+#   # Cache-Control header for CDN-served content
+#   # Default: "public, max-age=31536000" (1 year for immutable content)
+#   cache_control: "public, max-age=31536000"
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 

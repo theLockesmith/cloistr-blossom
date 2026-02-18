@@ -24,6 +24,7 @@ type services struct {
 	moderation core.ModerationService
 	media      core.MediaService
 	video      core.VideoService
+	cdn        core.CDNService
 	cache      cache.Cache
 	conf       *config.Config
 }
@@ -123,6 +124,14 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	cdnService, err := NewCDNService(storageBackend, CDNServiceConfig{
+		CDNConfig:  &conf.CDN,
+		CDNBaseURL: conf.CdnUrl,
+	}, log)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	return &services{
 		blobs:      blobService,
 		acrs:       acrService,
@@ -133,6 +142,7 @@ func New(
 		moderation: moderationService,
 		media:      mediaService,
 		video:      videoService,
+		cdn:        cdnService,
 		cache:      appCache,
 		conf:       conf,
 	}
@@ -172,6 +182,10 @@ func (s *services) Media() core.MediaService {
 
 func (s *services) Video() core.VideoService {
 	return s.video
+}
+
+func (s *services) CDN() core.CDNService {
+	return s.cdn
 }
 
 func (s *services) Cache() cache.Cache {

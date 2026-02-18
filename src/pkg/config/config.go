@@ -78,6 +78,32 @@ type EncryptionConfig struct {
 	// WARNING: Losing the master key means losing access to all encrypted data
 }
 
+// CDNConfig defines CDN integration settings.
+type CDNConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable CDN delivery
+
+	// Public URL for direct access (e.g., https://cdn.example.com)
+	// Used when the bucket/storage is publicly accessible
+	PublicURL string `yaml:"public_url"`
+
+	// Use presigned URLs for private bucket access
+	// If true, generates time-limited presigned URLs for downloads
+	PresignedURLs bool `yaml:"presigned_urls"`
+
+	// Presigned URL expiry duration (e.g., "1h", "24h")
+	// Default: 1h
+	PresignedExpiry string `yaml:"presigned_expiry"`
+
+	// Redirect to CDN instead of proxying content
+	// If true, returns 302 redirects to CDN URLs
+	// If false, proxies content through the API
+	Redirect bool `yaml:"redirect"`
+
+	// CacheControl header value for CDN-served content
+	// Default: "public, max-age=31536000" (1 year for immutable content)
+	CacheControl string `yaml:"cache_control"`
+}
+
 type Config struct {
 	// Legacy field for backwards compatibility - use Database.SQLite.Path instead
 	DbPath             string              `yaml:"db_path"`
@@ -95,6 +121,7 @@ type Config struct {
 	Quota      QuotaConfig      `yaml:"quota"`
 	Cache      CacheConfig      `yaml:"cache"`
 	Encryption EncryptionConfig `yaml:"encryption"`
+	CDN        CDNConfig        `yaml:"cdn"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -168,6 +195,14 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Quota.WarnThreshold == 0 {
 		c.Quota.WarnThreshold = 80
+	}
+
+	// Default CDN settings
+	if c.CDN.PresignedExpiry == "" {
+		c.CDN.PresignedExpiry = "1h"
+	}
+	if c.CDN.CacheControl == "" {
+		c.CDN.CacheControl = "public, max-age=31536000" // 1 year for immutable content
 	}
 }
 

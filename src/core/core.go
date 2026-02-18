@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"io"
+	"time"
 
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
 )
@@ -18,7 +19,31 @@ type Services interface {
 	Moderation() ModerationService
 	Media() MediaService
 	Video() VideoService
+	CDN() CDNService
 	Cache() cache.Cache
+}
+
+// CDNService handles content delivery network integration for blob serving.
+type CDNService interface {
+	// GetBlobURL returns the best URL for serving a blob.
+	// If CDN is enabled and configured, returns a CDN/presigned URL.
+	// Otherwise, falls back to the standard API URL.
+	GetBlobURL(ctx context.Context, hash string, mimeType string) (string, error)
+
+	// GetPresignedURL returns a presigned URL for direct access to storage.
+	// Returns an error if presigned URLs are not supported or enabled.
+	GetPresignedURL(ctx context.Context, hash string, expiry time.Duration) (string, error)
+
+	// GetPublicURL returns the public CDN URL for a blob if available.
+	// Returns empty string if public CDN is not configured.
+	GetPublicURL(hash string) string
+
+	// IsEnabled returns true if CDN delivery is enabled.
+	IsEnabled() bool
+
+	// ShouldRedirect returns true if requests should be redirected to CDN
+	// rather than proxying the content.
+	ShouldRedirect() bool
 }
 
 // MediaProcessOptions defines options for media processing.

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 )
 
 var (
 	// ErrBlobNotFound is returned when a blob does not exist in storage.
 	ErrBlobNotFound = errors.New("blob not found")
+
+	// ErrPresignedURLNotSupported is returned when storage doesn't support presigned URLs.
+	ErrPresignedURLNotSupported = errors.New("presigned URLs not supported by this storage backend")
 )
 
 // StorageBackend defines the interface for blob storage backends.
@@ -36,4 +40,17 @@ type StorageBackend interface {
 	// Size returns the size in bytes of the blob with the given hash.
 	// Returns ErrBlobNotFound if the blob does not exist.
 	Size(ctx context.Context, hash string) (int64, error)
+}
+
+// PresignedURLProvider is an optional interface that storage backends can implement
+// to support direct access via presigned URLs (for CDN integration).
+type PresignedURLProvider interface {
+	// GetPresignedURL returns a presigned URL for direct access to the blob.
+	// The URL is valid for the specified duration.
+	// Returns ErrPresignedURLNotSupported if not implemented.
+	GetPresignedURL(ctx context.Context, hash string, expiry time.Duration) (string, error)
+
+	// GetPublicURL returns the public URL for a blob if the bucket is public.
+	// Returns empty string if public access is not configured.
+	GetPublicURL(hash string) string
 }
