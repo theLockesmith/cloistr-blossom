@@ -22,6 +22,7 @@ type services struct {
 	stats      core.StatService
 	quota      core.QuotaService
 	moderation core.ModerationService
+	media      core.MediaService
 	cache      cache.Cache
 	conf       *config.Config
 }
@@ -109,6 +110,11 @@ func New(
 		appCache = cache.NewMemoryCache(100 * 1024 * 1024) // 100MB
 	}
 
+	mediaService, err := NewMediaService(storageBackend, appCache, DefaultMediaConfig(), log)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	return &services{
 		blobs:      blobService,
 		acrs:       acrService,
@@ -117,6 +123,7 @@ func New(
 		stats:      statService,
 		quota:      quotaService,
 		moderation: moderationService,
+		media:      mediaService,
 		cache:      appCache,
 		conf:       conf,
 	}
@@ -148,6 +155,10 @@ func (s *services) Quota() core.QuotaService {
 
 func (s *services) Moderation() core.ModerationService {
 	return s.moderation
+}
+
+func (s *services) Media() core.MediaService {
+	return s.media
 }
 
 func (s *services) Cache() cache.Cache {

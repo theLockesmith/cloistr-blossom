@@ -58,7 +58,9 @@ git merge upstream/master
 | BUD-01 Server Info | ✅ | |
 | BUD-02 Blob Upload | ✅ | With encryption support |
 | BUD-04 Mirroring | ✅ | |
-| BUD-05 User Search | ❌ | TODO |
+| BUD-05 Media Optimization | ✅ | /media endpoint with resize/compress |
+| Thumbnail Generation | ✅ | /:hash/thumb endpoint (tested) |
+| Enhanced Blob Listing | ✅ | /list/:pubkey with filters & pagination |
 | BUD-06 URL Upload | ✅ | |
 | BUD-08 Negentropy | ✅ | Basic |
 | S3 Storage Backend | ✅ | Ceph RGW via s3.coldforge.xyz |
@@ -118,6 +120,51 @@ docker build -t coldforge-blossom .
 # Push to Harbor
 docker tag coldforge-blossom oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
+```
+
+## API Endpoints
+
+### Core Blossom (BUD) Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/:hash` | No | Retrieve blob by hash |
+| HEAD | `/:hash` | No | Check if blob exists |
+| PUT | `/upload` | Yes | Upload a blob |
+| HEAD | `/upload` | Yes | Get upload requirements |
+| DELETE | `/:hash` | Yes | Delete a blob |
+| PUT | `/mirror` | Yes | Mirror a blob from URL |
+| GET | `/list/:pubkey` | No | List blobs by pubkey |
+
+### Media Processing (BUD-05)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| PUT | `/media` | Yes | Upload and optimize media |
+| HEAD | `/media` | Yes | Get media upload requirements |
+| GET | `/:hash/thumb` | No | Get thumbnail (w, h query params) |
+
+### List Endpoint Filters
+
+The `/list/:pubkey` endpoint supports the following query parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `type` | string | MIME type prefix filter (e.g., `image/`, `video/mp4`) |
+| `since` | int64 | Unix timestamp - return blobs created after this time |
+| `until` | int64 | Unix timestamp - return blobs created before this time |
+| `limit` | int | Max results (1-1000) |
+| `offset` | int | Pagination offset |
+| `sort` | string | `desc` for newest first, default is oldest first |
+
+Example: `/list/abc123?type=image/&limit=20&sort=desc`
+
+When filters are used, response includes pagination info:
+```json
+{
+  "blobs": [...],
+  "total": 150
+}
 ```
 
 ## Deployment
@@ -182,21 +229,19 @@ quota:
 
 ### P1 - High Priority
 
-1. **Image Optimization** - Resize/compress images on upload
-2. **BUD-05 User Search** - List blobs by pubkey with filters
-3. **Drive Frontend Integration** - Test with Drive web UI
+1. **Drive Frontend Integration** - Test with Drive web UI
 
 ### P2 - Medium Priority
 
-4. **Video Transcoding** - HLS/DASH streaming support
-5. **CDN Integration** - Cloudflare R2 or similar
-6. **Bandwidth Throttling** - Rate limiting per pubkey
+2. **Video Transcoding** - HLS/DASH streaming support
+3. **CDN Integration** - Cloudflare R2 or similar
+4. **Bandwidth Throttling** - Rate limiting per pubkey
 
 ### P3 - Nice to Have
 
-7. **IPFS Pinning** - Pin blobs to IPFS
-8. **Torrent Seeds** - Generate .torrent files
-9. **Deduplication** - Content-addressable dedup
+5. **IPFS Pinning** - Pin blobs to IPFS
+6. **Torrent Seeds** - Generate .torrent files
+7. **Deduplication** - Content-addressable dedup
 
 ## Monitoring
 

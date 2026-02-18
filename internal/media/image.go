@@ -103,10 +103,30 @@ func (p *ImageProcessor) Process(data io.Reader, opts ProcessOptions) (*ProcessR
 
 	// Resize if dimensions specified
 	if opts.Width > 0 || opts.Height > 0 {
+		bounds := img.Bounds()
+		origWidth := bounds.Dx()
+		origHeight := bounds.Dy()
+
+		targetWidth := opts.Width
+		targetHeight := opts.Height
+
+		// If only one dimension specified, calculate the other to preserve aspect ratio
+		if targetWidth > 0 && targetHeight == 0 {
+			targetHeight = origHeight * targetWidth / origWidth
+			if targetHeight == 0 {
+				targetHeight = 1
+			}
+		} else if targetHeight > 0 && targetWidth == 0 {
+			targetWidth = origWidth * targetHeight / origHeight
+			if targetWidth == 0 {
+				targetWidth = 1
+			}
+		}
+
 		if opts.Crop {
-			img = imaging.Fill(img, opts.Width, opts.Height, imaging.Center, imaging.Lanczos)
+			img = imaging.Fill(img, targetWidth, targetHeight, imaging.Center, imaging.Lanczos)
 		} else {
-			img = imaging.Fit(img, opts.Width, opts.Height, imaging.Lanczos)
+			img = imaging.Fit(img, targetWidth, targetHeight, imaging.Lanczos)
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	bud02 "git.coldforge.xyz/coldforge/cloistr-blossom/src/bud-02"
@@ -97,10 +98,39 @@ func listBlobs(
 	services core.Services,
 ) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		pubkey := ctx.Param("pubkey")
+
+		// Parse filter parameters from query string
+		filter := parseBlobFilter(ctx)
+
+		// Use filtered query if any filters are specified
+		if filter != nil {
+			result, err := services.Blob().GetFromPubkeyWithFilter(
+				ctx.Request.Context(),
+				pubkey,
+				filter,
+			)
+			if err != nil {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{Message: err.Error()},
+				)
+				return
+			}
+
+			// Return response with pagination info
+			ctx.JSON(http.StatusOK, blobListResponse{
+				Blobs: fromSliceDomainBlobDescriptor(result.Blobs),
+				Total: result.Total,
+			})
+			return
+		}
+
+		// Fall back to original behavior for backwards compatibility
 		blobs, err := bud02.ListBlobs(
 			ctx.Request.Context(),
 			services,
-			ctx.Param("pubkey"),
+			pubkey,
 		)
 		if err != nil {
 			ctx.AbortWithStatusJSON(
@@ -117,6 +147,69 @@ func listBlobs(
 			fromSliceDomainBlobDescriptor(blobs),
 		)
 	}
+}
+
+// blobListResponse is the response for filtered blob listings.
+type blobListResponse struct {
+	Blobs []*blobDescriptor `json:"blobs"`
+	Total int64             `json:"total"`
+}
+
+// parseBlobFilter extracts filter parameters from query string.
+// Returns nil if no filter parameters are specified.
+func parseBlobFilter(ctx *gin.Context) *core.BlobFilter {
+	filter := &core.BlobFilter{}
+	hasFilter := false
+
+	// Type prefix filter (e.g., "image/", "video/", "application/pdf")
+	if t := ctx.Query("type"); t != "" {
+		filter.TypePrefix = t
+		hasFilter = true
+	}
+
+	// Since timestamp filter
+	if since := ctx.Query("since"); since != "" {
+		if ts, err := strconv.ParseInt(since, 10, 64); err == nil && ts > 0 {
+			filter.Since = ts
+			hasFilter = true
+		}
+	}
+
+	// Until timestamp filter
+	if until := ctx.Query("until"); until != "" {
+		if ts, err := strconv.ParseInt(until, 10, 64); err == nil && ts > 0 {
+			filter.Until = ts
+			hasFilter = true
+		}
+	}
+
+	// Limit for pagination
+	if limit := ctx.Query("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 && l <= 1000 {
+			filter.Limit = l
+			hasFilter = true
+		}
+	}
+
+	// Offset for pagination
+	if offset := ctx.Query("offset"); offset != "" {
+		if o, err := strconv.Atoi(offset); err == nil && o >= 0 {
+			filter.Offset = o
+			hasFilter = true
+		}
+	}
+
+	// Sort order (default: ascending by created)
+	if sort := ctx.Query("sort"); sort == "desc" {
+		filter.SortDesc = true
+		hasFilter = true
+	}
+
+	if !hasFilter {
+		return nil
+	}
+
+	return filter
 }
 
 func deleteBlob(

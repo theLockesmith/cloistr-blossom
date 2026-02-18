@@ -19,4 +19,6 @@ type SettingService interface {
 		ctx context.Context,
 		sizeBytes int,
 	) error
+	// GetMaxUploadSizeBytes returns the maximum allowed upload size in bytes.
+	GetMaxUploadSizeBytes() int
 }

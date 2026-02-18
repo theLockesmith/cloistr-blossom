@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 
 	"go.uber.org/zap"
@@ -226,6 +227,98 @@ func (r *blobService) GetFromPubkey(ctx context.Context, pubkey string) ([]*core
 	}
 
 	return blobs, nil
+}
+
+func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *core.BlobFilter) (*core.BlobListResult, error) {
+	// Build dynamic query with filters
+	baseQuery := `SELECT pubkey, hash, type, size, created, encryption_mode, encrypted_dek, encryption_nonce, original_size FROM blobs WHERE pubkey = $1`
+	countQuery := `SELECT COUNT(*) FROM blobs WHERE pubkey = $1`
+	args := []interface{}{pubkey}
+	argIndex := 2
+
+	// Apply type prefix filter
+	if filter != nil && filter.TypePrefix != "" {
+		baseQuery += fmt.Sprintf(" AND type LIKE $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND type LIKE $%d", argIndex)
+		args = append(args, filter.TypePrefix+"%")
+		argIndex++
+	}
+
+	// Apply since filter
+	if filter != nil && filter.Since > 0 {
+		baseQuery += fmt.Sprintf(" AND created >= $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND created >= $%d", argIndex)
+		args = append(args, filter.Since)
+		argIndex++
+	}
+
+	// Apply until filter
+	if filter != nil && filter.Until > 0 {
+		baseQuery += fmt.Sprintf(" AND created <= $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND created <= $%d", argIndex)
+		args = append(args, filter.Until)
+		argIndex++
+	}
+
+	// Get total count before pagination
+	var total int64
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count blobs: %w", err)
+	}
+
+	// Apply sorting
+	if filter != nil && filter.SortDesc {
+		baseQuery += " ORDER BY created DESC"
+	} else {
+		baseQuery += " ORDER BY created ASC"
+	}
+
+	// Apply pagination
+	if filter != nil && filter.Limit > 0 {
+		baseQuery += fmt.Sprintf(" LIMIT $%d", argIndex)
+		args = append(args, filter.Limit)
+		argIndex++
+
+		if filter.Offset > 0 {
+			baseQuery += fmt.Sprintf(" OFFSET $%d", argIndex)
+			args = append(args, filter.Offset)
+		}
+	}
+
+	// Execute query
+	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query blobs: %w", err)
+	}
+	defer rows.Close()
+
+	var blobs []*core.Blob
+	for rows.Next() {
+		var dbBlob db.Blob
+		if err := rows.Scan(
+			&dbBlob.Pubkey,
+			&dbBlob.Hash,
+			&dbBlob.Type,
+			&dbBlob.Size,
+			&dbBlob.Created,
+			&dbBlob.EncryptionMode,
+			&dbBlob.EncryptedDek,
+			&dbBlob.EncryptionNonce,
+			&dbBlob.OriginalSize,
+		); err != nil {
+			return nil, fmt.Errorf("scan blob: %w", err)
+		}
+		blobs = append(blobs, r.dbBlobIntoBlobDescriptor(dbBlob))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate blobs: %w", err)
+	}
+
+	return &core.BlobListResult{
+		Blobs: blobs,
+		Total: total,
+	}, nil
 }
 
 func (r *blobService) DeleteFromHash(ctx context.Context, sha256 string) error {

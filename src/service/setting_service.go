@@ -33,3 +33,7 @@ func (s *settingService) ValidateFileSizeMaxBytes(
 
 	return nil
 }
+
+func (s *settingService) GetMaxUploadSizeBytes() int {
+	return s.maxUploadSizeBytes
+}

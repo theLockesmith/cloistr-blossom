@@ -67,6 +67,24 @@ func SetupRoutes(
 		),
 	)
 
+	// BUD-05: Media optimization endpoint
+	r.HEAD(
+		"/media",
+		nostrAuthMiddleware("media", log),
+		mediaRequirements(services),
+	)
+	r.PUT(
+		"/media",
+		nostrAuthMiddleware("media", log),
+		uploadMedia(services, cdnBaseUrl),
+	)
+
+	// Thumbnail generation endpoint
+	r.GET(
+		"/:hash/thumb",
+		getThumbnail(services),
+	)
+
 	r.GET(
 		"/list/:pubkey",
 		listBlobs(services),

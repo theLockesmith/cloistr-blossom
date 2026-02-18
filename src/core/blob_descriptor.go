@@ -9,6 +9,28 @@ var (
 	ErrBlobNotFound = errors.New("blob not found")
 )
 
+// BlobFilter defines filtering options for listing blobs.
+type BlobFilter struct {
+	// TypePrefix filters by MIME type prefix (e.g., "image/" for all images)
+	TypePrefix string
+	// Since filters blobs created after this Unix timestamp
+	Since int64
+	// Until filters blobs created before this Unix timestamp
+	Until int64
+	// Limit is the maximum number of results to return (0 = no limit)
+	Limit int
+	// Offset is the number of results to skip for pagination
+	Offset int
+	// SortDesc sorts by created timestamp descending (newest first) if true
+	SortDesc bool
+}
+
+// BlobListResult contains the results of a filtered blob listing.
+type BlobListResult struct {
+	Blobs []*Blob
+	Total int64 // Total count without pagination
+}
+
 // EncryptionMode represents the encryption state of a blob.
 type EncryptionMode string
 
@@ -66,6 +88,8 @@ type BlobStorage interface {
 	Exists(ctx context.Context, sha256 string) (bool, error)
 	GetFromHash(ctx context.Context, sha256 string) (*Blob, error)
 	GetFromPubkey(ctx context.Context, pubkey string) ([]*Blob, error)
+	// GetFromPubkeyWithFilter returns blobs for a pubkey with filtering and pagination.
+	GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *BlobFilter) (*BlobListResult, error)
 	DeleteFromHash(ctx context.Context, sha256 string) error
 	// IsEncryptionEnabled returns true if server-side encryption is available.
 	IsEncryptionEnabled() bool
