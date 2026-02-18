@@ -23,6 +23,7 @@ type services struct {
 	quota      core.QuotaService
 	moderation core.ModerationService
 	media      core.MediaService
+	video      core.VideoService
 	cache      cache.Cache
 	conf       *config.Config
 }
@@ -115,6 +116,13 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	videoService, err := NewVideoService(storageBackend, appCache, VideoConfig{
+		CDNBaseUrl: conf.CdnUrl,
+	}, log)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	return &services{
 		blobs:      blobService,
 		acrs:       acrService,
@@ -124,6 +132,7 @@ func New(
 		quota:      quotaService,
 		moderation: moderationService,
 		media:      mediaService,
+		video:      videoService,
 		cache:      appCache,
 		conf:       conf,
 	}
@@ -159,6 +168,10 @@ func (s *services) Moderation() core.ModerationService {
 
 func (s *services) Media() core.MediaService {
 	return s.media
+}
+
+func (s *services) Video() core.VideoService {
+	return s.video
 }
 
 func (s *services) Cache() cache.Cache {

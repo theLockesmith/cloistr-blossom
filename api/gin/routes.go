@@ -85,6 +85,29 @@ func SetupRoutes(
 		getThumbnail(services),
 	)
 
+	// Video transcoding and HLS streaming endpoints
+	r.POST(
+		"/:hash/transcode",
+		nostrAuthMiddleware("upload", log),
+		startTranscode(services),
+	)
+	r.GET(
+		"/:hash/transcode",
+		getTranscodeStatus(services),
+	)
+	r.GET(
+		"/:hash/hls/master.m3u8",
+		getHLSMasterPlaylist(services, cdnBaseUrl),
+	)
+	r.GET(
+		"/:hash/hls/:quality/stream.m3u8",
+		getHLSVariantPlaylist(services, cdnBaseUrl),
+	)
+	r.GET(
+		"/:hash/hls/:quality/:segment",
+		getHLSSegment(services),
+	)
+
 	r.GET(
 		"/list/:pubkey",
 		listBlobs(services),

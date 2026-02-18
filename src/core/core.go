@@ -17,6 +17,7 @@ type Services interface {
 	Quota() QuotaService
 	Moderation() ModerationService
 	Media() MediaService
+	Video() VideoService
 	Cache() cache.Cache
 }
 

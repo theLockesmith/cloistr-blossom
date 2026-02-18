@@ -60,6 +60,7 @@ git merge upstream/master
 | BUD-04 Mirroring | ✅ | |
 | BUD-05 Media Optimization | ✅ | /media endpoint with resize/compress |
 | Thumbnail Generation | ✅ | /:hash/thumb endpoint (tested) |
+| Video Transcoding | ✅ | HLS streaming with multi-bitrate support |
 | Enhanced Blob Listing | ✅ | /list/:pubkey with filters & pagination |
 | BUD-06 URL Upload | ✅ | |
 | BUD-08 Negentropy | ✅ | Basic |
@@ -143,6 +144,26 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 | PUT | `/media` | Yes | Upload and optimize media |
 | HEAD | `/media` | Yes | Get media upload requirements |
 | GET | `/:hash/thumb` | No | Get thumbnail (w, h query params) |
+
+### Video Streaming (HLS)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/:hash/transcode` | Yes | Start video transcoding |
+| GET | `/:hash/transcode` | No | Get transcoding status |
+| GET | `/:hash/hls/master.m3u8` | No | Get HLS master playlist |
+| GET | `/:hash/hls/:quality/stream.m3u8` | No | Get quality variant playlist |
+| GET | `/:hash/hls/:quality/:segment` | No | Get video segment (.ts file) |
+
+**Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
+
+**Transcoding workflow:**
+1. Upload video via `/upload`
+2. Start transcoding: `POST /:hash/transcode`
+3. Poll status: `GET /:hash/transcode` (returns progress %)
+4. When complete, stream via `GET /:hash/hls/master.m3u8`
+
+**Requirements:** FFmpeg must be installed on the server.
 
 ### List Endpoint Filters
 
@@ -233,15 +254,16 @@ quota:
 
 ### P2 - Medium Priority
 
-2. **Video Transcoding** - HLS/DASH streaming support
-3. **CDN Integration** - Cloudflare R2 or similar
-4. **Bandwidth Throttling** - Rate limiting per pubkey
+2. **CDN Integration** - Cloudflare R2 or similar
+3. **Bandwidth Throttling** - Rate limiting per pubkey
+4. **DASH Support** - Add DASH streaming (currently HLS only)
 
 ### P3 - Nice to Have
 
 5. **IPFS Pinning** - Pin blobs to IPFS
 6. **Torrent Seeds** - Generate .torrent files
 7. **Deduplication** - Content-addressable dedup
+8. **GPU Transcoding** - Hardware acceleration for video
 
 ## Monitoring
 
