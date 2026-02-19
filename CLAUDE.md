@@ -74,6 +74,7 @@ git merge upstream/master
 | Admin Dashboard | ✅ | NIP-86 auth, /admin routes |
 | Redis/Dragonfly Cache | ✅ | Optional shared cache |
 | CDN Integration | ✅ | Presigned URLs, redirect support |
+| Rate Limiting | ✅ | Per-IP/pubkey throttling, bandwidth limits |
 
 ## Project Structure
 
@@ -252,6 +253,18 @@ cdn:
   presigned_urls: false
   presigned_expiry: 1h
   redirect: true  # 302 redirect to CDN instead of proxying
+
+rate_limiting:
+  enabled: true
+  ip:
+    download: { requests: 100, window: "1m" }
+    upload: { requests: 10, window: "1m" }
+  pubkey:
+    download: { requests: 200, window: "1m" }
+    upload: { requests: 30, window: "1m" }
+  bandwidth:
+    download_mb_per_minute: 100
+    upload_mb_per_minute: 50
 ```
 
 ## Next Steps (Roadmap)
@@ -262,15 +275,14 @@ cdn:
 
 ### P2 - Medium Priority
 
-2. **Bandwidth Throttling** - Rate limiting per pubkey
-3. **DASH Support** - Add DASH streaming (currently HLS only)
+2. **DASH Support** - Add DASH streaming (currently HLS only)
 
 ### P3 - Nice to Have
 
-4. **IPFS Pinning** - Pin blobs to IPFS
-5. **Torrent Seeds** - Generate .torrent files
-6. **Deduplication** - Content-addressable dedup
-7. **GPU Transcoding** - Hardware acceleration for video
+3. **IPFS Pinning** - Pin blobs to IPFS
+4. **Torrent Seeds** - Generate .torrent files
+5. **Deduplication** - Content-addressable dedup
+6. **GPU Transcoding** - Hardware acceleration for video
 
 ## Monitoring
 

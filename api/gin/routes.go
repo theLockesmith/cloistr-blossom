@@ -8,7 +8,10 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/ratelimit"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +19,8 @@ func SetupRoutes(
 	services core.Services,
 	cdnBaseUrl string,
 	adminPubkey string,
+	conf *config.Config,
+	appCache cache.Cache,
 	log *zap.Logger,
 ) *gin.Engine {
 	r := gin.New()
@@ -23,6 +28,15 @@ func SetupRoutes(
 	r.Use(ginzap.Ginzap(log, time.RFC3339, true))
 	r.Use(ginzap.RecoveryWithZap(log, true))
 	r.Use(MetricsMiddleware())
+
+	// Rate limiting middleware
+	if conf.RateLimiting.Enabled {
+		rateLimiter := ratelimit.NewRateLimiter(appCache)
+		bandwidthLimiter := ratelimit.NewBandwidthLimiter(appCache)
+		r.Use(RateLimitMiddleware(rateLimiter, &conf.RateLimiting, log))
+		r.Use(BandwidthLimitMiddleware(bandwidthLimiter, &conf.RateLimiting, log))
+		log.Info("rate limiting enabled")
+	}
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,

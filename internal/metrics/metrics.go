@@ -123,6 +123,16 @@ var (
 			Help:      "Total uploads blocked due to blocklist",
 		},
 	)
+
+	// RateLimitedTotal counts rate-limited requests by type.
+	RateLimitedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "rate_limited_total",
+			Help:      "Total rate-limited requests by type",
+		},
+		[]string{"type"},
+	)
 )
 
 // Init initializes all CounterVec metrics with default label values.
@@ -162,4 +172,11 @@ func Init() {
 			RequestsTotal.WithLabelValues("GET", path, status).Add(0)
 		}
 	}
+
+	// Initialize rate limiting counters
+	RateLimitedTotal.WithLabelValues("download").Add(0)
+	RateLimitedTotal.WithLabelValues("upload").Add(0)
+	RateLimitedTotal.WithLabelValues("general").Add(0)
+	RateLimitedTotal.WithLabelValues("bandwidth_upload").Add(0)
+	RateLimitedTotal.WithLabelValues("bandwidth_download").Add(0)
 }

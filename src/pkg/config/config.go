@@ -104,6 +104,40 @@ type CDNConfig struct {
 	CacheControl string `yaml:"cache_control"`
 }
 
+// RateLimitConfig defines a single rate limit.
+type RateLimitConfig struct {
+	Requests int    `yaml:"requests"` // Max requests per window
+	Window   string `yaml:"window"`   // Time window (e.g., "1m", "1h")
+}
+
+// RateLimitingConfig defines rate limiting settings.
+type RateLimitingConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable rate limiting
+
+	// Per-IP limits (for unauthenticated requests)
+	IP struct {
+		Download RateLimitConfig `yaml:"download"` // GET requests for blobs
+		Upload   RateLimitConfig `yaml:"upload"`   // PUT/POST requests
+		General  RateLimitConfig `yaml:"general"`  // All other requests
+	} `yaml:"ip"`
+
+	// Per-pubkey limits (for authenticated requests)
+	Pubkey struct {
+		Download RateLimitConfig `yaml:"download"` // GET requests for blobs
+		Upload   RateLimitConfig `yaml:"upload"`   // PUT/POST requests
+		General  RateLimitConfig `yaml:"general"`  // All other requests
+	} `yaml:"pubkey"`
+
+	// Bandwidth limits
+	Bandwidth struct {
+		DownloadMBPerMinute int `yaml:"download_mb_per_minute"` // Max download MB per minute
+		UploadMBPerMinute   int `yaml:"upload_mb_per_minute"`   // Max upload MB per minute
+	} `yaml:"bandwidth"`
+
+	// Whitelist of pubkeys exempt from rate limiting
+	WhitelistedPubkeys []string `yaml:"whitelisted_pubkeys"`
+}
+
 type Config struct {
 	// Legacy field for backwards compatibility - use Database.SQLite.Path instead
 	DbPath             string              `yaml:"db_path"`
@@ -116,12 +150,13 @@ type Config struct {
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
 	// New configuration sections
-	Storage    StorageConfig    `yaml:"storage"`
-	Database   DatabaseConfig   `yaml:"database"`
-	Quota      QuotaConfig      `yaml:"quota"`
-	Cache      CacheConfig      `yaml:"cache"`
-	Encryption EncryptionConfig `yaml:"encryption"`
-	CDN        CDNConfig        `yaml:"cdn"`
+	Storage     StorageConfig      `yaml:"storage"`
+	Database    DatabaseConfig     `yaml:"database"`
+	Quota       QuotaConfig        `yaml:"quota"`
+	Cache       CacheConfig        `yaml:"cache"`
+	Encryption  EncryptionConfig   `yaml:"encryption"`
+	CDN         CDNConfig          `yaml:"cdn"`
+	RateLimiting RateLimitingConfig `yaml:"rate_limiting"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -203,6 +238,38 @@ func (c *Config) applyDefaults() {
 	}
 	if c.CDN.CacheControl == "" {
 		c.CDN.CacheControl = "public, max-age=31536000" // 1 year for immutable content
+	}
+
+	// Default rate limiting settings
+	if c.RateLimiting.IP.Download.Requests == 0 {
+		c.RateLimiting.IP.Download.Requests = 100
+		c.RateLimiting.IP.Download.Window = "1m"
+	}
+	if c.RateLimiting.IP.Upload.Requests == 0 {
+		c.RateLimiting.IP.Upload.Requests = 10
+		c.RateLimiting.IP.Upload.Window = "1m"
+	}
+	if c.RateLimiting.IP.General.Requests == 0 {
+		c.RateLimiting.IP.General.Requests = 60
+		c.RateLimiting.IP.General.Window = "1m"
+	}
+	if c.RateLimiting.Pubkey.Download.Requests == 0 {
+		c.RateLimiting.Pubkey.Download.Requests = 200
+		c.RateLimiting.Pubkey.Download.Window = "1m"
+	}
+	if c.RateLimiting.Pubkey.Upload.Requests == 0 {
+		c.RateLimiting.Pubkey.Upload.Requests = 30
+		c.RateLimiting.Pubkey.Upload.Window = "1m"
+	}
+	if c.RateLimiting.Pubkey.General.Requests == 0 {
+		c.RateLimiting.Pubkey.General.Requests = 120
+		c.RateLimiting.Pubkey.General.Window = "1m"
+	}
+	if c.RateLimiting.Bandwidth.DownloadMBPerMinute == 0 {
+		c.RateLimiting.Bandwidth.DownloadMBPerMinute = 100 // 100 MB/min default
+	}
+	if c.RateLimiting.Bandwidth.UploadMBPerMinute == 0 {
+		c.RateLimiting.Bandwidth.UploadMBPerMinute = 50 // 50 MB/min default
 	}
 }
 

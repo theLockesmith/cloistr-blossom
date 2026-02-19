@@ -90,6 +90,8 @@ func main() {
 		services,
 		conf.CdnUrl,
 		conf.AdminPubkey,
+		conf,
+		appCache,
 		logger,
 	)
 	api.Run(conf.ApiAddr)

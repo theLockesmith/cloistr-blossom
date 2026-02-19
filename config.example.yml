@@ -76,6 +76,44 @@ quota:
 #   # Default: "public, max-age=31536000" (1 year for immutable content)
 #   cache_control: "public, max-age=31536000"
 
+# Rate limiting (optional)
+# Protect against abuse with per-IP and per-pubkey rate limits.
+# rate_limiting:
+#   enabled: true
+#
+#   # Per-IP limits (for unauthenticated requests)
+#   ip:
+#     download:
+#       requests: 100      # Max blob downloads per window
+#       window: "1m"       # Time window
+#     upload:
+#       requests: 10       # Max uploads per window
+#       window: "1m"
+#     general:
+#       requests: 60       # All other requests
+#       window: "1m"
+#
+#   # Per-pubkey limits (for authenticated requests)
+#   pubkey:
+#     download:
+#       requests: 200
+#       window: "1m"
+#     upload:
+#       requests: 30
+#       window: "1m"
+#     general:
+#       requests: 120
+#       window: "1m"
+#
+#   # Bandwidth limits
+#   bandwidth:
+#     download_mb_per_minute: 100    # Max MB downloaded per minute
+#     upload_mb_per_minute: 50       # Max MB uploaded per minute
+#
+#   # Pubkeys exempt from rate limiting
+#   whitelisted_pubkeys:
+#     - "abc123..."
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 
