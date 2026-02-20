@@ -81,6 +81,7 @@ git merge upstream/master
 | CDN Integration | ✅ | Presigned URLs, redirect support |
 | Rate Limiting | ✅ | Per-IP/pubkey throttling, bandwidth limits |
 | DASH Streaming | ✅ | Multi-bitrate DASH alongside HLS |
+| WebVTT Subtitles | ✅ | Add/manage subtitle tracks for videos |
 
 ## Project Structure
 
@@ -164,6 +165,27 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 | GET | `/:hash/hls/:quality/:segment` | No | Get HLS segment (.ts file) |
 | GET | `/:hash/dash/manifest.mpd` | No | Get DASH manifest (MPD) |
 | GET | `/:hash/dash/:segment` | No | Get DASH segment (.m4s file) |
+
+### Subtitles (WebVTT)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| PUT | `/:hash/subtitles/:lang` | Yes | Add/update subtitle track |
+| GET | `/:hash/subtitles/:lang` | No | Get subtitle track (VTT) |
+| GET | `/:hash/subtitles` | No | List all subtitle tracks |
+| DELETE | `/:hash/subtitles/:lang` | Yes | Remove subtitle track |
+
+**Query parameters for PUT:**
+- `label` - Display name (defaults to language code)
+- `default=true` - Set as default subtitle
+- `forced=true` - Mark as forced (for foreign language parts)
+
+**Subtitle workflow:**
+1. Upload WebVTT file: `PUT /:hash/subtitles/en` with VTT content in body
+2. Subtitles are automatically included in HLS/DASH manifests
+3. Players supporting WebVTT will display subtitle options
+
+**Supported languages:** en, es, fr, de, it, pt, ru, ja, ko, zh, ar, hi, nl, pl, tr, vi, th, id, sv, da, no, fi
 
 **Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
 
@@ -289,14 +311,13 @@ rate_limiting:
 
 ### P2 - Medium Priority
 
-2. **WebVTT Subtitles** - Support for subtitle tracks in streams
+2. **IPFS Pinning** - Pin blobs to IPFS
+3. **GPU Transcoding** - Hardware acceleration for video
 
 ### P3 - Nice to Have
 
-3. **IPFS Pinning** - Pin blobs to IPFS
 4. **Torrent Seeds** - Generate .torrent files
 5. **Deduplication** - Content-addressable dedup
-6. **GPU Transcoding** - Hardware acceleration for video
 
 ## Monitoring
 

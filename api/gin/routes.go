@@ -132,6 +132,26 @@ func SetupRoutes(
 		getDASHSegment(services),
 	)
 
+	// Subtitle endpoints
+	r.PUT(
+		"/:hash/subtitles/:lang",
+		nostrAuthMiddleware("upload", log),
+		addSubtitle(services),
+	)
+	r.GET(
+		"/:hash/subtitles/:lang",
+		getSubtitle(services),
+	)
+	r.GET(
+		"/:hash/subtitles",
+		listSubtitles(services),
+	)
+	r.DELETE(
+		"/:hash/subtitles/:lang",
+		nostrAuthMiddleware("delete", log),
+		deleteSubtitle(services),
+	)
+
 	r.GET(
 		"/list/:pubkey",
 		listBlobs(services),

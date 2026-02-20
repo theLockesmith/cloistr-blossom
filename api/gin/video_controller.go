@@ -248,6 +248,12 @@ func rewritePlaylistURLs(playlist, cdnBaseUrl, hash string) string {
 				line = fmt.Sprintf("%s/%s/hls/%s/stream.m3u8", cdnBaseUrl, hash, quality)
 			}
 		}
+		// Rewrite subtitle URIs
+		if strings.Contains(line, "URI=\"subtitles/") {
+			line = strings.Replace(line, "URI=\"subtitles/", fmt.Sprintf("URI=\"%s/%s/subtitles/", cdnBaseUrl, hash), 1)
+			// Fix the .vtt extension path
+			line = strings.Replace(line, ".vtt\"", "\"", 1)
+		}
 		result = append(result, line)
 	}
 
@@ -356,6 +362,9 @@ func rewriteDASHURLs(mpd, cdnBaseUrl, hash string) string {
 
 	// Replace media segment URLs
 	mpd = strings.ReplaceAll(mpd, `media="chunk-`, fmt.Sprintf(`media="%s/%s/dash/chunk-`, cdnBaseUrl, hash))
+
+	// Replace subtitle URLs
+	mpd = strings.ReplaceAll(mpd, `<BaseURL>subtitles/`, fmt.Sprintf(`<BaseURL>%s/%s/subtitles/`, cdnBaseUrl, hash))
 
 	return mpd
 }

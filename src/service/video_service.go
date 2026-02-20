@@ -398,8 +398,16 @@ func (s *videoService) GetHLSManifest(ctx context.Context, blobHash string) (*co
 		return nil, fmt.Errorf("read master playlist: %w", err)
 	}
 
+	masterPlaylist := masterBuf.String()
+
+	// Check for subtitles and inject them into the manifest
+	subtitles, _ := s.ListSubtitles(ctx, blobHash)
+	if len(subtitles) > 0 {
+		masterPlaylist = s.injectHLSSubtitles(masterPlaylist, subtitles)
+	}
+
 	manifest := &core.HLSManifest{
-		MasterPlaylist: masterBuf.String(),
+		MasterPlaylist: masterPlaylist,
 		Variants:       make(map[string]string),
 	}
 
@@ -419,6 +427,54 @@ func (s *videoService) GetHLSManifest(ctx context.Context, blobHash string) (*co
 	}
 
 	return manifest, nil
+}
+
+// injectHLSSubtitles adds subtitle tracks to an HLS master playlist.
+func (s *videoService) injectHLSSubtitles(playlist string, subtitles []core.SubtitleTrack) string {
+	lines := strings.Split(playlist, "\n")
+	var result []string
+
+	// Find where to insert subtitle declarations (after #EXTM3U and #EXT-X-VERSION)
+	insertIdx := 0
+	for i, line := range lines {
+		if strings.HasPrefix(line, "#EXTM3U") || strings.HasPrefix(line, "#EXT-X-VERSION") {
+			insertIdx = i + 1
+		}
+	}
+
+	// Build subtitle media declarations
+	var subtitleLines []string
+	for _, sub := range subtitles {
+		defaultVal := "NO"
+		if sub.Default {
+			defaultVal = "YES"
+		}
+		forcedVal := "NO"
+		if sub.Forced {
+			forcedVal = "YES"
+		}
+
+		subtitleLines = append(subtitleLines, fmt.Sprintf(
+			"#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"%s\",DEFAULT=%s,AUTOSELECT=YES,FORCED=%s,LANGUAGE=\"%s\",URI=\"subtitles/%s.vtt\"",
+			sub.Label, defaultVal, forcedVal, sub.Language, sub.Language,
+		))
+	}
+
+	// Insert subtitle lines and update stream-inf to reference subtitles
+	for i, line := range lines {
+		if i == insertIdx && len(subtitleLines) > 0 {
+			result = append(result, subtitleLines...)
+		}
+		// Add SUBTITLES reference to stream-inf lines
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") && len(subtitles) > 0 {
+			if !strings.Contains(line, "SUBTITLES=") {
+				line = strings.TrimSuffix(line, "\n") + ",SUBTITLES=\"subs\""
+			}
+		}
+		result = append(result, line)
+	}
+
+	return strings.Join(result, "\n")
 }
 
 // GetSegment returns a video segment file.
@@ -570,9 +626,42 @@ func (s *videoService) GetDASHManifest(ctx context.Context, blobHash string) (*c
 		return nil, fmt.Errorf("read MPD: %w", err)
 	}
 
+	mpd := buf.String()
+
+	// Check for subtitles and inject them into the MPD
+	subtitles, _ := s.ListSubtitles(ctx, blobHash)
+	if len(subtitles) > 0 {
+		mpd = s.injectDASHSubtitles(mpd, subtitles)
+	}
+
 	return &core.DASHManifest{
-		MPD: buf.String(),
+		MPD: mpd,
 	}, nil
+}
+
+// injectDASHSubtitles adds subtitle tracks to a DASH MPD.
+func (s *videoService) injectDASHSubtitles(mpd string, subtitles []core.SubtitleTrack) string {
+	// Find the closing </Period> tag and insert subtitle AdaptationSets before it
+	closingPeriod := "</Period>"
+	idx := strings.LastIndex(mpd, closingPeriod)
+	if idx == -1 {
+		return mpd
+	}
+
+	var subtitleSets []string
+	for i, sub := range subtitles {
+		subtitleSets = append(subtitleSets, fmt.Sprintf(`    <AdaptationSet id="%d" contentType="text" mimeType="text/vtt" lang="%s">
+      <Label>%s</Label>
+      <Representation id="subtitle_%s" bandwidth="256">
+        <BaseURL>subtitles/%s.vtt</BaseURL>
+      </Representation>
+    </AdaptationSet>`,
+			100+i, sub.Language, sub.Label, sub.Language, sub.Language,
+		))
+	}
+
+	// Insert subtitle AdaptationSets before </Period>
+	return mpd[:idx] + strings.Join(subtitleSets, "\n") + "\n  " + mpd[idx:]
 }
 
 // GetDASHSegment returns a DASH segment file (.m4s or init.mp4).
@@ -591,4 +680,125 @@ func (s *videoService) GetDASHSegment(ctx context.Context, blobHash, segmentName
 	}
 
 	return buf.Bytes(), nil
+}
+
+// AddSubtitle adds a subtitle track to a video.
+func (s *videoService) AddSubtitle(ctx context.Context, blobHash string, subtitle core.Subtitle, content []byte) error {
+	// Validate WebVTT format
+	if !isValidWebVTT(content) {
+		return core.ErrInvalidSubtitleFormat
+	}
+
+	// Store subtitle file
+	subtitleKey := fmt.Sprintf("subtitles/%s/%s.vtt", blobHash, subtitle.Language)
+	if err := s.storage.Put(ctx, subtitleKey, bytes.NewReader(content), int64(len(content))); err != nil {
+		return fmt.Errorf("store subtitle: %w", err)
+	}
+
+	// Store subtitle metadata
+	track := core.SubtitleTrack{
+		Subtitle:  subtitle,
+		BlobHash:  blobHash,
+		CreatedAt: time.Now().Unix(),
+	}
+
+	metaKey := fmt.Sprintf("subtitles/%s/%s.json", blobHash, subtitle.Language)
+	metaData, _ := json.Marshal(track)
+	if err := s.storage.Put(ctx, metaKey, bytes.NewReader(metaData), int64(len(metaData))); err != nil {
+		return fmt.Errorf("store subtitle metadata: %w", err)
+	}
+
+	s.log.Info("subtitle added",
+		zap.String("hash", blobHash),
+		zap.String("language", subtitle.Language),
+		zap.String("label", subtitle.Label))
+
+	return nil
+}
+
+// GetSubtitle retrieves a subtitle track for a video.
+func (s *videoService) GetSubtitle(ctx context.Context, blobHash, language string) ([]byte, error) {
+	subtitleKey := fmt.Sprintf("subtitles/%s/%s.vtt", blobHash, language)
+
+	reader, err := s.storage.Get(ctx, subtitleKey)
+	if err != nil {
+		return nil, core.ErrSubtitleNotFound
+	}
+	defer reader.Close()
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(reader); err != nil {
+		return nil, fmt.Errorf("read subtitle: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// ListSubtitles returns all subtitle tracks for a video.
+func (s *videoService) ListSubtitles(ctx context.Context, blobHash string) ([]core.SubtitleTrack, error) {
+	var tracks []core.SubtitleTrack
+
+	// Common languages to check for
+	languages := []string{"en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "ar", "hi", "nl", "pl", "tr", "vi", "th", "id", "sv", "da", "no", "fi"}
+
+	for _, lang := range languages {
+		metaKey := fmt.Sprintf("subtitles/%s/%s.json", blobHash, lang)
+		reader, err := s.storage.Get(ctx, metaKey)
+		if err != nil {
+			continue // Subtitle doesn't exist for this language
+		}
+
+		var buf bytes.Buffer
+		buf.ReadFrom(reader)
+		reader.Close()
+
+		var track core.SubtitleTrack
+		if err := json.Unmarshal(buf.Bytes(), &track); err == nil {
+			tracks = append(tracks, track)
+		}
+	}
+
+	return tracks, nil
+}
+
+// DeleteSubtitle removes a subtitle track from a video.
+func (s *videoService) DeleteSubtitle(ctx context.Context, blobHash, language string) error {
+	// Delete subtitle file
+	subtitleKey := fmt.Sprintf("subtitles/%s/%s.vtt", blobHash, language)
+	_ = s.storage.Delete(ctx, subtitleKey)
+
+	// Delete metadata
+	metaKey := fmt.Sprintf("subtitles/%s/%s.json", blobHash, language)
+	_ = s.storage.Delete(ctx, metaKey)
+
+	s.log.Info("subtitle deleted",
+		zap.String("hash", blobHash),
+		zap.String("language", language))
+
+	return nil
+}
+
+// isValidWebVTT checks if the content is valid WebVTT format.
+func isValidWebVTT(content []byte) bool {
+	// WebVTT files must start with "WEBVTT" (with optional BOM)
+	text := string(content)
+
+	// Remove BOM if present
+	if strings.HasPrefix(text, "\ufeff") {
+		text = strings.TrimPrefix(text, "\ufeff")
+	}
+
+	// Check for WEBVTT signature
+	// Per spec, "WEBVTT" must be followed by space, tab, newline, or EOF
+	if !strings.HasPrefix(text, "WEBVTT") {
+		return false
+	}
+
+	// Check character after "WEBVTT"
+	if len(text) == 6 {
+		return true // Just "WEBVTT" is valid
+	}
+
+	nextChar := text[6]
+	return nextChar == ' ' || nextChar == '\t' || nextChar == '\n' || nextChar == '\r'
 }

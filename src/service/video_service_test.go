@@ -203,3 +203,296 @@ func TestDASHManifestType(t *testing.T) {
 	}
 	assert.NotEmpty(t, manifest.MPD)
 }
+
+func TestVideoServiceAddSubtitleValid(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// Valid WebVTT content
+	vttContent := []byte(`WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+Hello, world!
+
+00:00:05.000 --> 00:00:10.000
+This is a test subtitle.
+`)
+
+	subtitle := core.Subtitle{
+		Language: "en",
+		Label:    "English",
+		Default:  true,
+		Forced:   false,
+	}
+
+	err = svc.AddSubtitle(context.Background(), "test-hash", subtitle, vttContent)
+	assert.NoError(t, err)
+
+	// Verify subtitle was stored
+	content, err := svc.GetSubtitle(context.Background(), "test-hash", "en")
+	assert.NoError(t, err)
+	assert.Equal(t, vttContent, content)
+}
+
+func TestVideoServiceAddSubtitleInvalid(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// Invalid content (not WebVTT)
+	invalidContent := []byte(`This is not a valid WebVTT file.
+It does not start with WEBVTT.
+`)
+
+	subtitle := core.Subtitle{
+		Language: "en",
+		Label:    "English",
+	}
+
+	err = svc.AddSubtitle(context.Background(), "test-hash", subtitle, invalidContent)
+	assert.ErrorIs(t, err, core.ErrInvalidSubtitleFormat)
+}
+
+func TestVideoServiceGetSubtitleNotFound(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// Try to get non-existent subtitle
+	_, err = svc.GetSubtitle(context.Background(), "nonexistent-hash", "en")
+	assert.ErrorIs(t, err, core.ErrSubtitleNotFound)
+}
+
+func TestVideoServiceListSubtitles(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	vttContent := []byte(`WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+Test subtitle.
+`)
+
+	// Add multiple subtitles
+	err = svc.AddSubtitle(context.Background(), "test-hash", core.Subtitle{
+		Language: "en",
+		Label:    "English",
+		Default:  true,
+	}, vttContent)
+	require.NoError(t, err)
+
+	err = svc.AddSubtitle(context.Background(), "test-hash", core.Subtitle{
+		Language: "es",
+		Label:    "Spanish",
+		Default:  false,
+	}, vttContent)
+	require.NoError(t, err)
+
+	// List subtitles
+	tracks, err := svc.ListSubtitles(context.Background(), "test-hash")
+	assert.NoError(t, err)
+	assert.Len(t, tracks, 2)
+
+	// Verify tracks contain expected languages
+	languages := make(map[string]bool)
+	for _, track := range tracks {
+		languages[track.Language] = true
+	}
+	assert.True(t, languages["en"], "should have English subtitle")
+	assert.True(t, languages["es"], "should have Spanish subtitle")
+}
+
+func TestVideoServiceDeleteSubtitle(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	vttContent := []byte(`WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+Test subtitle.
+`)
+
+	// Add subtitle
+	err = svc.AddSubtitle(context.Background(), "test-hash", core.Subtitle{
+		Language: "en",
+		Label:    "English",
+	}, vttContent)
+	require.NoError(t, err)
+
+	// Verify it exists
+	_, err = svc.GetSubtitle(context.Background(), "test-hash", "en")
+	require.NoError(t, err)
+
+	// Delete subtitle
+	err = svc.DeleteSubtitle(context.Background(), "test-hash", "en")
+	assert.NoError(t, err)
+
+	// Verify it's gone
+	_, err = svc.GetSubtitle(context.Background(), "test-hash", "en")
+	assert.ErrorIs(t, err, core.ErrSubtitleNotFound)
+}
+
+func TestIsValidWebVTT(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		valid   bool
+	}{
+		{
+			name:    "valid simple",
+			content: "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello",
+			valid:   true,
+		},
+		{
+			name:    "valid with BOM",
+			content: "\ufeffWEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello",
+			valid:   true,
+		},
+		{
+			name:    "valid with header text",
+			content: "WEBVTT - This is a header\n\n00:00:00.000 --> 00:00:05.000\nHello",
+			valid:   true,
+		},
+		{
+			name:    "invalid no signature",
+			content: "00:00:00.000 --> 00:00:05.000\nHello",
+			valid:   false,
+		},
+		{
+			name:    "invalid wrong signature",
+			content: "WEBVTT2\n\n00:00:00.000 --> 00:00:05.000\nHello",
+			valid:   false,
+		},
+		{
+			name:    "invalid empty",
+			content: "",
+			valid:   false,
+		},
+		{
+			name:    "invalid plain text",
+			content: "This is just plain text, not subtitles.",
+			valid:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidWebVTT([]byte(tt.content))
+			assert.Equal(t, tt.valid, result)
+		})
+	}
+}
+
+func TestSubtitleTypes(t *testing.T) {
+	// Test Subtitle type
+	subtitle := core.Subtitle{
+		Language: "en",
+		Label:    "English",
+		Default:  true,
+		Forced:   false,
+	}
+	assert.Equal(t, "en", subtitle.Language)
+	assert.Equal(t, "English", subtitle.Label)
+	assert.True(t, subtitle.Default)
+	assert.False(t, subtitle.Forced)
+
+	// Test SubtitleTrack type
+	track := core.SubtitleTrack{
+		Subtitle:  subtitle,
+		BlobHash:  "abc123",
+		CreatedAt: 1234567890,
+	}
+	assert.Equal(t, "en", track.Language)
+	assert.Equal(t, "abc123", track.BlobHash)
+	assert.Equal(t, int64(1234567890), track.CreatedAt)
+}
+
+func TestVideoServiceSubtitleWithBOM(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// WebVTT with BOM (common in Windows-generated files)
+	vttWithBOM := []byte("\ufeffWEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello!")
+
+	err = svc.AddSubtitle(context.Background(), "test-hash", core.Subtitle{
+		Language: "en",
+		Label:    "English",
+	}, vttWithBOM)
+	assert.NoError(t, err, "WebVTT with BOM should be accepted")
+}

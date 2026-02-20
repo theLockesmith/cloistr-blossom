@@ -14,6 +14,10 @@ var (
 	ErrTranscodeNotFound = errors.New("transcoded version not found")
 	// ErrFFmpegNotFound is returned when FFmpeg is not installed.
 	ErrFFmpegNotFound = errors.New("ffmpeg not found")
+	// ErrSubtitleNotFound is returned when a subtitle track is not found.
+	ErrSubtitleNotFound = errors.New("subtitle not found")
+	// ErrInvalidSubtitleFormat is returned when subtitle format is invalid.
+	ErrInvalidSubtitleFormat = errors.New("invalid subtitle format (must be WebVTT)")
 )
 
 // TranscodeStatus represents the status of a transcoding job.
@@ -70,6 +74,21 @@ type DASHManifest struct {
 	MPD string // Media Presentation Description (.mpd) content
 }
 
+// Subtitle represents a subtitle track for a video.
+type Subtitle struct {
+	Language string `json:"language"` // ISO 639-1 language code (e.g., "en", "es", "fr")
+	Label    string `json:"label"`    // Human-readable label (e.g., "English", "Spanish")
+	Default  bool   `json:"default"`  // Whether this is the default subtitle track
+	Forced   bool   `json:"forced"`   // Whether subtitles are forced (for foreign language parts)
+}
+
+// SubtitleTrack represents a stored subtitle track with its content.
+type SubtitleTrack struct {
+	Subtitle
+	BlobHash  string `json:"blob_hash"`  // Associated video blob hash
+	CreatedAt int64  `json:"created_at"` // Unix timestamp
+}
+
 // VideoService handles video transcoding and streaming.
 type VideoService interface {
 	// IsSupported returns true if the MIME type is a supported video format.
@@ -101,4 +120,17 @@ type VideoService interface {
 
 	// DeleteTranscodedFiles removes all transcoded files for a blob.
 	DeleteTranscodedFiles(ctx context.Context, blobHash string) error
+
+	// AddSubtitle adds a subtitle track to a video.
+	// The content must be valid WebVTT format.
+	AddSubtitle(ctx context.Context, blobHash string, subtitle Subtitle, content []byte) error
+
+	// GetSubtitle retrieves a subtitle track for a video.
+	GetSubtitle(ctx context.Context, blobHash, language string) ([]byte, error)
+
+	// ListSubtitles returns all subtitle tracks for a video.
+	ListSubtitles(ctx context.Context, blobHash string) ([]SubtitleTrack, error)
+
+	// DeleteSubtitle removes a subtitle track from a video.
+	DeleteSubtitle(ctx context.Context, blobHash, language string) error
 }
