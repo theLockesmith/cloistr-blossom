@@ -151,3 +151,55 @@ func TestTranscodeStatusValues(t *testing.T) {
 	assert.Equal(t, core.TranscodeStatus("complete"), core.TranscodeStatusComplete)
 	assert.Equal(t, core.TranscodeStatus("failed"), core.TranscodeStatusFailed)
 }
+
+func TestVideoServiceDASHManifestNotFound(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// Try to get DASH manifest of non-transcoded video
+	_, err = svc.GetDASHManifest(context.Background(), "nonexistent-hash")
+	assert.ErrorIs(t, err, core.ErrTranscodeNotFound)
+}
+
+func TestVideoServiceDASHSegmentNotFound(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "video-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	localStorage, err := storage.NewLocalStorage(tempDir)
+	require.NoError(t, err)
+
+	memCache := cache.NewMemoryCache(10 * 1024 * 1024)
+	log, _ := zap.NewDevelopment()
+
+	svc, err := NewVideoService(localStorage, memCache, VideoConfig{
+		WorkDir:    tempDir,
+		CDNBaseUrl: "http://localhost:8000",
+	}, log)
+	require.NoError(t, err)
+
+	// Try to get DASH segment of non-transcoded video
+	_, err = svc.GetDASHSegment(context.Background(), "nonexistent-hash", "init-stream0.m4s")
+	assert.Error(t, err)
+}
+
+func TestDASHManifestType(t *testing.T) {
+	// Test that DASHManifest type is defined correctly
+	manifest := core.DASHManifest{
+		MPD: "<?xml version=\"1.0\"?><MPD></MPD>",
+	}
+	assert.NotEmpty(t, manifest.MPD)
+}

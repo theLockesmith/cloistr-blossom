@@ -20,9 +20,10 @@ import (
 )
 
 const (
-	hlsSegmentDuration = 6 // seconds
-	jobCachePrefix     = "video_job:"
-	jobCacheTTL        = 24 * time.Hour
+	hlsSegmentDuration  = 6 // seconds
+	dashSegmentDuration = 6 // seconds
+	jobCachePrefix      = "video_job:"
+	jobCacheTTL         = 24 * time.Hour
 )
 
 type videoService struct {
@@ -205,10 +206,21 @@ func (s *videoService) runTranscode(ctx context.Context, job *core.TranscodeJob)
 			zap.String("quality", quality.Name))
 	}
 
-	// Generate master playlist
+	// Generate HLS master playlist
 	if err := s.generateMasterPlaylist(job); err != nil {
-		s.updateJobStatus(job, core.TranscodeStatusFailed, 90, fmt.Sprintf("generate master playlist: %v", err))
+		s.updateJobStatus(job, core.TranscodeStatusFailed, 85, fmt.Sprintf("generate HLS master playlist: %v", err))
 		return
+	}
+
+	// Generate DASH output
+	s.updateJobStatus(job, core.TranscodeStatusProcessing, 87, "")
+	if err := s.transcodeToDASH(inputPath, job); err != nil {
+		s.log.Error("DASH transcoding failed",
+			zap.String("hash", job.BlobHash),
+			zap.Error(err))
+		// Continue even if DASH fails - HLS is the primary format
+	} else {
+		s.log.Info("DASH transcoding complete", zap.String("hash", job.BlobHash))
 	}
 
 	// Upload transcoded files to storage
@@ -429,8 +441,7 @@ func (s *videoService) GetSegment(ctx context.Context, blobHash, quality, segmen
 
 // DeleteTranscodedFiles removes all transcoded files for a blob.
 func (s *videoService) DeleteTranscodedFiles(ctx context.Context, blobHash string) error {
-	// Delete from storage - need to list and delete all files with prefix
-	// For now, delete known patterns
+	// Delete HLS files
 	for _, quality := range core.DefaultQualities {
 		// Delete playlist
 		playlistKey := fmt.Sprintf("hls/%s/%s/stream.m3u8", blobHash, quality.Name)
@@ -445,9 +456,28 @@ func (s *videoService) DeleteTranscodedFiles(ctx context.Context, blobHash strin
 		}
 	}
 
-	// Delete master playlist
+	// Delete HLS master playlist
 	masterKey := fmt.Sprintf("hls/%s/master.m3u8", blobHash)
 	_ = s.storage.Delete(ctx, masterKey)
+
+	// Delete DASH files
+	dashMpdKey := fmt.Sprintf("dash/%s/manifest.mpd", blobHash)
+	_ = s.storage.Delete(ctx, dashMpdKey)
+
+	// Delete DASH init and segment files
+	for i := 0; i < 1000; i++ {
+		// Init segments
+		initKey := fmt.Sprintf("dash/%s/init-stream%d.m4s", blobHash, i)
+		_ = s.storage.Delete(ctx, initKey)
+
+		// Media segments
+		for j := 0; j < 1000; j++ {
+			segmentKey := fmt.Sprintf("dash/%s/chunk-stream%d-%05d.m4s", blobHash, i, j+1)
+			if err := s.storage.Delete(ctx, segmentKey); err != nil {
+				break
+			}
+		}
+	}
 
 	// Remove from jobs
 	s.jobsMu.Lock()
@@ -464,4 +494,101 @@ func (s *videoService) DeleteTranscodedFiles(ctx context.Context, blobHash strin
 	os.RemoveAll(outputDir)
 
 	return nil
+}
+
+// transcodeToDASH transcodes video to DASH format with all qualities in one pass.
+func (s *videoService) transcodeToDASH(inputPath string, job *core.TranscodeJob) error {
+	dashDir := filepath.Join(job.OutputDir, "dash")
+	if err := os.MkdirAll(dashDir, 0755); err != nil {
+		return fmt.Errorf("create DASH directory: %w", err)
+	}
+
+	outputPath := filepath.Join(dashDir, "manifest.mpd")
+
+	// Build FFmpeg command for multi-bitrate DASH
+	// Use filter_complex for multiple outputs
+	args := []string{
+		"-i", inputPath,
+	}
+
+	// Add video streams for each quality
+	var maps []string
+	var adaptationSet []string
+
+	for i, quality := range job.Qualities {
+		// Video filter for this quality
+		args = append(args,
+			"-map", "0:v:0",
+			"-map", "0:a:0",
+		)
+		maps = append(maps, fmt.Sprintf("-c:v:%d", i), "libx264",
+			fmt.Sprintf("-b:v:%d", i), fmt.Sprintf("%dk", quality.VideoBitrate),
+			fmt.Sprintf("-s:v:%d", i), fmt.Sprintf("%dx%d", quality.Width, quality.Height),
+			fmt.Sprintf("-c:a:%d", i), "aac",
+			fmt.Sprintf("-b:a:%d", i), fmt.Sprintf("%dk", quality.AudioBitrate),
+		)
+		adaptationSet = append(adaptationSet, fmt.Sprintf("id=%d,streams=%d", i, i))
+	}
+
+	args = append(args, maps...)
+	args = append(args,
+		"-preset", "veryfast",
+		"-f", "dash",
+		"-seg_duration", fmt.Sprintf("%d", dashSegmentDuration),
+		"-use_template", "1",
+		"-use_timeline", "1",
+		"-init_seg_name", "init-stream$RepresentationID$.m4s",
+		"-media_seg_name", "chunk-stream$RepresentationID$-$Number%05d$.m4s",
+		"-adaptation_sets", strings.Join(adaptationSet, " "),
+		"-y",
+		outputPath,
+	)
+
+	cmd := exec.Command(s.ffmpegPath, args...)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg DASH error: %v, stderr: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+// GetDASHManifest returns the DASH manifest for a transcoded video.
+func (s *videoService) GetDASHManifest(ctx context.Context, blobHash string) (*core.DASHManifest, error) {
+	mpdKey := fmt.Sprintf("dash/%s/manifest.mpd", blobHash)
+	reader, err := s.storage.Get(ctx, mpdKey)
+	if err != nil {
+		return nil, core.ErrTranscodeNotFound
+	}
+	defer reader.Close()
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(reader); err != nil {
+		return nil, fmt.Errorf("read MPD: %w", err)
+	}
+
+	return &core.DASHManifest{
+		MPD: buf.String(),
+	}, nil
+}
+
+// GetDASHSegment returns a DASH segment file (.m4s or init.mp4).
+func (s *videoService) GetDASHSegment(ctx context.Context, blobHash, segmentName string) ([]byte, error) {
+	segmentKey := fmt.Sprintf("dash/%s/%s", blobHash, segmentName)
+
+	reader, err := s.storage.Get(ctx, segmentKey)
+	if err != nil {
+		return nil, fmt.Errorf("get DASH segment: %w", err)
+	}
+	defer reader.Close()
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(reader); err != nil {
+		return nil, fmt.Errorf("read DASH segment: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }

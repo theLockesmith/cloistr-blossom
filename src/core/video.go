@@ -65,6 +65,11 @@ type HLSManifest struct {
 	Variants       map[string]string // Quality -> variant .m3u8 content
 }
 
+// DASHManifest represents a DASH manifest structure.
+type DASHManifest struct {
+	MPD string // Media Presentation Description (.mpd) content
+}
+
 // VideoService handles video transcoding and streaming.
 type VideoService interface {
 	// IsSupported returns true if the MIME type is a supported video format.
@@ -84,8 +89,15 @@ type VideoService interface {
 	// Returns ErrTranscodeNotFound if not transcoded yet.
 	GetHLSManifest(ctx context.Context, blobHash string) (*HLSManifest, error)
 
-	// GetSegment returns a video segment file.
+	// GetDASHManifest returns the DASH manifest for a transcoded video.
+	// Returns ErrTranscodeNotFound if not transcoded yet.
+	GetDASHManifest(ctx context.Context, blobHash string) (*DASHManifest, error)
+
+	// GetSegment returns a video segment file (works for both HLS .ts and DASH .m4s).
 	GetSegment(ctx context.Context, blobHash, quality, segmentName string) ([]byte, error)
+
+	// GetDASHSegment returns a DASH segment file (.m4s or init.mp4).
+	GetDASHSegment(ctx context.Context, blobHash, segmentName string) ([]byte, error)
 
 	// DeleteTranscodedFiles removes all transcoded files for a blob.
 	DeleteTranscodedFiles(ctx context.Context, blobHash string) error

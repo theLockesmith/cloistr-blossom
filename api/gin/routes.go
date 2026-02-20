@@ -122,6 +122,16 @@ func SetupRoutes(
 		getHLSSegment(services),
 	)
 
+	// DASH streaming endpoints
+	r.GET(
+		"/:hash/dash/manifest.mpd",
+		getDASHManifest(services, cdnBaseUrl),
+	)
+	r.GET(
+		"/:hash/dash/:segment",
+		getDASHSegment(services),
+	)
+
 	r.GET(
 		"/list/:pubkey",
 		listBlobs(services),

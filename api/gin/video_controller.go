@@ -268,3 +268,94 @@ func rewriteSegmentURLs(playlist, cdnBaseUrl, hash, quality string) string {
 
 	return strings.Join(result, "\n")
 }
+
+// getDASHManifest handles GET /:hash/dash/manifest.mpd to get the DASH manifest.
+func getDASHManifest(
+	services core.Services,
+	cdnBaseUrl string,
+) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		hash := ctx.Param("hash")
+		if hash == "" {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			return
+		}
+
+		manifest, err := services.Video().GetDASHManifest(ctx.Request.Context(), hash)
+		if err != nil {
+			if err == core.ErrTranscodeNotFound {
+				// Check if transcoding is in progress
+				job, jobErr := services.Video().GetTranscodeStatus(ctx.Request.Context(), hash)
+				if jobErr == nil && job.Status == core.TranscodeStatusProcessing {
+					ctx.AbortWithStatusJSON(http.StatusAccepted, apiError{
+						Message: fmt.Sprintf("transcoding in progress: %d%%", job.Progress),
+					})
+					return
+				}
+				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
+					Message: "video not transcoded. POST to /:hash/transcode to start transcoding",
+				})
+				return
+			}
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
+				Message: fmt.Sprintf("failed to get DASH manifest: %s", err.Error()),
+			})
+			return
+		}
+
+		// Rewrite segment URLs in the MPD to use API endpoints
+		mpd := rewriteDASHURLs(manifest.MPD, cdnBaseUrl, hash)
+
+		ctx.Header("Content-Type", "application/dash+xml")
+		ctx.Header("Cache-Control", "public, max-age=3600")
+		ctx.String(http.StatusOK, mpd)
+	}
+}
+
+// getDASHSegment handles GET /:hash/dash/:segment to get a DASH segment.
+func getDASHSegment(
+	services core.Services,
+) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		hash := ctx.Param("hash")
+		segment := ctx.Param("segment")
+
+		if hash == "" || segment == "" {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
+				Message: "hash and segment are required",
+			})
+			return
+		}
+
+		data, err := services.Video().GetDASHSegment(ctx.Request.Context(), hash, segment)
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "segment not found"})
+			return
+		}
+
+		// Determine content type
+		contentType := "video/mp4"
+		if strings.HasSuffix(segment, ".m4s") {
+			contentType = "video/iso.segment"
+		}
+
+		ctx.Header("Content-Type", contentType)
+		ctx.Header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+		ctx.Data(http.StatusOK, contentType, data)
+	}
+}
+
+// rewriteDASHURLs rewrites segment URLs in the DASH MPD to use API endpoints.
+func rewriteDASHURLs(mpd, cdnBaseUrl, hash string) string {
+	// Replace relative segment URLs with absolute API URLs
+	// The MPD references files like "init-stream0.m4s" and "chunk-stream0-00001.m4s"
+	// We need to rewrite them to use the API endpoint
+
+	// Replace initialization segment URLs
+	mpd = strings.ReplaceAll(mpd, `initialization="init-`, fmt.Sprintf(`initialization="%s/%s/dash/init-`, cdnBaseUrl, hash))
+
+	// Replace media segment URLs
+	mpd = strings.ReplaceAll(mpd, `media="chunk-`, fmt.Sprintf(`media="%s/%s/dash/chunk-`, cdnBaseUrl, hash))
+
+	return mpd
+}

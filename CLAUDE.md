@@ -4,6 +4,11 @@
 
 **Domain:** files.cloistr.xyz, blossom.cloistr.xyz (Cloistr is the consumer-facing brand for Coldforge Nostr services)
 
+## REQUIRED READING (Before ANY Action)
+
+**Claude MUST read this file at the start of every session:**
+- `~/claude/coldforge/cloistr/CLAUDE.md` - Cloistr project rules (contains further required reading)
+
 ## Upstream
 
 This is a fork of [sebdeveloper6952/blossom-server](https://github.com/sebdeveloper6952/blossom-server).
@@ -75,6 +80,7 @@ git merge upstream/master
 | Redis/Dragonfly Cache | ✅ | Optional shared cache |
 | CDN Integration | ✅ | Presigned URLs, redirect support |
 | Rate Limiting | ✅ | Per-IP/pubkey throttling, bandwidth limits |
+| DASH Streaming | ✅ | Multi-bitrate DASH alongside HLS |
 
 ## Project Structure
 
@@ -147,15 +153,17 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 | HEAD | `/media` | Yes | Get media upload requirements |
 | GET | `/:hash/thumb` | No | Get thumbnail (w, h query params) |
 
-### Video Streaming (HLS)
+### Video Streaming (HLS & DASH)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/:hash/transcode` | Yes | Start video transcoding |
 | GET | `/:hash/transcode` | No | Get transcoding status |
 | GET | `/:hash/hls/master.m3u8` | No | Get HLS master playlist |
-| GET | `/:hash/hls/:quality/stream.m3u8` | No | Get quality variant playlist |
-| GET | `/:hash/hls/:quality/:segment` | No | Get video segment (.ts file) |
+| GET | `/:hash/hls/:quality/stream.m3u8` | No | Get HLS quality variant playlist |
+| GET | `/:hash/hls/:quality/:segment` | No | Get HLS segment (.ts file) |
+| GET | `/:hash/dash/manifest.mpd` | No | Get DASH manifest (MPD) |
+| GET | `/:hash/dash/:segment` | No | Get DASH segment (.m4s file) |
 
 **Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
 
@@ -163,9 +171,15 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 1. Upload video via `/upload`
 2. Start transcoding: `POST /:hash/transcode`
 3. Poll status: `GET /:hash/transcode` (returns progress %)
-4. When complete, stream via `GET /:hash/hls/master.m3u8`
+4. When complete, stream via:
+   - HLS: `GET /:hash/hls/master.m3u8`
+   - DASH: `GET /:hash/dash/manifest.mpd`
 
 **Requirements:** FFmpeg must be installed on the server.
+
+**Format Support:**
+- **HLS** (HTTP Live Streaming): Best for Apple devices and Safari
+- **DASH** (Dynamic Adaptive Streaming over HTTP): Best for cross-platform and modern browsers
 
 ### List Endpoint Filters
 
@@ -275,7 +289,7 @@ rate_limiting:
 
 ### P2 - Medium Priority
 
-2. **DASH Support** - Add DASH streaming (currently HLS only)
+2. **WebVTT Subtitles** - Support for subtitle tracks in streams
 
 ### P3 - Nice to Have
 
