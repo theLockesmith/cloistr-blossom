@@ -82,6 +82,7 @@ git merge upstream/master
 | Rate Limiting | ✅ | Per-IP/pubkey throttling, bandwidth limits |
 | DASH Streaming | ✅ | Multi-bitrate DASH alongside HLS |
 | WebVTT Subtitles | ✅ | Add/manage subtitle tracks for videos |
+| IPFS Pinning | ✅ | Pin blobs to IPFS via pinning services |
 
 ## Project Structure
 
@@ -186,6 +187,28 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 3. Players supporting WebVTT will display subtitle options
 
 **Supported languages:** en, es, fr, de, it, pt, ru, ja, ko, zh, ar, hi, nl, pl, tr, vi, th, id, sv, da, no, fi
+
+### IPFS Pinning
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/:hash/pin` | Yes | Pin blob to IPFS |
+| DELETE | `/:hash/pin` | Yes | Unpin blob from IPFS |
+| GET | `/:hash/pin` | No | Get pin status |
+| GET | `/pins` | No | List all pins |
+
+**Query parameters for POST:**
+- `name` - Optional name for the pin
+
+**Query parameters for GET /pins:**
+- `status` - Filter by status (queued, pinning, pinned, failed)
+- `limit` - Max results (1-1000, default 100)
+
+**Supported pinning services:**
+- Pinata (https://api.pinata.cloud/psa)
+- web3.storage
+- Filebase
+- Any IPFS Pinning Service API compatible endpoint
 
 **Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
 
@@ -301,6 +324,13 @@ rate_limiting:
   bandwidth:
     download_mb_per_minute: 100
     upload_mb_per_minute: 50
+
+ipfs:
+  enabled: true
+  endpoint: https://api.pinata.cloud/psa  # IPFS Pinning Service API endpoint
+  bearer_token: ${IPFS_BEARER_TOKEN}       # API token
+  gateway_url: https://gateway.pinata.cloud/ipfs/  # For accessing pinned content
+  auto_pin: false                          # Auto-pin new uploads
 ```
 
 ## Next Steps (Roadmap)
@@ -311,13 +341,12 @@ rate_limiting:
 
 ### P2 - Medium Priority
 
-2. **IPFS Pinning** - Pin blobs to IPFS
-3. **GPU Transcoding** - Hardware acceleration for video
+2. **GPU Transcoding** - Hardware acceleration for video
 
 ### P3 - Nice to Have
 
-4. **Torrent Seeds** - Generate .torrent files
-5. **Deduplication** - Content-addressable dedup
+3. **Torrent Seeds** - Generate .torrent files
+4. **Deduplication** - Content-addressable dedup
 
 ## Monitoring
 

@@ -104,6 +104,31 @@ type CDNConfig struct {
 	CacheControl string `yaml:"cache_control"`
 }
 
+// IPFSConfig defines IPFS pinning service configuration.
+type IPFSConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable IPFS pinning
+
+	// Pinning service endpoint URL (IPFS Pinning Service API compatible)
+	// Examples:
+	//   - Pinata: https://api.pinata.cloud/psa
+	//   - web3.storage: https://api.web3.storage
+	//   - Filebase: https://api.filebase.io/v1/ipfs
+	Endpoint string `yaml:"endpoint"`
+
+	// Bearer token for authentication
+	BearerToken string `yaml:"bearer_token"`
+
+	// Gateway URL for accessing pinned content (optional)
+	// Examples:
+	//   - Public: https://ipfs.io/ipfs/
+	//   - Cloudflare: https://cloudflare-ipfs.com/ipfs/
+	//   - Pinata: https://gateway.pinata.cloud/ipfs/
+	GatewayURL string `yaml:"gateway_url"`
+
+	// Auto-pin newly uploaded blobs
+	AutoPin bool `yaml:"auto_pin"`
+}
+
 // RateLimitConfig defines a single rate limit.
 type RateLimitConfig struct {
 	Requests int    `yaml:"requests"` // Max requests per window
@@ -150,13 +175,14 @@ type Config struct {
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
 	// New configuration sections
-	Storage     StorageConfig      `yaml:"storage"`
-	Database    DatabaseConfig     `yaml:"database"`
-	Quota       QuotaConfig        `yaml:"quota"`
-	Cache       CacheConfig        `yaml:"cache"`
-	Encryption  EncryptionConfig   `yaml:"encryption"`
-	CDN         CDNConfig          `yaml:"cdn"`
+	Storage      StorageConfig      `yaml:"storage"`
+	Database     DatabaseConfig     `yaml:"database"`
+	Quota        QuotaConfig        `yaml:"quota"`
+	Cache        CacheConfig        `yaml:"cache"`
+	Encryption   EncryptionConfig   `yaml:"encryption"`
+	CDN          CDNConfig          `yaml:"cdn"`
 	RateLimiting RateLimitingConfig `yaml:"rate_limiting"`
+	IPFS         IPFSConfig         `yaml:"ipfs"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -270,6 +296,11 @@ func (c *Config) applyDefaults() {
 	}
 	if c.RateLimiting.Bandwidth.UploadMBPerMinute == 0 {
 		c.RateLimiting.Bandwidth.UploadMBPerMinute = 50 // 50 MB/min default
+	}
+
+	// Default IPFS settings
+	if c.IPFS.GatewayURL == "" {
+		c.IPFS.GatewayURL = "https://ipfs.io/ipfs/"
 	}
 }
 

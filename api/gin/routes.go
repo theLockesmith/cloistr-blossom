@@ -132,6 +132,26 @@ func SetupRoutes(
 		getDASHSegment(services),
 	)
 
+	// IPFS pinning endpoints
+	r.POST(
+		"/:hash/pin",
+		nostrAuthMiddleware("upload", log),
+		pinBlob(services),
+	)
+	r.DELETE(
+		"/:hash/pin",
+		nostrAuthMiddleware("delete", log),
+		unpinBlob(services),
+	)
+	r.GET(
+		"/:hash/pin",
+		getPinStatus(services),
+	)
+	r.GET(
+		"/pins",
+		listPins(services),
+	)
+
 	// Subtitle endpoints
 	r.PUT(
 		"/:hash/subtitles/:lang",

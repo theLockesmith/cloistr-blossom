@@ -20,6 +20,7 @@ type Services interface {
 	Media() MediaService
 	Video() VideoService
 	CDN() CDNService
+	IPFS() IPFSService
 	Cache() cache.Cache
 }
 

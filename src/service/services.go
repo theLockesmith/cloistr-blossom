@@ -25,6 +25,7 @@ type services struct {
 	media      core.MediaService
 	video      core.VideoService
 	cdn        core.CDNService
+	ipfs       core.IPFSService
 	cache      cache.Cache
 	conf       *config.Config
 }
@@ -132,6 +133,11 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	ipfsService, err := NewIPFSService(storageBackend, appCache, &conf.IPFS, log)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	return &services{
 		blobs:      blobService,
 		acrs:       acrService,
@@ -143,6 +149,7 @@ func New(
 		media:      mediaService,
 		video:      videoService,
 		cdn:        cdnService,
+		ipfs:       ipfsService,
 		cache:      appCache,
 		conf:       conf,
 	}
@@ -186,6 +193,10 @@ func (s *services) Video() core.VideoService {
 
 func (s *services) CDN() core.CDNService {
 	return s.cdn
+}
+
+func (s *services) IPFS() core.IPFSService {
+	return s.ipfs
 }
 
 func (s *services) Cache() cache.Cache {
