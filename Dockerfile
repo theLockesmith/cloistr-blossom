@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 WORKDIR /go/src/app
 
 # Install build dependencies for CGO (SQLite)
