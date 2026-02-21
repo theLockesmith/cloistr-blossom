@@ -83,6 +83,8 @@ git merge upstream/master
 | DASH Streaming | ✅ | Multi-bitrate DASH alongside HLS |
 | WebVTT Subtitles | ✅ | Add/manage subtitle tracks for videos |
 | IPFS Pinning | ✅ | Pin blobs to IPFS via pinning services |
+| Drive Integration | ✅ | Tested with cloistr-drive web UI |
+| GPU Transcoding | ✅ | NVENC, QSV, VAAPI hardware acceleration |
 
 ## Project Structure
 
@@ -331,22 +333,36 @@ ipfs:
   bearer_token: ${IPFS_BEARER_TOKEN}       # API token
   gateway_url: https://gateway.pinata.cloud/ipfs/  # For accessing pinned content
   auto_pin: false                          # Auto-pin new uploads
+
+transcoding:
+  work_dir: /tmp/blossom-transcode  # Temporary directory for transcoding
+  ffmpeg_path: ""                   # Auto-detect if empty
+  hwaccel:
+    type: auto                      # none, nvenc, qsv, vaapi, auto
+    device: /dev/dri/renderD128     # VAAPI device path (optional)
+    preset: ""                      # Encoder-specific preset (optional)
+    look_ahead: 0                   # NVENC look-ahead frames (optional)
 ```
 
 ## Next Steps (Roadmap)
 
 ### P1 - High Priority
 
-1. **Drive Frontend Integration** - Test with Drive web UI
+1. **Torrent Seeds** - Generate .torrent files for peer distribution
 
 ### P2 - Medium Priority
 
-2. **GPU Transcoding** - Hardware acceleration for video
+2. **Deduplication** - Content-addressable dedup across users
+3. **BUD-09 Reporting** - Standardized abuse reporting protocol
 
 ### P3 - Nice to Have
 
-3. **Torrent Seeds** - Generate .torrent files
-4. **Deduplication** - Content-addressable dedup
+4. **AV1/HEVC Support** - Modern codec support for better compression
+
+### Completed
+
+- ~~GPU Transcoding~~ - NVENC, QSV, VAAPI hardware acceleration (2026-02-20)
+- ~~Drive Frontend Integration~~ - Tested with cloistr-drive (2026-02-20)
 
 ## Monitoring
 

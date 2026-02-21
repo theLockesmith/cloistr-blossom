@@ -20,6 +20,30 @@ var (
 	ErrInvalidSubtitleFormat = errors.New("invalid subtitle format (must be WebVTT)")
 )
 
+// HWAccelType represents a hardware acceleration type.
+type HWAccelType string
+
+const (
+	// HWAccelNone disables hardware acceleration (software encoding).
+	HWAccelNone HWAccelType = "none"
+	// HWAccelNVENC uses NVIDIA GPU encoding via NVENC.
+	HWAccelNVENC HWAccelType = "nvenc"
+	// HWAccelQSV uses Intel Quick Sync Video.
+	HWAccelQSV HWAccelType = "qsv"
+	// HWAccelVAAPI uses Video Acceleration API (AMD/Intel on Linux).
+	HWAccelVAAPI HWAccelType = "vaapi"
+	// HWAccelAuto automatically detects the best available encoder.
+	HWAccelAuto HWAccelType = "auto"
+)
+
+// HWAccelConfig holds hardware acceleration configuration.
+type HWAccelConfig struct {
+	Type       HWAccelType // Type of hardware acceleration to use
+	Device     string      // Device path for VAAPI (e.g., /dev/dri/renderD128)
+	Preset     string      // Encoder preset (varies by encoder)
+	LookAhead  int         // Look-ahead frames for NVENC (0 = disabled)
+}
+
 // TranscodeStatus represents the status of a transcoding job.
 type TranscodeStatus string
 

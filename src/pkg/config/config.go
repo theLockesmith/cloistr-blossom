@@ -129,6 +129,40 @@ type IPFSConfig struct {
 	AutoPin bool `yaml:"auto_pin"`
 }
 
+// TranscodingConfig defines video transcoding settings.
+type TranscodingConfig struct {
+	// Work directory for temporary transcoding files
+	WorkDir string `yaml:"work_dir"`
+
+	// Path to FFmpeg binary (empty = auto-detect)
+	FFmpegPath string `yaml:"ffmpeg_path"`
+
+	// Hardware acceleration settings
+	HWAccel HWAccelConfig `yaml:"hwaccel"`
+}
+
+// HWAccelConfig defines hardware acceleration settings for video transcoding.
+type HWAccelConfig struct {
+	// Type of hardware acceleration to use
+	// Options: "none", "nvenc", "qsv", "vaapi", "auto"
+	// Default: "none" (software encoding)
+	Type string `yaml:"type"`
+
+	// Device path for VAAPI (e.g., /dev/dri/renderD128)
+	// Only used when type is "vaapi"
+	Device string `yaml:"device"`
+
+	// Encoder preset (varies by encoder)
+	// - NVENC: p1-p7 (p1=fastest, p7=highest quality), default: p4
+	// - QSV: veryfast, faster, fast, medium, slow, slower, veryslow
+	// - libx264: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+	Preset string `yaml:"preset"`
+
+	// Look-ahead frames for NVENC (0 = disabled)
+	// Higher values improve quality but increase latency and memory usage
+	LookAhead int `yaml:"look_ahead"`
+}
+
 // RateLimitConfig defines a single rate limit.
 type RateLimitConfig struct {
 	Requests int    `yaml:"requests"` // Max requests per window
@@ -183,6 +217,7 @@ type Config struct {
 	CDN          CDNConfig          `yaml:"cdn"`
 	RateLimiting RateLimitingConfig `yaml:"rate_limiting"`
 	IPFS         IPFSConfig         `yaml:"ipfs"`
+	Transcoding  TranscodingConfig  `yaml:"transcoding"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -301,6 +336,11 @@ func (c *Config) applyDefaults() {
 	// Default IPFS settings
 	if c.IPFS.GatewayURL == "" {
 		c.IPFS.GatewayURL = "https://ipfs.io/ipfs/"
+	}
+
+	// Default transcoding settings
+	if c.Transcoding.HWAccel.Type == "" {
+		c.Transcoding.HWAccel.Type = "none" // Default to software encoding
 	}
 }
 

@@ -119,7 +119,15 @@ func New(
 	}
 
 	videoService, err := NewVideoService(storageBackend, appCache, VideoConfig{
+		WorkDir:    conf.Transcoding.WorkDir,
+		FFmpegPath: conf.Transcoding.FFmpegPath,
 		CDNBaseUrl: conf.CdnUrl,
+		HWAccel: core.HWAccelConfig{
+			Type:      core.HWAccelType(conf.Transcoding.HWAccel.Type),
+			Device:    conf.Transcoding.HWAccel.Device,
+			Preset:    conf.Transcoding.HWAccel.Preset,
+			LookAhead: conf.Transcoding.HWAccel.LookAhead,
+		},
 	}, log)
 	if err != nil {
 		log.Fatal(err.Error())

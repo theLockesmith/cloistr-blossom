@@ -35,13 +35,16 @@ type videoService struct {
 	jobs         map[string]*core.TranscodeJob
 	jobsMu       sync.RWMutex
 	cdnBaseUrl   string
+	hwAccel      core.HWAccelConfig
+	encoder      string // detected encoder (libx264, h264_nvenc, h264_qsv, h264_vaapi)
 }
 
 // VideoConfig holds configuration for the video service.
 type VideoConfig struct {
-	WorkDir    string // Directory for temporary transcoding files
-	FFmpegPath string // Path to FFmpeg binary (empty = auto-detect)
-	CDNBaseUrl string // Base URL for serving segments
+	WorkDir    string            // Directory for temporary transcoding files
+	FFmpegPath string            // Path to FFmpeg binary (empty = auto-detect)
+	CDNBaseUrl string            // Base URL for serving segments
+	HWAccel    core.HWAccelConfig // Hardware acceleration configuration
 }
 
 // NewVideoService creates a new video transcoding service.
@@ -71,7 +74,10 @@ func NewVideoService(
 		return nil, fmt.Errorf("create work directory: %w", err)
 	}
 
-	return &videoService{
+	// Detect and configure encoder
+	encoder := detectEncoder(ffmpegPath, conf.HWAccel, log)
+
+	svc := &videoService{
 		storage:    storageBackend,
 		cache:      appCache,
 		workDir:    workDir,
@@ -79,7 +85,91 @@ func NewVideoService(
 		log:        log,
 		jobs:       make(map[string]*core.TranscodeJob),
 		cdnBaseUrl: conf.CDNBaseUrl,
-	}, nil
+		hwAccel:    conf.HWAccel,
+		encoder:    encoder,
+	}
+
+	log.Info("video service initialized",
+		zap.String("encoder", encoder),
+		zap.String("hwaccel_type", string(conf.HWAccel.Type)))
+
+	return svc, nil
+}
+
+// detectEncoder determines the best available encoder based on configuration and hardware.
+func detectEncoder(ffmpegPath string, hwAccel core.HWAccelConfig, log *zap.Logger) string {
+	// If hardware acceleration is explicitly disabled, use software
+	if hwAccel.Type == core.HWAccelNone || hwAccel.Type == "" {
+		return "libx264"
+	}
+
+	// If specific type requested, try that first
+	switch hwAccel.Type {
+	case core.HWAccelNVENC:
+		if checkEncoderAvailable(ffmpegPath, "h264_nvenc") {
+			log.Info("using NVIDIA NVENC hardware encoder")
+			return "h264_nvenc"
+		}
+		log.Warn("NVENC requested but not available, falling back to software")
+		return "libx264"
+
+	case core.HWAccelQSV:
+		if checkEncoderAvailable(ffmpegPath, "h264_qsv") {
+			log.Info("using Intel Quick Sync Video hardware encoder")
+			return "h264_qsv"
+		}
+		log.Warn("QSV requested but not available, falling back to software")
+		return "libx264"
+
+	case core.HWAccelVAAPI:
+		if checkEncoderAvailable(ffmpegPath, "h264_vaapi") {
+			log.Info("using VAAPI hardware encoder")
+			return "h264_vaapi"
+		}
+		log.Warn("VAAPI requested but not available, falling back to software")
+		return "libx264"
+
+	case core.HWAccelAuto:
+		// Try encoders in order of preference
+		encoders := []struct {
+			name    string
+			encoder string
+		}{
+			{"NVIDIA NVENC", "h264_nvenc"},
+			{"Intel QSV", "h264_qsv"},
+			{"VAAPI", "h264_vaapi"},
+		}
+
+		for _, e := range encoders {
+			if checkEncoderAvailable(ffmpegPath, e.encoder) {
+				log.Info("auto-detected hardware encoder", zap.String("encoder", e.name))
+				return e.encoder
+			}
+		}
+
+		log.Info("no hardware encoder available, using software encoding")
+		return "libx264"
+
+	default:
+		return "libx264"
+	}
+}
+
+// checkEncoderAvailable tests if an FFmpeg encoder is available.
+func checkEncoderAvailable(ffmpegPath, encoder string) bool {
+	if ffmpegPath == "" {
+		return false
+	}
+
+	// Use ffmpeg -encoders to list available encoders
+	cmd := exec.Command(ffmpegPath, "-hide_banner", "-encoders")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	// Check if encoder is in the output
+	return strings.Contains(string(output), encoder)
 }
 
 // IsSupported returns true if the MIME type is a supported video format.
@@ -242,27 +332,8 @@ func (s *videoService) runTranscode(ctx context.Context, job *core.TranscodeJob)
 func (s *videoService) transcodeToHLS(inputPath, outputDir string, quality core.VideoQuality) error {
 	outputPath := filepath.Join(outputDir, "stream.m3u8")
 
-	// Build FFmpeg command
-	args := []string{
-		"-i", inputPath,
-		"-c:v", "libx264",
-		"-preset", "veryfast",
-		"-crf", "23",
-		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
-			quality.Width, quality.Height, quality.Width, quality.Height),
-		"-b:v", fmt.Sprintf("%dk", quality.VideoBitrate),
-		"-maxrate", fmt.Sprintf("%dk", int(float64(quality.VideoBitrate)*1.5)),
-		"-bufsize", fmt.Sprintf("%dk", quality.VideoBitrate*2),
-		"-c:a", "aac",
-		"-b:a", fmt.Sprintf("%dk", quality.AudioBitrate),
-		"-ar", "44100",
-		"-f", "hls",
-		"-hls_time", fmt.Sprintf("%d", hlsSegmentDuration),
-		"-hls_playlist_type", "vod",
-		"-hls_segment_filename", filepath.Join(outputDir, "segment_%03d.ts"),
-		"-y",
-		outputPath,
-	}
+	// Build FFmpeg command with hardware acceleration support
+	args := s.buildTranscodeArgs(inputPath, outputPath, outputDir, quality)
 
 	cmd := exec.Command(s.ffmpegPath, args...)
 
@@ -274,6 +345,136 @@ func (s *videoService) transcodeToHLS(inputPath, outputDir string, quality core.
 	}
 
 	return nil
+}
+
+// buildTranscodeArgs builds FFmpeg arguments based on encoder configuration.
+func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir string, quality core.VideoQuality) []string {
+	var args []string
+
+	// Add hardware decode acceleration if using GPU encoder
+	switch s.encoder {
+	case "h264_nvenc":
+		// Use CUDA for hardware decoding with NVENC
+		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
+	case "h264_qsv":
+		// Use QSV for hardware decoding with QSV encoder
+		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+	case "h264_vaapi":
+		// Use VAAPI device for decoding
+		device := s.hwAccel.Device
+		if device == "" {
+			device = "/dev/dri/renderD128"
+		}
+		args = append(args, "-vaapi_device", device, "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi")
+	}
+
+	// Input file
+	args = append(args, "-i", inputPath)
+
+	// Video codec and encoder-specific settings
+	args = append(args, "-c:v", s.encoder)
+
+	// Encoder-specific quality settings
+	switch s.encoder {
+	case "h264_nvenc":
+		// NVENC-specific settings
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "p4" // balanced preset (p1=fastest, p7=slowest/best quality)
+		}
+		args = append(args,
+			"-preset", preset,
+			"-rc", "vbr", // Variable bitrate
+			"-cq", "23",  // Constant quality (similar to CRF)
+		)
+		if s.hwAccel.LookAhead > 0 {
+			// Clamp to maximum supported by most NVENC models
+			lookAhead := s.hwAccel.LookAhead
+			if lookAhead > 32 {
+				lookAhead = 32
+			}
+			args = append(args, "-rc-lookahead", fmt.Sprintf("%d", lookAhead))
+		}
+
+	case "h264_qsv":
+		// QSV-specific settings
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "medium"
+		}
+		args = append(args,
+			"-preset", preset,
+			"-global_quality", "23",
+		)
+
+	case "h264_vaapi":
+		// VAAPI-specific settings - requires scale_vaapi filter
+		args = append(args,
+			"-qp", "23", // Quantization parameter
+		)
+
+	default:
+		// Software encoding (libx264)
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "veryfast"
+		}
+		args = append(args,
+			"-preset", preset,
+			"-crf", "23",
+		)
+	}
+
+	// Video filter for scaling
+	args = append(args, "-vf", s.buildScaleFilter(quality))
+
+	// Bitrate settings
+	args = append(args,
+		"-b:v", fmt.Sprintf("%dk", quality.VideoBitrate),
+		"-maxrate", fmt.Sprintf("%dk", int(float64(quality.VideoBitrate)*1.5)),
+		"-bufsize", fmt.Sprintf("%dk", quality.VideoBitrate*2),
+	)
+
+	// Audio settings
+	args = append(args,
+		"-c:a", "aac",
+		"-b:a", fmt.Sprintf("%dk", quality.AudioBitrate),
+		"-ar", "44100",
+	)
+
+	// HLS output settings
+	args = append(args,
+		"-f", "hls",
+		"-hls_time", fmt.Sprintf("%d", hlsSegmentDuration),
+		"-hls_playlist_type", "vod",
+		"-hls_segment_filename", filepath.Join(outputDir, "segment_%03d.ts"),
+		"-y",
+		outputPath,
+	)
+
+	return args
+}
+
+// buildScaleFilter builds the appropriate scale filter based on encoder.
+func (s *videoService) buildScaleFilter(quality core.VideoQuality) string {
+	switch s.encoder {
+	case "h264_nvenc":
+		// CUDA scale filter for NVENC - stays on GPU entirely
+		return fmt.Sprintf("scale_cuda=%d:%d:force_original_aspect_ratio=decrease",
+			quality.Width, quality.Height)
+	case "h264_qsv":
+		// QSV scale filter
+		return fmt.Sprintf("scale_qsv=w=%d:h=%d",
+			quality.Width, quality.Height)
+	case "h264_vaapi":
+		// VAAPI scale filter
+		return fmt.Sprintf("scale_vaapi=w=%d:h=%d",
+			quality.Width, quality.Height)
+	default:
+		// Software scale filter with padding for aspect ratio preservation
+		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
+			quality.Width, quality.Height, quality.Width, quality.Height)
+	}
 }
 
 // generateMasterPlaylist creates the master HLS playlist.
@@ -561,44 +762,8 @@ func (s *videoService) transcodeToDASH(inputPath string, job *core.TranscodeJob)
 
 	outputPath := filepath.Join(dashDir, "manifest.mpd")
 
-	// Build FFmpeg command for multi-bitrate DASH
-	// Use filter_complex for multiple outputs
-	args := []string{
-		"-i", inputPath,
-	}
-
-	// Add video streams for each quality
-	var maps []string
-	var adaptationSet []string
-
-	for i, quality := range job.Qualities {
-		// Video filter for this quality
-		args = append(args,
-			"-map", "0:v:0",
-			"-map", "0:a:0",
-		)
-		maps = append(maps, fmt.Sprintf("-c:v:%d", i), "libx264",
-			fmt.Sprintf("-b:v:%d", i), fmt.Sprintf("%dk", quality.VideoBitrate),
-			fmt.Sprintf("-s:v:%d", i), fmt.Sprintf("%dx%d", quality.Width, quality.Height),
-			fmt.Sprintf("-c:a:%d", i), "aac",
-			fmt.Sprintf("-b:a:%d", i), fmt.Sprintf("%dk", quality.AudioBitrate),
-		)
-		adaptationSet = append(adaptationSet, fmt.Sprintf("id=%d,streams=%d", i, i))
-	}
-
-	args = append(args, maps...)
-	args = append(args,
-		"-preset", "veryfast",
-		"-f", "dash",
-		"-seg_duration", fmt.Sprintf("%d", dashSegmentDuration),
-		"-use_template", "1",
-		"-use_timeline", "1",
-		"-init_seg_name", "init-stream$RepresentationID$.m4s",
-		"-media_seg_name", "chunk-stream$RepresentationID$-$Number%05d$.m4s",
-		"-adaptation_sets", strings.Join(adaptationSet, " "),
-		"-y",
-		outputPath,
-	)
+	// Build FFmpeg command for multi-bitrate DASH with hardware acceleration
+	args := s.buildDASHArgs(inputPath, outputPath, job.Qualities)
 
 	cmd := exec.Command(s.ffmpegPath, args...)
 
@@ -610,6 +775,86 @@ func (s *videoService) transcodeToDASH(inputPath string, job *core.TranscodeJob)
 	}
 
 	return nil
+}
+
+// buildDASHArgs builds FFmpeg arguments for DASH transcoding with hardware acceleration.
+func (s *videoService) buildDASHArgs(inputPath, outputPath string, qualities []core.VideoQuality) []string {
+	var args []string
+
+	// Add hardware decode acceleration if using GPU encoder
+	switch s.encoder {
+	case "h264_nvenc":
+		args = append(args, "-hwaccel", "cuda")
+	case "h264_qsv":
+		args = append(args, "-hwaccel", "qsv")
+	case "h264_vaapi":
+		device := s.hwAccel.Device
+		if device == "" {
+			device = "/dev/dri/renderD128"
+		}
+		args = append(args, "-vaapi_device", device, "-hwaccel", "vaapi")
+	}
+
+	args = append(args, "-i", inputPath)
+
+	// Add video streams for each quality
+	var maps []string
+	var adaptationSet []string
+
+	for i, quality := range qualities {
+		args = append(args,
+			"-map", "0:v:0",
+			"-map", "0:a:0",
+		)
+		maps = append(maps,
+			fmt.Sprintf("-c:v:%d", i), s.encoder,
+			fmt.Sprintf("-b:v:%d", i), fmt.Sprintf("%dk", quality.VideoBitrate),
+			fmt.Sprintf("-s:v:%d", i), fmt.Sprintf("%dx%d", quality.Width, quality.Height),
+			fmt.Sprintf("-c:a:%d", i), "aac",
+			fmt.Sprintf("-b:a:%d", i), fmt.Sprintf("%dk", quality.AudioBitrate),
+		)
+		adaptationSet = append(adaptationSet, fmt.Sprintf("id=%d,streams=%d", i, i))
+	}
+
+	args = append(args, maps...)
+
+	// Add encoder-specific quality settings
+	switch s.encoder {
+	case "h264_nvenc":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "p4"
+		}
+		args = append(args, "-preset", preset, "-rc", "vbr", "-cq", "23")
+	case "h264_qsv":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "medium"
+		}
+		args = append(args, "-preset", preset, "-global_quality", "23")
+	case "h264_vaapi":
+		args = append(args, "-qp", "23")
+	default:
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "veryfast"
+		}
+		args = append(args, "-preset", preset)
+	}
+
+	args = append(args,
+		"-f", "dash",
+		"-seg_duration", fmt.Sprintf("%d", dashSegmentDuration),
+		"-use_template", "1",
+		"-use_timeline", "1",
+		"-init_seg_name", "init-stream$RepresentationID$.m4s",
+		"-media_seg_name", "chunk-stream$RepresentationID$-$Number%05d$.m4s",
+		"-adaptation_sets", strings.Join(adaptationSet, " "),
+		"-y",
+		outputPath,
+	)
+
+	return args
 }
 
 // GetDASHManifest returns the DASH manifest for a transcoded video.

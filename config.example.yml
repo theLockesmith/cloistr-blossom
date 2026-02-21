@@ -114,6 +114,47 @@ quota:
 #   whitelisted_pubkeys:
 #     - "abc123..."
 
+# Video transcoding configuration (optional)
+# Configure hardware acceleration for video transcoding.
+# transcoding:
+#   work_dir: "/tmp/blossom-transcode"  # Directory for temporary files
+#   ffmpeg_path: ""                      # Auto-detect if empty
+#
+#   # Hardware acceleration settings
+#   hwaccel:
+#     # Type of hardware acceleration to use
+#     # Options: "none" (software), "nvenc" (NVIDIA), "qsv" (Intel), "vaapi" (AMD/Intel Linux), "auto"
+#     # Default: "none"
+#     type: "none"
+#
+#     # Device path for VAAPI (only used when type is "vaapi")
+#     # device: "/dev/dri/renderD128"
+#
+#     # Encoder preset (varies by encoder)
+#     # - NVENC: p1-p7 (p1=fastest, p7=highest quality), default: p4
+#     # - QSV: veryfast, faster, fast, medium, slow, slower, veryslow
+#     # - libx264: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+#     # preset: "veryfast"
+#
+#     # Look-ahead frames for NVENC (improves quality, increases memory usage)
+#     # look_ahead: 0
+#
+#   # Example: NVIDIA GPU encoding
+#   # hwaccel:
+#   #   type: "nvenc"
+#   #   preset: "p4"      # Balanced speed/quality
+#   #   look_ahead: 20    # Higher quality B-frame decisions
+#
+#   # Example: Intel Quick Sync Video
+#   # hwaccel:
+#   #   type: "qsv"
+#   #   preset: "medium"
+#
+#   # Example: VAAPI (AMD GPU or Intel on Linux)
+#   # hwaccel:
+#   #   type: "vaapi"
+#   #   device: "/dev/dri/renderD128"
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 
