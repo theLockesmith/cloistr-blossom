@@ -220,7 +220,7 @@ func deleteBlob(
 			ctx.Request.Context(),
 			services,
 			ctx.GetString("pk"),
-			ctx.Param("path"),
+			ctx.Param("hash"),
 			ctx.GetString("x"),
 		); err != nil {
 			ctx.AbortWithStatusJSON(

@@ -27,7 +27,7 @@ func getBlob(
 	processor := media.NewImageProcessor()
 
 	return func(ctx *gin.Context) {
-		pathParts := strings.Split(ctx.Param("path"), ".")
+		pathParts := strings.Split(ctx.Param("hash"), ".")
 		hash := pathParts[0]
 
 		// Check for image processing parameters
@@ -164,7 +164,7 @@ func hasBlob(
 	services core.Services,
 ) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		pathParts := strings.Split(ctx.Param("path"), ".")
+		pathParts := strings.Split(ctx.Param("hash"), ".")
 		_, err := bud01.HasBlob(
 			ctx.Request.Context(),
 			services,

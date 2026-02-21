@@ -178,16 +178,16 @@ func SetupRoutes(
 	)
 
 	r.GET(
-		"/:path",
+		"/:hash",
 		getBlob(services),
 	)
 	r.HEAD(
-		"/:path",
+		"/:hash",
 		hasBlob(services),
 	)
 
 	r.DELETE(
-		"/:path",
+		"/:hash",
 		nostrAuthMiddleware("delete", log),
 		deleteBlob(services),
 	)
