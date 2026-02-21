@@ -85,6 +85,7 @@ git merge upstream/master
 | IPFS Pinning | ✅ | Pin blobs to IPFS via pinning services |
 | Drive Integration | ✅ | Tested with cloistr-drive web UI |
 | GPU Transcoding | ✅ | NVENC, QSV, VAAPI hardware acceleration |
+| Torrent Seeds | ✅ | Generate .torrent files with WebSeeds (BEP 19) |
 
 ## Project Structure
 
@@ -211,6 +212,33 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 - web3.storage
 - Filebase
 - Any IPFS Pinning Service API compatible endpoint
+
+### Torrent Seeds
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/:hash/torrent` | Yes | Generate .torrent file for blob |
+| GET | `/:hash/torrent` | No | Get cached .torrent file |
+| DELETE | `/:hash/torrent` | Yes | Delete cached .torrent file |
+
+**Query parameters for POST:**
+- `tracker` - Tracker URL (can specify multiple)
+- `webseed` - WebSeed URL (can specify multiple, defaults to server URL)
+- `dht` - Enable DHT bootstrap nodes (default: true)
+- `comment` - Optional comment in torrent file
+- `created_by` - Creator identifier (default: coldforge-blossom)
+
+**Response formats:**
+- `Accept: application/json` - Returns torrent metadata (info_hash, magnet_uri, etc.)
+- Default - Returns .torrent file with Content-Disposition header
+
+**Features:**
+- BEP 3: Standard BitTorrent metainfo
+- BEP 5: DHT bootstrap nodes for tracker-less operation
+- BEP 12: Multi-tracker support
+- BEP 19: WebSeeds for HTTP fallback (points to Blossom server)
+- Automatic piece length calculation based on file size
+- Torrent files cached for 1 week
 
 **Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
 
@@ -348,19 +376,16 @@ transcoding:
 
 ### P1 - High Priority
 
-1. **Torrent Seeds** - Generate .torrent files for peer distribution
+1. **Deduplication** - Content-addressable dedup across users
 
 ### P2 - Medium Priority
 
-2. **Deduplication** - Content-addressable dedup across users
-3. **BUD-09 Reporting** - Standardized abuse reporting protocol
-
-### P3 - Nice to Have
-
-4. **AV1/HEVC Support** - Modern codec support for better compression
+2. **BUD-09 Reporting** - Standardized abuse reporting protocol
+3. **AV1/HEVC Support** - Modern codec support for better compression
 
 ### Completed
 
+- ~~Torrent Seeds~~ - BEP 3/5/12/19 compliant .torrent generation (2026-02-21)
 - ~~GPU Transcoding~~ - NVENC, QSV, VAAPI hardware acceleration (2026-02-20)
 - ~~Drive Frontend Integration~~ - Tested with cloistr-drive (2026-02-20)
 

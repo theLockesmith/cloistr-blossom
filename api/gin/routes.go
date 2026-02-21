@@ -172,6 +172,22 @@ func SetupRoutes(
 		deleteSubtitle(services),
 	)
 
+	// Torrent endpoints
+	r.POST(
+		"/:hash/torrent",
+		nostrAuthMiddleware("upload", log),
+		generateTorrent(services, cdnBaseUrl),
+	)
+	r.GET(
+		"/:hash/torrent",
+		getTorrent(services),
+	)
+	r.DELETE(
+		"/:hash/torrent",
+		nostrAuthMiddleware("delete", log),
+		deleteTorrent(services),
+	)
+
 	r.GET(
 		"/list/:pubkey",
 		listBlobs(services),

@@ -26,6 +26,7 @@ type services struct {
 	video      core.VideoService
 	cdn        core.CDNService
 	ipfs       core.IPFSService
+	torrent    core.TorrentService
 	cache      cache.Cache
 	conf       *config.Config
 }
@@ -146,6 +147,8 @@ func New(
 		log.Fatal(err.Error())
 	}
 
+	torrentService := NewTorrentService(storageBackend, appCache, log)
+
 	return &services{
 		blobs:      blobService,
 		acrs:       acrService,
@@ -158,6 +161,7 @@ func New(
 		video:      videoService,
 		cdn:        cdnService,
 		ipfs:       ipfsService,
+		torrent:    torrentService,
 		cache:      appCache,
 		conf:       conf,
 	}
@@ -205,6 +209,10 @@ func (s *services) CDN() core.CDNService {
 
 func (s *services) IPFS() core.IPFSService {
 	return s.ipfs
+}
+
+func (s *services) Torrent() core.TorrentService {
+	return s.torrent
 }
 
 func (s *services) Cache() cache.Cache {

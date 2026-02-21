@@ -3,6 +3,7 @@ module git.coldforge.xyz/coldforge/cloistr-blossom
 go 1.25.0
 
 require (
+	github.com/anacrolix/torrent v1.61.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
@@ -28,6 +29,9 @@ require (
 )
 
 require (
+	github.com/anacrolix/generics v0.1.1-0.20251125230353-15d98d46693b // indirect
+	github.com/anacrolix/missinggo v1.3.0 // indirect
+	github.com/anacrolix/missinggo/v2 v2.10.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
@@ -63,6 +67,7 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.2.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/ipfs/go-log/v2 v2.9.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

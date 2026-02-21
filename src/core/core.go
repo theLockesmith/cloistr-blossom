@@ -21,6 +21,7 @@ type Services interface {
 	Video() VideoService
 	CDN() CDNService
 	IPFS() IPFSService
+	Torrent() TorrentService
 	Cache() cache.Cache
 }
 
