@@ -1,4 +1,4 @@
-// Package metrics provides Prometheus metrics for coldforge-blossom.
+// Package metrics provides Prometheus metrics for cloistr-blossom.
 package metrics
 
 import (
@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const namespace = "coldforge_blossom"
+const namespace = "cloistr_blossom"
 
 var (
 	// RequestsTotal counts total HTTP requests by method and status.

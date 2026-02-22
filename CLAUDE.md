@@ -313,9 +313,9 @@ database:
   postgres:
     host: postgres-rw.db.coldforge.xyz
     port: 5432
-    user: coldforge_blossom
+    user: cloistr_blossom
     password: ${DB_PASSWORD}
-    database: coldforge_blossom
+    database: cloistr_blossom
 
 storage:
   backend: s3  # or local
@@ -393,14 +393,14 @@ transcoding:
 
 ### Prometheus Metrics
 
-- `coldforge_blossom_requests_total` - HTTP requests by method/path/status
-- `coldforge_blossom_uploads_total` - Uploads by status/encryption
-- `coldforge_blossom_downloads_total` - Downloads by status
-- `coldforge_blossom_storage_bytes` - Total storage used
-- `coldforge_blossom_stored_blobs` - Total blob count
-- `coldforge_blossom_active_users` - Users with stored blobs
-- `coldforge_blossom_errors_total` - Errors by type
-- `coldforge_blossom_reports_total` - Content reports by reason
+- `cloistr_blossom_requests_total` - HTTP requests by method/path/status
+- `cloistr_blossom_uploads_total` - Uploads by status/encryption
+- `cloistr_blossom_downloads_total` - Downloads by status
+- `cloistr_blossom_storage_bytes` - Total storage used
+- `cloistr_blossom_stored_blobs` - Total blob count
+- `cloistr_blossom_active_users` - Users with stored blobs
+- `cloistr_blossom_errors_total` - Errors by type
+- `cloistr_blossom_reports_total` - Content reports by reason
 
 ### Grafana Dashboard
 
