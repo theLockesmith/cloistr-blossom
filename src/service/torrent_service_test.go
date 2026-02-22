@@ -140,7 +140,7 @@ func TestGenerateTorrent_MinimalConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should have default CreatedBy
-	assert.Equal(t, "coldforge-blossom", mi.CreatedBy)
+	assert.Equal(t, "cloistr-blossom", mi.CreatedBy)
 }
 
 func TestGenerateTorrent_MultipleTrackers(t *testing.T) {

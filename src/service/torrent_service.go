@@ -105,7 +105,7 @@ func (s *torrentService) GenerateTorrent(ctx context.Context, blobHash string, c
 	// Set creation metadata
 	mi.CreatedBy = config.CreatedBy
 	if mi.CreatedBy == "" {
-		mi.CreatedBy = "coldforge-blossom"
+		mi.CreatedBy = "cloistr-blossom"
 	}
 	mi.CreationDate = time.Now().Unix()
 	mi.Comment = config.Comment
