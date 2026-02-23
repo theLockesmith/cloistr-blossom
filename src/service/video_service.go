@@ -36,7 +36,8 @@ type videoService struct {
 	jobsMu       sync.RWMutex
 	cdnBaseUrl   string
 	hwAccel      core.HWAccelConfig
-	encoder      string // detected encoder (libx264, h264_nvenc, h264_qsv, h264_vaapi)
+	encoder      string          // detected encoder (libx264, h264_nvenc, hevc_nvenc, etc.)
+	codec        core.VideoCodec // selected codec (h264, hevc, av1)
 }
 
 // VideoConfig holds configuration for the video service.
@@ -74,8 +75,12 @@ func NewVideoService(
 		return nil, fmt.Errorf("create work directory: %w", err)
 	}
 
-	// Detect and configure encoder
-	encoder := detectEncoder(ffmpegPath, conf.HWAccel, log)
+	// Detect and configure encoder based on codec and hardware
+	codec := conf.HWAccel.Codec
+	if codec == "" {
+		codec = core.CodecH264 // default to H.264 for best compatibility
+	}
+	encoder := detectEncoder(ffmpegPath, conf.HWAccel, codec, log)
 
 	svc := &videoService{
 		storage:    storageBackend,
@@ -87,71 +92,163 @@ func NewVideoService(
 		cdnBaseUrl: conf.CDNBaseUrl,
 		hwAccel:    conf.HWAccel,
 		encoder:    encoder,
+		codec:      codec,
 	}
 
 	log.Info("video service initialized",
 		zap.String("encoder", encoder),
+		zap.String("codec", string(codec)),
 		zap.String("hwaccel_type", string(conf.HWAccel.Type)))
 
 	return svc, nil
 }
 
-// detectEncoder determines the best available encoder based on configuration and hardware.
-func detectEncoder(ffmpegPath string, hwAccel core.HWAccelConfig, log *zap.Logger) string {
+// detectEncoder determines the best available encoder based on configuration, codec, and hardware.
+func detectEncoder(ffmpegPath string, hwAccel core.HWAccelConfig, codec core.VideoCodec, log *zap.Logger) string {
+	// Get software fallback encoder for this codec
+	softwareEncoder := getSoftwareEncoder(codec)
+
 	// If hardware acceleration is explicitly disabled, use software
 	if hwAccel.Type == core.HWAccelNone || hwAccel.Type == "" {
-		return "libx264"
+		return softwareEncoder
 	}
 
 	// If specific type requested, try that first
 	switch hwAccel.Type {
 	case core.HWAccelNVENC:
-		if checkEncoderAvailable(ffmpegPath, "h264_nvenc") {
-			log.Info("using NVIDIA NVENC hardware encoder")
-			return "h264_nvenc"
+		encoder := getNVENCEncoder(codec)
+		if checkEncoderAvailable(ffmpegPath, encoder) {
+			log.Info("using NVIDIA NVENC hardware encoder",
+				zap.String("encoder", encoder),
+				zap.String("codec", string(codec)))
+			return encoder
 		}
-		log.Warn("NVENC requested but not available, falling back to software")
-		return "libx264"
+		log.Warn("NVENC requested but not available, falling back to software",
+			zap.String("codec", string(codec)))
+		return softwareEncoder
 
 	case core.HWAccelQSV:
-		if checkEncoderAvailable(ffmpegPath, "h264_qsv") {
-			log.Info("using Intel Quick Sync Video hardware encoder")
-			return "h264_qsv"
+		encoder := getQSVEncoder(codec)
+		if checkEncoderAvailable(ffmpegPath, encoder) {
+			log.Info("using Intel Quick Sync Video hardware encoder",
+				zap.String("encoder", encoder),
+				zap.String("codec", string(codec)))
+			return encoder
 		}
-		log.Warn("QSV requested but not available, falling back to software")
-		return "libx264"
+		log.Warn("QSV requested but not available, falling back to software",
+			zap.String("codec", string(codec)))
+		return softwareEncoder
 
 	case core.HWAccelVAAPI:
-		if checkEncoderAvailable(ffmpegPath, "h264_vaapi") {
-			log.Info("using VAAPI hardware encoder")
-			return "h264_vaapi"
+		encoder := getVAAPIEncoder(codec)
+		if checkEncoderAvailable(ffmpegPath, encoder) {
+			log.Info("using VAAPI hardware encoder",
+				zap.String("encoder", encoder),
+				zap.String("codec", string(codec)))
+			return encoder
 		}
-		log.Warn("VAAPI requested but not available, falling back to software")
-		return "libx264"
+		log.Warn("VAAPI requested but not available, falling back to software",
+			zap.String("codec", string(codec)))
+		return softwareEncoder
 
 	case core.HWAccelAuto:
-		// Try encoders in order of preference
-		encoders := []struct {
-			name    string
-			encoder string
-		}{
-			{"NVIDIA NVENC", "h264_nvenc"},
-			{"Intel QSV", "h264_qsv"},
-			{"VAAPI", "h264_vaapi"},
-		}
+		// Try encoders in order of preference for the selected codec
+		encoders := getEncodersByPriority(codec)
 
 		for _, e := range encoders {
 			if checkEncoderAvailable(ffmpegPath, e.encoder) {
-				log.Info("auto-detected hardware encoder", zap.String("encoder", e.name))
+				log.Info("auto-detected hardware encoder",
+					zap.String("name", e.name),
+					zap.String("encoder", e.encoder),
+					zap.String("codec", string(codec)))
 				return e.encoder
 			}
 		}
 
-		log.Info("no hardware encoder available, using software encoding")
-		return "libx264"
+		log.Info("no hardware encoder available, using software encoding",
+			zap.String("codec", string(codec)))
+		return softwareEncoder
 
 	default:
+		return softwareEncoder
+	}
+}
+
+// getSoftwareEncoder returns the software encoder for a given codec.
+func getSoftwareEncoder(codec core.VideoCodec) string {
+	switch codec {
+	case core.CodecHEVC:
+		return "libx265"
+	case core.CodecAV1:
+		return "libsvtav1" // SVT-AV1 is faster than libaom-av1
+	default:
 		return "libx264"
+	}
+}
+
+// getNVENCEncoder returns the NVENC encoder for a given codec.
+func getNVENCEncoder(codec core.VideoCodec) string {
+	switch codec {
+	case core.CodecHEVC:
+		return "hevc_nvenc"
+	case core.CodecAV1:
+		return "av1_nvenc" // Requires RTX 40-series or newer
+	default:
+		return "h264_nvenc"
+	}
+}
+
+// getQSVEncoder returns the QSV encoder for a given codec.
+func getQSVEncoder(codec core.VideoCodec) string {
+	switch codec {
+	case core.CodecHEVC:
+		return "hevc_qsv"
+	case core.CodecAV1:
+		return "av1_qsv" // Requires Intel Arc or 12th+ gen
+	default:
+		return "h264_qsv"
+	}
+}
+
+// getVAAPIEncoder returns the VAAPI encoder for a given codec.
+func getVAAPIEncoder(codec core.VideoCodec) string {
+	switch codec {
+	case core.CodecHEVC:
+		return "hevc_vaapi"
+	case core.CodecAV1:
+		return "av1_vaapi" // Limited hardware support
+	default:
+		return "h264_vaapi"
+	}
+}
+
+// encoderInfo holds information about an encoder for auto-detection.
+type encoderInfo struct {
+	name    string
+	encoder string
+}
+
+// getEncodersByPriority returns encoders in priority order for auto-detection.
+func getEncodersByPriority(codec core.VideoCodec) []encoderInfo {
+	switch codec {
+	case core.CodecHEVC:
+		return []encoderInfo{
+			{"NVIDIA NVENC HEVC", "hevc_nvenc"},
+			{"Intel QSV HEVC", "hevc_qsv"},
+			{"VAAPI HEVC", "hevc_vaapi"},
+		}
+	case core.CodecAV1:
+		return []encoderInfo{
+			{"NVIDIA NVENC AV1", "av1_nvenc"},
+			{"Intel QSV AV1", "av1_qsv"},
+			{"VAAPI AV1", "av1_vaapi"},
+		}
+	default:
+		return []encoderInfo{
+			{"NVIDIA NVENC H.264", "h264_nvenc"},
+			{"Intel QSV H.264", "h264_qsv"},
+			{"VAAPI H.264", "h264_vaapi"},
+		}
 	}
 }
 
@@ -207,9 +304,9 @@ func (s *videoService) StartTranscode(ctx context.Context, blobHash string, qual
 		return nil, core.ErrTranscodeInProgress
 	}
 
-	// Use default qualities if none specified
+	// Use default qualities if none specified (codec-specific)
 	if len(qualities) == 0 {
-		qualities = core.DefaultQualities
+		qualities = core.GetDefaultQualities(s.codec)
 	}
 
 	// Create output directory
@@ -353,13 +450,13 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 
 	// Add hardware decode acceleration if using GPU encoder
 	switch s.encoder {
-	case "h264_nvenc":
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		// Use CUDA for hardware decoding with NVENC
 		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-	case "h264_qsv":
+	case "h264_qsv", "hevc_qsv", "av1_qsv":
 		// Use QSV for hardware decoding with QSV encoder
 		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
-	case "h264_vaapi":
+	case "h264_vaapi", "hevc_vaapi", "av1_vaapi":
 		// Use VAAPI device for decoding
 		device := s.hwAccel.Device
 		if device == "" {
@@ -376,8 +473,8 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 
 	// Encoder-specific quality settings
 	switch s.encoder {
-	case "h264_nvenc":
-		// NVENC-specific settings
+	// NVENC encoders (NVIDIA)
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		preset := s.hwAccel.Preset
 		if preset == "" {
 			preset = "p4" // balanced preset (p1=fastest, p7=slowest/best quality)
@@ -396,8 +493,8 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 			args = append(args, "-rc-lookahead", fmt.Sprintf("%d", lookAhead))
 		}
 
-	case "h264_qsv":
-		// QSV-specific settings
+	// QSV encoders (Intel)
+	case "h264_qsv", "hevc_qsv", "av1_qsv":
 		preset := s.hwAccel.Preset
 		if preset == "" {
 			preset = "medium"
@@ -407,14 +504,46 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 			"-global_quality", "23",
 		)
 
-	case "h264_vaapi":
-		// VAAPI-specific settings - requires scale_vaapi filter
+	// VAAPI encoders (Linux AMD/Intel)
+	case "h264_vaapi", "hevc_vaapi", "av1_vaapi":
 		args = append(args,
 			"-qp", "23", // Quantization parameter
 		)
 
+	// Software x265 (HEVC)
+	case "libx265":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "medium" // x265 presets: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+		}
+		args = append(args,
+			"-preset", preset,
+			"-crf", "23",
+			"-tag:v", "hvc1", // Required for Apple device compatibility
+		)
+
+	// Software SVT-AV1
+	case "libsvtav1":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "6" // SVT-AV1 presets 0-13 (0=slowest/best, 13=fastest)
+		}
+		args = append(args,
+			"-preset", preset,
+			"-crf", "30", // AV1 CRF scale differs from H.264/HEVC
+			"-svtav1-params", "tune=0", // Visual quality tuning
+		)
+
+	// Software libaom-av1 (slower but higher quality reference encoder)
+	case "libaom-av1":
+		args = append(args,
+			"-cpu-used", "4", // 0-8, higher = faster
+			"-crf", "30",
+			"-b:v", "0", // Required for CRF mode
+		)
+
+	// Software x264 (default)
 	default:
-		// Software encoding (libx264)
 		preset := s.hwAccel.Preset
 		if preset == "" {
 			preset = "veryfast"
@@ -458,15 +587,15 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 // buildScaleFilter builds the appropriate scale filter based on encoder.
 func (s *videoService) buildScaleFilter(quality core.VideoQuality) string {
 	switch s.encoder {
-	case "h264_nvenc":
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		// CUDA scale filter for NVENC - stays on GPU entirely
 		return fmt.Sprintf("scale_cuda=%d:%d:force_original_aspect_ratio=decrease",
 			quality.Width, quality.Height)
-	case "h264_qsv":
+	case "h264_qsv", "hevc_qsv", "av1_qsv":
 		// QSV scale filter
 		return fmt.Sprintf("scale_qsv=w=%d:h=%d",
 			quality.Width, quality.Height)
-	case "h264_vaapi":
+	case "h264_vaapi", "hevc_vaapi", "av1_vaapi":
 		// VAAPI scale filter
 		return fmt.Sprintf("scale_vaapi=w=%d:h=%d",
 			quality.Width, quality.Height)
@@ -577,7 +706,7 @@ func (s *videoService) GetTranscodeStatus(ctx context.Context, blobHash string) 
 			BlobHash:  blobHash,
 			Status:    core.TranscodeStatusComplete,
 			Progress:  100,
-			Qualities: core.DefaultQualities,
+			Qualities: core.GetDefaultQualities(s.codec),
 		}, nil
 	}
 
@@ -783,11 +912,11 @@ func (s *videoService) buildDASHArgs(inputPath, outputPath string, qualities []c
 
 	// Add hardware decode acceleration if using GPU encoder
 	switch s.encoder {
-	case "h264_nvenc":
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		args = append(args, "-hwaccel", "cuda")
-	case "h264_qsv":
+	case "h264_qsv", "hevc_qsv", "av1_qsv":
 		args = append(args, "-hwaccel", "qsv")
-	case "h264_vaapi":
+	case "h264_vaapi", "hevc_vaapi", "av1_vaapi":
 		device := s.hwAccel.Device
 		if device == "" {
 			device = "/dev/dri/renderD128"
@@ -820,20 +949,47 @@ func (s *videoService) buildDASHArgs(inputPath, outputPath string, qualities []c
 
 	// Add encoder-specific quality settings
 	switch s.encoder {
-	case "h264_nvenc":
+	// NVENC encoders (NVIDIA)
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		preset := s.hwAccel.Preset
 		if preset == "" {
 			preset = "p4"
 		}
 		args = append(args, "-preset", preset, "-rc", "vbr", "-cq", "23")
-	case "h264_qsv":
+
+	// QSV encoders (Intel)
+	case "h264_qsv", "hevc_qsv", "av1_qsv":
 		preset := s.hwAccel.Preset
 		if preset == "" {
 			preset = "medium"
 		}
 		args = append(args, "-preset", preset, "-global_quality", "23")
-	case "h264_vaapi":
+
+	// VAAPI encoders (Linux AMD/Intel)
+	case "h264_vaapi", "hevc_vaapi", "av1_vaapi":
 		args = append(args, "-qp", "23")
+
+	// Software x265 (HEVC)
+	case "libx265":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "medium"
+		}
+		args = append(args, "-preset", preset, "-tag:v", "hvc1")
+
+	// Software SVT-AV1
+	case "libsvtav1":
+		preset := s.hwAccel.Preset
+		if preset == "" {
+			preset = "6"
+		}
+		args = append(args, "-preset", preset)
+
+	// Software libaom-av1
+	case "libaom-av1":
+		args = append(args, "-cpu-used", "4")
+
+	// Software x264 (default)
 	default:
 		preset := s.hwAccel.Preset
 		if preset == "" {

@@ -36,12 +36,25 @@ const (
 	HWAccelAuto HWAccelType = "auto"
 )
 
+// VideoCodec represents a video codec for transcoding.
+type VideoCodec string
+
+const (
+	// CodecH264 uses H.264/AVC encoding (best compatibility).
+	CodecH264 VideoCodec = "h264"
+	// CodecHEVC uses H.265/HEVC encoding (better compression, good device support).
+	CodecHEVC VideoCodec = "hevc"
+	// CodecAV1 uses AV1 encoding (best compression, newer device support).
+	CodecAV1 VideoCodec = "av1"
+)
+
 // HWAccelConfig holds hardware acceleration configuration.
 type HWAccelConfig struct {
-	Type       HWAccelType // Type of hardware acceleration to use
-	Device     string      // Device path for VAAPI (e.g., /dev/dri/renderD128)
-	Preset     string      // Encoder preset (varies by encoder)
-	LookAhead  int         // Look-ahead frames for NVENC (0 = disabled)
+	Type      HWAccelType // Type of hardware acceleration to use
+	Codec     VideoCodec  // Video codec to use (h264, hevc, av1)
+	Device    string      // Device path for VAAPI (e.g., /dev/dri/renderD128)
+	Preset    string      // Encoder preset (varies by encoder)
+	LookAhead int         // Look-ahead frames for NVENC (0 = disabled)
 }
 
 // TranscodeStatus represents the status of a transcoding job.
@@ -63,7 +76,7 @@ type VideoQuality struct {
 	AudioBitrate int  // Audio bitrate in kbps
 }
 
-// Standard video quality presets.
+// Standard video quality presets for H.264.
 var (
 	Quality1080p = VideoQuality{Name: "1080p", Width: 1920, Height: 1080, VideoBitrate: 5000, AudioBitrate: 192}
 	Quality720p  = VideoQuality{Name: "720p", Width: 1280, Height: 720, VideoBitrate: 2500, AudioBitrate: 128}
@@ -72,6 +85,38 @@ var (
 
 	DefaultQualities = []VideoQuality{Quality720p, Quality480p, Quality360p}
 )
+
+// HEVC (H.265) quality presets - ~30% more efficient than H.264.
+var (
+	HEVCQuality1080p = VideoQuality{Name: "1080p", Width: 1920, Height: 1080, VideoBitrate: 3500, AudioBitrate: 192}
+	HEVCQuality720p  = VideoQuality{Name: "720p", Width: 1280, Height: 720, VideoBitrate: 1750, AudioBitrate: 128}
+	HEVCQuality480p  = VideoQuality{Name: "480p", Width: 854, Height: 480, VideoBitrate: 700, AudioBitrate: 96}
+	HEVCQuality360p  = VideoQuality{Name: "360p", Width: 640, Height: 360, VideoBitrate: 420, AudioBitrate: 96}
+
+	HEVCDefaultQualities = []VideoQuality{HEVCQuality720p, HEVCQuality480p, HEVCQuality360p}
+)
+
+// AV1 quality presets - ~40% more efficient than H.264.
+var (
+	AV1Quality1080p = VideoQuality{Name: "1080p", Width: 1920, Height: 1080, VideoBitrate: 3000, AudioBitrate: 192}
+	AV1Quality720p  = VideoQuality{Name: "720p", Width: 1280, Height: 720, VideoBitrate: 1500, AudioBitrate: 128}
+	AV1Quality480p  = VideoQuality{Name: "480p", Width: 854, Height: 480, VideoBitrate: 600, AudioBitrate: 96}
+	AV1Quality360p  = VideoQuality{Name: "360p", Width: 640, Height: 360, VideoBitrate: 360, AudioBitrate: 96}
+
+	AV1DefaultQualities = []VideoQuality{AV1Quality720p, AV1Quality480p, AV1Quality360p}
+)
+
+// GetDefaultQualities returns the default quality presets for a given codec.
+func GetDefaultQualities(codec VideoCodec) []VideoQuality {
+	switch codec {
+	case CodecHEVC:
+		return HEVCDefaultQualities
+	case CodecAV1:
+		return AV1DefaultQualities
+	default:
+		return DefaultQualities
+	}
+}
 
 // TranscodeJob represents a video transcoding job.
 type TranscodeJob struct {

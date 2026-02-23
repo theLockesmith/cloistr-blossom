@@ -88,6 +88,7 @@ git merge upstream/master
 | Torrent Seeds | ✅ | Generate .torrent files with WebSeeds (BEP 19) |
 | Deduplication | ✅ | Content-addressable dedup across users |
 | BUD-09 Reporting | ✅ | NIP-56 signed reports, re-upload prevention |
+| AV1/HEVC Codecs | ✅ | Modern codec support for better compression |
 
 ## Project Structure
 
@@ -291,7 +292,9 @@ When content is removed due to a report, the blob hash is added to a blocklist. 
 - Automatic piece length calculation based on file size
 - Torrent files cached for 1 week
 
-**Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
+**Quality presets (H.264):** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
+**Quality presets (HEVC):** 720p (1750kbps), 480p (700kbps), 360p (420kbps) - ~30% more efficient
+**Quality presets (AV1):** 720p (1500kbps), 480p (600kbps), 360p (360kbps) - ~40% more efficient
 
 ### Content Deduplication
 
@@ -349,6 +352,26 @@ blobs:
 **Format Support:**
 - **HLS** (HTTP Live Streaming): Best for Apple devices and Safari
 - **DASH** (Dynamic Adaptive Streaming over HTTP): Best for cross-platform and modern browsers
+
+**Video Codecs:**
+
+| Codec | Config | Hardware Encoders | Software Encoder | Notes |
+|-------|--------|-------------------|------------------|-------|
+| H.264 | `h264` | h264_nvenc, h264_qsv, h264_vaapi | libx264 | Best compatibility |
+| HEVC/H.265 | `hevc` | hevc_nvenc, hevc_qsv, hevc_vaapi | libx265 | ~30% better compression |
+| AV1 | `av1` | av1_nvenc (RTX 40+), av1_qsv (Arc/12th+), av1_vaapi | libsvtav1 | ~40% better compression |
+
+**Codec Selection:**
+- H.264: Maximum device compatibility (default)
+- HEVC: Good balance of compression and compatibility (iOS, Android, modern browsers)
+- AV1: Best compression but limited hardware support (requires modern GPU for HW encoding)
+
+**Hardware Encoder Requirements:**
+- **NVENC H.264/HEVC**: NVIDIA GTX 600+ / Quadro K-series+
+- **NVENC AV1**: NVIDIA RTX 4000-series+ (Ada Lovelace)
+- **QSV H.264/HEVC**: Intel 4th gen+ (Haswell+)
+- **QSV AV1**: Intel Arc / 12th gen+ (Alder Lake+)
+- **VAAPI**: AMD/Intel Linux drivers with appropriate codec support
 
 ### List Endpoint Filters
 
@@ -461,6 +484,7 @@ transcoding:
   ffmpeg_path: ""                   # Auto-detect if empty
   hwaccel:
     type: auto                      # none, nvenc, qsv, vaapi, auto
+    codec: h264                     # h264, hevc, av1
     device: /dev/dri/renderD128     # VAAPI device path (optional)
     preset: ""                      # Encoder-specific preset (optional)
     look_ahead: 0                   # NVENC look-ahead frames (optional)
@@ -474,10 +498,11 @@ transcoding:
 
 ### P2 - Medium Priority
 
-1. **AV1/HEVC Support** - Modern codec support for better compression
+(All P2 items completed)
 
 ### Completed
 
+- ~~AV1/HEVC Support~~ - Modern codec support for better compression (2026-02-23)
 - ~~BUD-09 Reporting~~ - NIP-56 signed reports with re-upload prevention (2026-02-23)
 - ~~Deduplication~~ - Content-addressable dedup across users (2026-02-23)
 - ~~Torrent Seeds~~ - BEP 3/5/12/19 compliant .torrent generation (2026-02-21)
