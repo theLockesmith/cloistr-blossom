@@ -12,6 +12,8 @@ var (
 	ErrPubkeyBlocked = errors.New("pubkey is blocked")
 	// ErrAlreadyBlocked is returned when trying to block an already blocked pubkey.
 	ErrAlreadyBlocked = errors.New("pubkey is already blocked")
+	// ErrHashRemoved is returned when trying to upload a removed blob hash.
+	ErrHashRemoved = errors.New("blob hash has been removed and cannot be re-uploaded")
 )
 
 // ReportReason represents the type of content being reported.
@@ -77,6 +79,15 @@ type TransparencyStats struct {
 	LastUpdated      int64
 }
 
+// RemovedBlob represents a blob hash that has been removed and cannot be re-uploaded.
+type RemovedBlob struct {
+	Hash      string
+	Reason    string
+	RemovedBy string
+	ReportID  int32
+	CreatedAt int64
+}
+
 // ReportService handles content reports.
 type ReportService interface {
 	// CreateReport creates a new report.
@@ -136,4 +147,15 @@ type ModerationService interface {
 	// ActionReport takes action on a report (remove blob, ban user, etc.)
 	// This is a convenience method that handles the full workflow.
 	ActionReport(ctx context.Context, reportID int32, action ReportAction, reviewerPubkey string) error
+
+	// Removed blob tracking (BUD-09)
+
+	// IsHashRemoved checks if a blob hash has been removed and cannot be re-uploaded.
+	IsHashRemoved(ctx context.Context, hash string) (bool, error)
+
+	// AddRemovedBlob marks a blob hash as removed to prevent re-upload.
+	AddRemovedBlob(ctx context.Context, hash, reason, removedBy string, reportID int32) error
+
+	// GetRemovedBlob returns details about a removed blob hash.
+	GetRemovedBlob(ctx context.Context, hash string) (*RemovedBlob, error)
 }

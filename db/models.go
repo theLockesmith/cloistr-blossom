@@ -40,6 +40,14 @@ type MimeType struct {
 	MimeType  string
 }
 
+type RemovedBlob struct {
+	Hash      string
+	Reason    string
+	RemovedBy string
+	ReportID  sql.NullInt32
+	CreatedAt int64
+}
+
 type Report struct {
 	ID             int32
 	ReporterPubkey sql.NullString

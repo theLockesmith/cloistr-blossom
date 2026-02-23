@@ -59,6 +59,14 @@ func UploadBlob(
 		return nil, errors.New("blob hash doesn't match auth event 'x' tag")
 	}
 
+	// Check if blob hash has been removed (BUD-09 compliance)
+	// Removed blobs cannot be re-uploaded
+	if moderation := services.Moderation(); moderation != nil {
+		if removed, err := moderation.IsHashRemoved(ctx, hash); err == nil && removed {
+			return nil, core.ErrHashRemoved
+		}
+	}
+
 	// for now the URL of the file is the URL where the CDN is being hosted
 	// plus the file hash
 	url := cdnBaseUrl + "/" + hash

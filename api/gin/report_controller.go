@@ -2,10 +2,14 @@ package gin
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	goNostr "github.com/nbd-wtf/go-nostr"
+	"go.uber.org/zap"
+
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 )
 
@@ -87,6 +91,144 @@ func submitReport(services core.Services) gin.HandlerFunc {
 			Status:    string(report.Status),
 			Message:   "Report submitted successfully. It will be reviewed by our team.",
 			CreatedAt: report.CreatedAt,
+		})
+	}
+}
+
+// BUD09ReportResponse represents the response for a BUD-09 report submission.
+type BUD09ReportResponse struct {
+	Success   bool    `json:"success"`
+	Message   string  `json:"message"`
+	ReportIDs []int32 `json:"report_ids,omitempty"`
+}
+
+// NIP-56 report types mapped to our reasons
+var nip56ToReason = map[string]string{
+	"nudity":      "abuse",
+	"malware":     "illegal",
+	"profanity":   "abuse",
+	"illegal":     "illegal",
+	"spam":        "abuse",
+	"impersonation": "abuse",
+	"other":       "other",
+	// Additional Blossom-specific mappings
+	"csam":        "csam",
+	"copyright":   "copyright",
+	"abuse":       "abuse",
+}
+
+// submitReportBUD09 handles PUT /report (BUD-09 compliant)
+// Accepts a signed NIP-56 report event (kind 1984) with blob hashes in x tags
+func submitReportBUD09(services core.Services, log *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Read request body
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "failed to read request body"})
+			return
+		}
+
+		// Parse as Nostr event
+		ev := &goNostr.Event{}
+		if err := ev.UnmarshalJSON(body); err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
+				Message: "invalid request body: must be a valid Nostr event JSON",
+			})
+			return
+		}
+
+		// Verify signature
+		ok, err := ev.CheckSignature()
+		if !ok || err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
+				Message: "invalid event signature",
+			})
+			return
+		}
+
+		// Must be kind 1984 (NIP-56 report)
+		if ev.Kind != 1984 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
+				Message: "invalid event kind: must be 1984 (NIP-56 report)",
+			})
+			return
+		}
+
+		// Extract blob hashes and report types from x tags
+		// Format: ["x", "<sha256>"] or ["x", "<sha256>", "<report-type>"]
+		var blobReports []struct {
+			hash       string
+			reportType string
+		}
+
+		for _, tag := range ev.Tags {
+			if len(tag) >= 2 && tag[0] == "x" {
+				hash := tag[1]
+				if !sha256Regex.MatchString(hash) {
+					continue // Skip invalid hashes
+				}
+
+				reportType := "other"
+				if len(tag) >= 3 {
+					if reason, ok := nip56ToReason[tag[2]]; ok {
+						reportType = reason
+					} else {
+						reportType = "other"
+					}
+				}
+
+				blobReports = append(blobReports, struct {
+					hash       string
+					reportType string
+				}{hash: hash, reportType: reportType})
+			}
+		}
+
+		if len(blobReports) == 0 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
+				Message: "no valid blob hashes found in x tags",
+			})
+			return
+		}
+
+		// Create reports for each blob
+		var reportIDs []int32
+		for _, br := range blobReports {
+			blobURL := c.Request.Host + "/" + br.hash
+
+			report, err := services.Moderation().CreateReport(
+				c.Request.Context(),
+				ev.PubKey, // Reporter pubkey from signed event
+				br.hash,
+				blobURL,
+				core.ReportReason(br.reportType),
+				ev.Content, // Details from event content
+			)
+			if err != nil {
+				log.Warn("failed to create report for blob",
+					zap.String("hash", br.hash),
+					zap.Error(err))
+				continue
+			}
+			reportIDs = append(reportIDs, report.ID)
+		}
+
+		if len(reportIDs) == 0 {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
+				Message: "failed to create any reports",
+			})
+			return
+		}
+
+		log.Info("BUD-09 report submitted",
+			zap.String("reporter", ev.PubKey),
+			zap.Int("blob_count", len(blobReports)),
+			zap.Int("reports_created", len(reportIDs)))
+
+		c.JSON(http.StatusOK, BUD09ReportResponse{
+			Success:   true,
+			Message:   fmt.Sprintf("Report submitted successfully for %d blob(s)", len(reportIDs)),
+			ReportIDs: reportIDs,
 		})
 	}
 }

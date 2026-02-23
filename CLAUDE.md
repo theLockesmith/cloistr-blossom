@@ -87,6 +87,7 @@ git merge upstream/master
 | GPU Transcoding | ✅ | NVENC, QSV, VAAPI hardware acceleration |
 | Torrent Seeds | ✅ | Generate .torrent files with WebSeeds (BEP 19) |
 | Deduplication | ✅ | Content-addressable dedup across users |
+| BUD-09 Reporting | ✅ | NIP-56 signed reports, re-upload prevention |
 
 ## Project Structure
 
@@ -191,6 +192,55 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 3. Players supporting WebVTT will display subtitle options
 
 **Supported languages:** en, es, fr, de, it, pt, ru, ja, ko, zh, ar, hi, nl, pl, tr, vi, th, id, sv, da, no, fi
+
+### BUD-09 Content Reporting
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| PUT | `/report` | No | Submit BUD-09 NIP-56 signed report |
+| POST | `/report` | No | Submit legacy JSON report |
+| GET | `/transparency` | No | Get moderation stats and privacy statement |
+
+**BUD-09 Report Format (PUT /report):**
+
+The request body must be a signed NIP-56 report event (kind 1984):
+
+```json
+{
+  "kind": 1984,
+  "pubkey": "<reporter_pubkey>",
+  "created_at": 1234567890,
+  "content": "Human readable report details",
+  "tags": [
+    ["x", "<blob_sha256>", "<report_type>"],
+    ["x", "<another_blob_sha256>", "illegal"]
+  ],
+  "id": "<event_id>",
+  "sig": "<signature>"
+}
+```
+
+**Report types (mapped from NIP-56):**
+- `csam` - Child safety (highest priority)
+- `illegal` - Illegal content
+- `copyright` - Copyright violation
+- `abuse` - Harassment/abuse (includes nudity, spam, impersonation)
+- `other` - Other violations
+
+**Re-upload Prevention:**
+
+When content is removed due to a report, the blob hash is added to a blocklist. Attempts to re-upload the same content will fail with `ErrHashRemoved`.
+
+**Legacy JSON Report (POST /report):**
+
+```json
+{
+  "blob_hash": "<sha256>",
+  "reason": "csam|illegal|copyright|abuse|other",
+  "details": "Optional description",
+  "reporter_pubkey": "Optional nostr pubkey"
+}
+```
 
 ### IPFS Pinning
 
@@ -424,11 +474,11 @@ transcoding:
 
 ### P2 - Medium Priority
 
-1. **BUD-09 Reporting** - Standardized abuse reporting protocol
-2. **AV1/HEVC Support** - Modern codec support for better compression
+1. **AV1/HEVC Support** - Modern codec support for better compression
 
 ### Completed
 
+- ~~BUD-09 Reporting~~ - NIP-56 signed reports with re-upload prevention (2026-02-23)
 - ~~Deduplication~~ - Content-addressable dedup across users (2026-02-23)
 - ~~Torrent Seeds~~ - BEP 3/5/12/19 compliant .torrent generation (2026-02-21)
 - ~~GPU Transcoding~~ - NVENC, QSV, VAAPI hardware acceleration (2026-02-20)

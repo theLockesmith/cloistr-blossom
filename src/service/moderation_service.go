@@ -267,6 +267,11 @@ func (s *moderationService) ActionReport(ctx context.Context, reportID int32, ac
 			}
 		}
 
+		// Add to removed blobs to prevent re-upload (BUD-09)
+		if err := s.AddRemovedBlob(ctx, report.BlobHash, string(report.Reason), reviewerPubkey, reportID); err != nil {
+			s.log.Error("failed to add to removed blobs", zap.Error(err), zap.String("hash", report.BlobHash))
+		}
+
 	case core.ReportActionUserBanned:
 		// Get the blob to find the owner
 		blob, err := s.blobService.GetFromHash(ctx, report.BlobHash)
@@ -288,10 +293,59 @@ func (s *moderationService) ActionReport(ctx context.Context, reportID int32, ac
 				s.log.Error("failed to delete blob", zap.Error(err), zap.String("hash", report.BlobHash))
 			}
 		}
+
+		// Add to removed blobs to prevent re-upload (BUD-09)
+		if err := s.AddRemovedBlob(ctx, report.BlobHash, string(report.Reason), reviewerPubkey, reportID); err != nil {
+			s.log.Error("failed to add to removed blobs", zap.Error(err), zap.String("hash", report.BlobHash))
+		}
 	}
 
 	// Update report status
 	return s.ReviewReport(ctx, reportID, core.ReportStatusActioned, action, reviewerPubkey)
+}
+
+// IsHashRemoved checks if a blob hash has been removed and cannot be re-uploaded.
+func (s *moderationService) IsHashRemoved(ctx context.Context, hash string) (bool, error) {
+	return s.queries.IsHashRemoved(ctx, hash)
+}
+
+// AddRemovedBlob marks a blob hash as removed to prevent re-upload.
+func (s *moderationService) AddRemovedBlob(ctx context.Context, hash, reason, removedBy string, reportID int32) error {
+	var reportIDNull sql.NullInt32
+	if reportID > 0 {
+		reportIDNull = sql.NullInt32{Int32: reportID, Valid: true}
+	}
+
+	return s.queries.AddRemovedBlob(ctx, db.AddRemovedBlobParams{
+		Hash:      hash,
+		Reason:    reason,
+		RemovedBy: removedBy,
+		ReportID:  reportIDNull,
+		CreatedAt: time.Now().Unix(),
+	})
+}
+
+// GetRemovedBlob returns details about a removed blob hash.
+func (s *moderationService) GetRemovedBlob(ctx context.Context, hash string) (*core.RemovedBlob, error) {
+	removed, err := s.queries.GetRemovedBlob(ctx, hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	result := &core.RemovedBlob{
+		Hash:      removed.Hash,
+		Reason:    removed.Reason,
+		RemovedBy: removed.RemovedBy,
+		CreatedAt: removed.CreatedAt,
+	}
+	if removed.ReportID.Valid {
+		result.ReportID = removed.ReportID.Int32
+	}
+
+	return result, nil
 }
 
 // dbReportToCore converts a database report to a core report.

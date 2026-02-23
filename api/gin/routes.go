@@ -212,7 +212,8 @@ func SetupRoutes(
 	r.GET("/stats", getStats(services))
 
 	// Content reporting and transparency
-	r.POST("/report", submitReport(services))
+	r.POST("/report", submitReport(services))          // Legacy JSON report
+	r.PUT("/report", submitReportBUD09(services, log)) // BUD-09 NIP-56 signed report
 	r.GET("/transparency", getTransparencyPage(services))
 
 	// Admin dashboard and API
