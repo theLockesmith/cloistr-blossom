@@ -10,10 +10,24 @@ import (
 	"database/sql"
 )
 
+const decrementBlobRefCount = `-- name: DecrementBlobRefCount :one
+UPDATE blobs
+SET ref_count = ref_count - 1
+WHERE hash = $1
+RETURNING ref_count
+`
+
+func (q *Queries) DecrementBlobRefCount(ctx context.Context, hash string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, decrementBlobRefCount, hash)
+	var ref_count int32
+	err := row.Scan(&ref_count)
+	return ref_count, err
+}
+
 const deleteBlobFromHash = `-- name: DeleteBlobFromHash :exec
-delete
-from blobs
-where hash = $1
+DELETE
+FROM blobs
+WHERE hash = $1
 `
 
 func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
@@ -22,10 +36,10 @@ func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
 }
 
 const getBlobFromHash = `-- name: GetBlobFromHash :one
-select pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
-from blobs
-where hash = $1
-limit 1
+SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
+FROM blobs
+WHERE hash = $1
+LIMIT 1
 `
 
 func (q *Queries) GetBlobFromHash(ctx context.Context, hash string) (Blob, error) {
@@ -42,16 +56,32 @@ func (q *Queries) GetBlobFromHash(ctx context.Context, hash string) (Blob, error
 		&i.EncryptedDek,
 		&i.EncryptionNonce,
 		&i.OriginalSize,
+		&i.RefCount,
 	)
 	return i, err
 }
 
-const getBlobsFromPubkey = `-- name: GetBlobsFromPubkey :many
-select pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
-from blobs
-where pubkey = $1
+const getBlobRefCount = `-- name: GetBlobRefCount :one
+SELECT ref_count
+FROM blobs
+WHERE hash = $1
 `
 
+func (q *Queries) GetBlobRefCount(ctx context.Context, hash string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getBlobRefCount, hash)
+	var ref_count int32
+	err := row.Scan(&ref_count)
+	return ref_count, err
+}
+
+const getBlobsFromPubkey = `-- name: GetBlobsFromPubkey :many
+SELECT b.pubkey, b.hash, b.type, b.size, b.blob, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size, b.ref_count
+FROM blobs b
+INNER JOIN blob_references br ON b.hash = br.hash
+WHERE br.pubkey = $1
+`
+
+// Get all blobs owned by a user via the blob_references table
 func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob, error) {
 	rows, err := q.db.QueryContext(ctx, getBlobsFromPubkey, pubkey)
 	if err != nil {
@@ -72,6 +102,7 @@ func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob
 			&i.EncryptedDek,
 			&i.EncryptionNonce,
 			&i.OriginalSize,
+			&i.RefCount,
 		); err != nil {
 			return nil, err
 		}
@@ -86,8 +117,61 @@ func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob
 	return items, nil
 }
 
+const getBlobsFromPubkeyLegacy = `-- name: GetBlobsFromPubkeyLegacy :many
+SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
+FROM blobs
+WHERE pubkey = $1
+`
+
+// Legacy query using pubkey column directly (for backward compatibility)
+func (q *Queries) GetBlobsFromPubkeyLegacy(ctx context.Context, pubkey string) ([]Blob, error) {
+	rows, err := q.db.QueryContext(ctx, getBlobsFromPubkeyLegacy, pubkey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Blob
+	for rows.Next() {
+		var i Blob
+		if err := rows.Scan(
+			&i.Pubkey,
+			&i.Hash,
+			&i.Type,
+			&i.Size,
+			&i.Blob,
+			&i.Created,
+			&i.EncryptionMode,
+			&i.EncryptedDek,
+			&i.EncryptionNonce,
+			&i.OriginalSize,
+			&i.RefCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const incrementBlobRefCount = `-- name: IncrementBlobRefCount :exec
+UPDATE blobs
+SET ref_count = ref_count + 1
+WHERE hash = $1
+`
+
+func (q *Queries) IncrementBlobRefCount(ctx context.Context, hash string) error {
+	_, err := q.db.ExecContext(ctx, incrementBlobRefCount, hash)
+	return err
+}
+
 const insertBlob = `-- name: InsertBlob :one
-insert into blobs(
+INSERT INTO blobs(
   pubkey,
   hash,
   type,
@@ -97,9 +181,10 @@ insert into blobs(
   encryption_mode,
   encrypted_dek,
   encryption_nonce,
-  original_size
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-returning pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size
+  original_size,
+  ref_count
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+RETURNING pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
 `
 
 type InsertBlobParams struct {
@@ -113,6 +198,7 @@ type InsertBlobParams struct {
 	EncryptedDek    sql.NullString
 	EncryptionNonce sql.NullString
 	OriginalSize    sql.NullInt64
+	RefCount        int32
 }
 
 func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, error) {
@@ -127,6 +213,7 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 		arg.EncryptedDek,
 		arg.EncryptionNonce,
 		arg.OriginalSize,
+		arg.RefCount,
 	)
 	var i Blob
 	err := row.Scan(
@@ -140,6 +227,7 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 		&i.EncryptedDek,
 		&i.EncryptionNonce,
 		&i.OriginalSize,
+		&i.RefCount,
 	)
 	return i, err
 }

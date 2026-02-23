@@ -132,6 +132,7 @@ func (r *blobService) Save(
 			EncryptedDek:    encryptedDEK,
 			EncryptionNonce: encryptionNonce,
 			OriginalSize:    originalSize,
+			RefCount:        1, // Initial reference count
 		},
 	)
 	if err != nil {
@@ -230,32 +231,35 @@ func (r *blobService) GetFromPubkey(ctx context.Context, pubkey string) ([]*core
 }
 
 func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *core.BlobFilter) (*core.BlobListResult, error) {
-	// Build dynamic query with filters
-	baseQuery := `SELECT pubkey, hash, type, size, created, encryption_mode, encrypted_dek, encryption_nonce, original_size FROM blobs WHERE pubkey = $1`
-	countQuery := `SELECT COUNT(*) FROM blobs WHERE pubkey = $1`
+	// Build dynamic query with filters using blob_references for dedup support
+	baseQuery := `SELECT b.pubkey, b.hash, b.type, b.size, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size
+		FROM blobs b
+		INNER JOIN blob_references br ON b.hash = br.hash
+		WHERE br.pubkey = $1`
+	countQuery := `SELECT COUNT(*) FROM blobs b INNER JOIN blob_references br ON b.hash = br.hash WHERE br.pubkey = $1`
 	args := []interface{}{pubkey}
 	argIndex := 2
 
 	// Apply type prefix filter
 	if filter != nil && filter.TypePrefix != "" {
-		baseQuery += fmt.Sprintf(" AND type LIKE $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND type LIKE $%d", argIndex)
+		baseQuery += fmt.Sprintf(" AND b.type LIKE $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND b.type LIKE $%d", argIndex)
 		args = append(args, filter.TypePrefix+"%")
 		argIndex++
 	}
 
 	// Apply since filter
 	if filter != nil && filter.Since > 0 {
-		baseQuery += fmt.Sprintf(" AND created >= $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND created >= $%d", argIndex)
+		baseQuery += fmt.Sprintf(" AND b.created >= $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND b.created >= $%d", argIndex)
 		args = append(args, filter.Since)
 		argIndex++
 	}
 
 	// Apply until filter
 	if filter != nil && filter.Until > 0 {
-		baseQuery += fmt.Sprintf(" AND created <= $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND created <= $%d", argIndex)
+		baseQuery += fmt.Sprintf(" AND b.created <= $%d", argIndex)
+		countQuery += fmt.Sprintf(" AND b.created <= $%d", argIndex)
 		args = append(args, filter.Until)
 		argIndex++
 	}
@@ -268,9 +272,9 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 
 	// Apply sorting
 	if filter != nil && filter.SortDesc {
-		baseQuery += " ORDER BY created DESC"
+		baseQuery += " ORDER BY b.created DESC"
 	} else {
-		baseQuery += " ORDER BY created ASC"
+		baseQuery += " ORDER BY b.created ASC"
 	}
 
 	// Apply pagination
@@ -369,4 +373,136 @@ func (r *blobService) dbBlobIntoBlobDescriptor(blob db.Blob) *core.Blob {
 			Sha256:         blob.Hash,
 		},
 	}
+}
+
+// SaveWithDedup saves a blob with content-addressable deduplication.
+// If the blob already exists, it creates a reference without re-storing data.
+func (r *blobService) SaveWithDedup(
+	ctx context.Context,
+	pubkey string,
+	sha256 string,
+	url string,
+	size int64,
+	mimeType string,
+	blob []byte,
+	created int64,
+	encryptionMode core.EncryptionMode,
+) (*core.Blob, bool, error) {
+	// Check if blob already exists
+	existingBlob, err := r.queries.GetBlobFromHash(ctx, sha256)
+	if err == nil {
+		// Blob exists - check if user already has a reference
+		hasRef, _ := r.HasReference(ctx, pubkey, sha256)
+		if hasRef {
+			// User already has this blob - return existing
+			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
+		}
+
+		// Create reference for this user
+		_, err = r.queries.CreateBlobReference(ctx, db.CreateBlobReferenceParams{
+			Pubkey:  pubkey,
+			Hash:    sha256,
+			Created: created,
+		})
+		if err != nil {
+			r.log.Error("failed to create blob reference", zap.Error(err))
+			return nil, false, fmt.Errorf("create reference: %w", err)
+		}
+
+		// Increment reference count
+		if err := r.queries.IncrementBlobRefCount(ctx, sha256); err != nil {
+			r.log.Warn("failed to increment ref count", zap.Error(err))
+		}
+
+		r.log.Info("blob deduplicated - created reference",
+			zap.String("pubkey", pubkey),
+			zap.String("hash", sha256),
+			zap.Int32("ref_count", existingBlob.RefCount+1))
+
+		return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
+	}
+
+	// Blob doesn't exist - save normally
+	savedBlob, err := r.Save(ctx, pubkey, sha256, url, size, mimeType, blob, created, encryptionMode)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Create blob reference for the original uploader
+	_, err = r.queries.CreateBlobReference(ctx, db.CreateBlobReferenceParams{
+		Pubkey:  pubkey,
+		Hash:    sha256,
+		Created: created,
+	})
+	if err != nil {
+		r.log.Warn("failed to create blob reference for original uploader", zap.Error(err))
+		// Don't fail - blob is saved, reference is a bonus
+	}
+
+	r.log.Info("new blob saved with dedup tracking",
+		zap.String("pubkey", pubkey),
+		zap.String("hash", sha256))
+
+	return savedBlob, true, nil
+}
+
+// HasReference checks if a user has a reference to a blob.
+func (r *blobService) HasReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {
+	exists, err := r.queries.HasBlobReference(ctx, db.HasBlobReferenceParams{
+		Pubkey: pubkey,
+		Hash:   sha256,
+	})
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// DeleteReference removes a user's reference to a blob.
+// If this was the last reference, the actual blob is deleted.
+func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {
+	// Check if reference exists
+	hasRef, err := r.HasReference(ctx, pubkey, sha256)
+	if err != nil {
+		return false, fmt.Errorf("check reference: %w", err)
+	}
+	if !hasRef {
+		return false, fmt.Errorf("no reference found for pubkey %s and hash %s", pubkey, sha256)
+	}
+
+	// Delete the reference
+	if err := r.queries.DeleteBlobReference(ctx, db.DeleteBlobReferenceParams{
+		Pubkey: pubkey,
+		Hash:   sha256,
+	}); err != nil {
+		return false, fmt.Errorf("delete reference: %w", err)
+	}
+
+	// Decrement reference count and check if this was the last reference
+	newRefCount, err := r.queries.DecrementBlobRefCount(ctx, sha256)
+	if err != nil {
+		r.log.Warn("failed to decrement ref count", zap.Error(err))
+		// Continue - reference is deleted
+	}
+
+	r.log.Info("blob reference deleted",
+		zap.String("pubkey", pubkey),
+		zap.String("hash", sha256),
+		zap.Int32("remaining_refs", newRefCount))
+
+	// If no more references, delete the actual blob
+	if newRefCount <= 0 {
+		r.log.Info("last reference removed - deleting blob from storage",
+			zap.String("hash", sha256))
+
+		if err := r.DeleteFromHash(ctx, sha256); err != nil {
+			r.log.Error("failed to delete blob after last reference removed",
+				zap.String("hash", sha256),
+				zap.Error(err))
+			return true, fmt.Errorf("delete blob: %w", err)
+		}
+		return true, nil
+	}
+
+	return false, nil
 }

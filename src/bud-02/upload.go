@@ -59,16 +59,15 @@ func UploadBlob(
 		return nil, errors.New("blob hash doesn't match auth event 'x' tag")
 	}
 
-	// if blob already exists, return BlobDescriptor from database
-	if blob, err := blobs.GetFromHash(ctx, hash); err == nil {
-		return blob, nil
-	}
-
 	// for now the URL of the file is the URL where the CDN is being hosted
 	// plus the file hash
 	url := cdnBaseUrl + "/" + hash
 
-	blobDescriptor, err := blobs.Save(
+	// SaveWithDedup handles content-addressable deduplication:
+	// - If blob exists and user already has it: returns existing blob
+	// - If blob exists but user doesn't have it: creates reference (no re-store)
+	// - If blob doesn't exist: saves blob and creates reference
+	blobDescriptor, isNewBlob, err := blobs.SaveWithDedup(
 		ctx,
 		pubkey,
 		hash,
@@ -83,10 +82,20 @@ func UploadBlob(
 		return nil, fmt.Errorf("save blob: %w", err)
 	}
 
-	// Update quota usage after successful save
-	if err := quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes))); err != nil {
-		// Log but don't fail - the blob was saved successfully
-		// Usage will be corrected on next recalculation
+	// Update quota usage - count the blob size for this user regardless of dedup
+	// Each user's quota reflects their "ownership" of blob references
+	if isNewBlob {
+		// New blob was stored - increment quota
+		if err := quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes))); err != nil {
+			// Log but don't fail - the blob was saved successfully
+		}
+	} else {
+		// Blob was deduplicated - still count against user's quota
+		// This is fair: user gets the space benefit of dedup in storage,
+		// but their quota reflects what they've uploaded
+		if err := quota.IncrementUsage(ctx, pubkey, blobDescriptor.Size); err != nil {
+			// Log but don't fail
+		}
 	}
 
 	return blobDescriptor, nil

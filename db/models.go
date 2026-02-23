@@ -19,6 +19,13 @@ type Blob struct {
 	EncryptedDek    sql.NullString
 	EncryptionNonce sql.NullString
 	OriginalSize    sql.NullInt64
+	RefCount        int32
+}
+
+type BlobReference struct {
+	Pubkey  string
+	Hash    string
+	Created int64
 }
 
 type Blocklist struct {

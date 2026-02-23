@@ -86,6 +86,7 @@ git merge upstream/master
 | Drive Integration | ✅ | Tested with cloistr-drive web UI |
 | GPU Transcoding | ✅ | NVENC, QSV, VAAPI hardware acceleration |
 | Torrent Seeds | ✅ | Generate .torrent files with WebSeeds (BEP 19) |
+| Deduplication | ✅ | Content-addressable dedup across users |
 
 ## Project Structure
 
@@ -242,6 +243,49 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 
 **Quality presets:** 720p (2500kbps), 480p (1000kbps), 360p (600kbps)
 
+### Content Deduplication
+
+Cloistr-blossom implements content-addressable deduplication, allowing multiple users to reference the same blob without storing duplicate data.
+
+**How it works:**
+
+1. When User A uploads a blob, it's stored and User A gets a reference
+2. When User B uploads the same blob (same SHA-256 hash):
+   - The server detects the blob already exists
+   - Instead of re-storing, it creates a reference for User B
+   - Storage space is saved (only one copy on disk)
+3. When either user deletes their reference:
+   - Only their reference is removed
+   - The other user's access is unaffected
+   - The actual blob is only deleted when the last reference is removed
+
+**Database schema:**
+
+```
+blob_references:
+  pubkey  TEXT NOT NULL  -- User who has access
+  hash    TEXT NOT NULL  -- Blob hash (FK to blobs)
+  created BIGINT NOT NULL
+  PRIMARY KEY (pubkey, hash)
+
+blobs:
+  ... existing columns ...
+  ref_count INTEGER NOT NULL DEFAULT 1  -- Number of references
+```
+
+**Quota behavior:**
+
+- Each user's quota reflects their blob references, not actual storage
+- If User A and B both reference a 10MB blob, both have 10MB counted against their quota
+- This is fair: users pay for what they "own", while the server benefits from dedup
+
+**Benefits:**
+
+- Storage efficiency: Popular files are only stored once
+- Instant uploads: Duplicate detection happens at upload time
+- User isolation: Deleting a reference doesn't affect other users
+- Transparent: Users don't need to know about deduplication
+
 **Transcoding workflow:**
 1. Upload video via `/upload`
 2. Start transcoding: `POST /:hash/transcode`
@@ -376,15 +420,16 @@ transcoding:
 
 ### P1 - High Priority
 
-1. **Deduplication** - Content-addressable dedup across users
+(All P1 items completed)
 
 ### P2 - Medium Priority
 
-2. **BUD-09 Reporting** - Standardized abuse reporting protocol
-3. **AV1/HEVC Support** - Modern codec support for better compression
+1. **BUD-09 Reporting** - Standardized abuse reporting protocol
+2. **AV1/HEVC Support** - Modern codec support for better compression
 
 ### Completed
 
+- ~~Deduplication~~ - Content-addressable dedup across users (2026-02-23)
 - ~~Torrent Seeds~~ - BEP 3/5/12/19 compliant .torrent generation (2026-02-21)
 - ~~GPU Transcoding~~ - NVENC, QSV, VAAPI hardware acceleration (2026-02-20)
 - ~~Drive Frontend Integration~~ - Tested with cloistr-drive (2026-02-20)

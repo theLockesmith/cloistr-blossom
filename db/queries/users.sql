@@ -65,10 +65,12 @@ ON CONFLICT(pubkey) DO UPDATE SET updated_at = excluded.updated_at
 RETURNING *;
 
 -- name: RecalculateUserUsage :exec
+-- Recalculate usage based on blob_references table (deduplication-aware)
 UPDATE users
 SET used_bytes = (
-    SELECT COALESCE(SUM(size), 0)
-    FROM blobs
-    WHERE blobs.pubkey = users.pubkey
+    SELECT COALESCE(SUM(b.size), 0)
+    FROM blobs b
+    INNER JOIN blob_references br ON b.hash = br.hash
+    WHERE br.pubkey = users.pubkey
 ), updated_at = $1
 WHERE users.pubkey = $2;

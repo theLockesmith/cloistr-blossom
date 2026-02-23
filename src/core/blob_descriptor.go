@@ -93,4 +93,29 @@ type BlobStorage interface {
 	DeleteFromHash(ctx context.Context, sha256 string) error
 	// IsEncryptionEnabled returns true if server-side encryption is available.
 	IsEncryptionEnabled() bool
+
+	// Deduplication methods
+
+	// SaveWithDedup saves a blob with content-addressable deduplication.
+	// If the blob already exists (same hash), it creates a reference for this user
+	// without re-storing the data. Returns (blob, isNewBlob, error).
+	SaveWithDedup(
+		ctx context.Context,
+		pubkey string,
+		sha256 string,
+		url string,
+		size int64,
+		mimeType string,
+		blob []byte,
+		created int64,
+		encryptionMode EncryptionMode,
+	) (*Blob, bool, error)
+
+	// HasReference checks if a user has a reference to a blob.
+	HasReference(ctx context.Context, pubkey string, sha256 string) (bool, error)
+
+	// DeleteReference removes a user's reference to a blob.
+	// If this was the last reference, the actual blob is deleted from storage.
+	// Returns (wasLastReference, error).
+	DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error)
 }
