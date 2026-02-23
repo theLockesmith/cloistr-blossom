@@ -404,7 +404,7 @@ transcoding:
 
 ### Grafana Dashboard
 
-Dashboard: "Coldforge Blossom" (uid: coldforge-blossom)
+Dashboard: "Cloistr Blossom" (uid: coldforge-blossom)
 
 Panels: Overview stats, traffic, uploads/downloads, moderation, errors
 
