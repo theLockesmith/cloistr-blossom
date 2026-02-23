@@ -21,6 +21,48 @@ func variantCacheKey(hash string, opts media.ProcessOptions) string {
 	return fmt.Sprintf("variant:%s_%dx%d_%s_%v", hash, opts.Width, opts.Height, opts.Format, opts.Crop)
 }
 
+// setSecurityHeaders sets security headers for blob responses.
+// Safe media types (images, video, audio) are served inline for preview.
+// All other types are forced to download to prevent XSS/execution.
+func setSecurityHeaders(ctx *gin.Context, contentType, hash string) {
+	// Always prevent MIME sniffing
+	ctx.Header("X-Content-Type-Options", "nosniff")
+
+	// Sandbox content to prevent script execution even if rendered
+	ctx.Header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; media-src 'self'")
+
+	// Determine if content is safe to display inline
+	safeForInline := isSafeForInline(contentType)
+
+	if safeForInline {
+		ctx.Header("Content-Disposition", "inline")
+	} else {
+		// Force download for potentially dangerous content
+		ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", hash))
+	}
+}
+
+// isSafeForInline returns true for media types that are safe to render in browser.
+func isSafeForInline(contentType string) bool {
+	// Images (excluding SVG which can contain scripts)
+	if strings.HasPrefix(contentType, "image/") && contentType != "image/svg+xml" {
+		return true
+	}
+	// Video
+	if strings.HasPrefix(contentType, "video/") {
+		return true
+	}
+	// Audio
+	if strings.HasPrefix(contentType, "audio/") {
+		return true
+	}
+	// PDF (rendered by browser PDF viewer, sandboxed)
+	if contentType == "application/pdf" {
+		return true
+	}
+	return false
+}
+
 func getBlob(
 	services core.Services,
 ) gin.HandlerFunc {
@@ -85,6 +127,7 @@ func getBlob(
 				if contentType == "" {
 					contentType = "image/jpeg"
 				}
+				setSecurityHeaders(ctx, contentType, hash)
 				ctx.Header("Content-Type", contentType)
 				ctx.Header("X-Cache", "HIT")
 				_, _ = ctx.Writer.Write(cached)
@@ -114,6 +157,7 @@ func getBlob(
 		// If no processing requested, return original
 		if !needsProcessing {
 			mType := mimetype.Detect(fileBytes)
+			setSecurityHeaders(ctx, mType.String(), hash)
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
@@ -125,6 +169,7 @@ func getBlob(
 		// Check if this is an image
 		mType := mimetype.Detect(fileBytes)
 		if !media.IsImage(mType.String()) {
+			setSecurityHeaders(ctx, mType.String(), hash)
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
@@ -137,6 +182,7 @@ func getBlob(
 		result, err := processor.Process(bytes.NewReader(fileBytes), opts)
 		if err != nil {
 			// On processing error, return original
+			setSecurityHeaders(ctx, mType.String(), hash)
 			ctx.Header("Content-Type", mType.String())
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
@@ -149,6 +195,7 @@ func getBlob(
 		cacheKey := variantCacheKey(hash, opts)
 		services.Cache().Set(ctx.Request.Context(), cacheKey, result.Data, time.Hour)
 
+		setSecurityHeaders(ctx, result.ContentType, hash)
 		ctx.Header("Content-Type", result.ContentType)
 		ctx.Header("X-Cache", "MISS")
 		ctx.Header("X-Image-Width", strconv.Itoa(result.Width))

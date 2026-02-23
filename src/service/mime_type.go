@@ -11,10 +11,11 @@ import (
 )
 
 type mimeTypeService struct {
-	allowed map[string]struct{}
-	queries *db.Queries
-	conf    *config.Config
-	log     *zap.Logger
+	allowed  map[string]struct{}
+	allowAll bool // When true, skip MIME type validation entirely
+	queries  *db.Queries
+	conf     *config.Config
+	log      *zap.Logger
 }
 
 func NewMimeTypeService(
@@ -25,16 +26,11 @@ func NewMimeTypeService(
 ) (core.MimeTypeService, error) {
 	allowed := make(map[string]struct{})
 
-	if len(conf.AllowedMimeTypes) == 1 && conf.AllowedMimeTypes[0] == "*" {
-		mimeTypes, err := queries.GetAllMimeTypes(ctx)
-		if err != nil {
-			return nil, err
-		}
+	// Check if we should allow all MIME types
+	allowAll := len(conf.AllowedMimeTypes) == 1 && conf.AllowedMimeTypes[0] == "*"
 
-		for _, mime := range mimeTypes {
-			allowed[mime.MimeType] = struct{}{}
-		}
-	} else {
+	if !allowAll {
+		// Build the allowed list from config
 		for _, mime := range conf.AllowedMimeTypes {
 			_, err := queries.GetMimeType(ctx, mime)
 			if err != nil {
@@ -45,10 +41,11 @@ func NewMimeTypeService(
 	}
 
 	return &mimeTypeService{
-		allowed: allowed,
-		queries: queries,
-		conf:    conf,
-		log:     log,
+		allowed:  allowed,
+		allowAll: allowAll,
+		queries:  queries,
+		conf:     conf,
+		log:      log,
 	}, nil
 }
 
@@ -65,6 +62,11 @@ func (s *mimeTypeService) IsAllowed(
 	ctx context.Context,
 	mimeType string,
 ) error {
+	// Skip validation entirely if allowAll is set
+	if s.allowAll {
+		return nil
+	}
+
 	_, ok := s.allowed[mimeType]
 	if !ok {
 		return core.ErrMimeTypeNotAllowed
