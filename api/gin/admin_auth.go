@@ -39,9 +39,9 @@ func NewAdminAuthManager(adminPubkey string, log *zap.Logger) *AdminAuthManager 
 	// Generate a random secret key for signing tokens
 	secretKey := make([]byte, 32)
 	if _, err := rand.Read(secretKey); err != nil {
-		// Fallback to a derived key if random fails
-		h := sha256.Sum256([]byte(adminPubkey + time.Now().String()))
-		secretKey = h[:]
+		// SECURITY: Do not fall back to predictable key - fail fast
+		log.Fatal("failed to generate secure random key - crypto/rand unavailable",
+			zap.Error(err))
 	}
 
 	return &AdminAuthManager{
@@ -292,6 +292,8 @@ func adminLogin(authManager *AdminAuthManager) gin.HandlerFunc {
 		}
 
 		// Set cookie for browser-based access
+		// SECURITY: SameSite=Strict prevents CSRF attacks
+		c.SetSameSite(http.SameSiteStrictMode)
 		c.SetCookie(
 			"admin_session",
 			token,
@@ -324,6 +326,7 @@ func adminLogout(authManager *AdminAuthManager) gin.HandlerFunc {
 		}
 
 		// Clear cookie
+		c.SetSameSite(http.SameSiteStrictMode)
 		c.SetCookie(
 			"admin_session",
 			"",

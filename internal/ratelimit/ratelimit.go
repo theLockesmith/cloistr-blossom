@@ -75,9 +75,34 @@ type cacheEntry struct {
 // NewRateLimiter creates a new rate limiter.
 // If cache is nil, uses in-memory storage (not distributed).
 func NewRateLimiter(c cache.Cache) RateLimiter {
-	return &slidingWindowLimiter{
+	r := &slidingWindowLimiter{
 		cache: c,
 		local: make(map[string]*localBucket),
+	}
+	// Start background cleanup to prevent memory leaks
+	go r.cleanupLoop()
+	return r
+}
+
+// cleanupLoop periodically removes expired entries from local map.
+func (r *slidingWindowLimiter) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		r.cleanup()
+	}
+}
+
+// cleanup removes entries older than 2 windows.
+func (r *slidingWindowLimiter) cleanup() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute) // Keep recent windows
+	for key, bucket := range r.local {
+		if bucket.windowAt.Before(cutoff) {
+			delete(r.local, key)
+		}
 	}
 }
 
@@ -183,9 +208,34 @@ type bandwidthCacheEntry struct {
 
 // NewBandwidthLimiter creates a new bandwidth limiter.
 func NewBandwidthLimiter(c cache.Cache) BandwidthLimiter {
-	return &bandwidthLimiter{
+	b := &bandwidthLimiter{
 		cache: c,
 		local: make(map[string]*localBandwidthBucket),
+	}
+	// Start background cleanup to prevent memory leaks
+	go b.cleanupLoop()
+	return b
+}
+
+// cleanupLoop periodically removes expired entries from local map.
+func (b *bandwidthLimiter) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		b.cleanup()
+	}
+}
+
+// cleanup removes entries older than 2 windows.
+func (b *bandwidthLimiter) cleanup() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute) // Keep recent windows
+	for key, bucket := range b.local {
+		if bucket.windowAt.Before(cutoff) {
+			delete(b.local, key)
+		}
 	}
 }
 

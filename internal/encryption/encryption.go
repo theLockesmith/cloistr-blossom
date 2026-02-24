@@ -194,6 +194,11 @@ func (e *Encryptor) Decrypt(encrypted *EncryptedBlob) ([]byte, error) {
 		return nil, fmt.Errorf("failed to decode nonce: %w", err)
 	}
 
+	// Validate nonce size
+	if len(dataNonce) != dataGCM.NonceSize() {
+		return nil, ErrDecryptionFailed
+	}
+
 	// Decrypt the data
 	plaintext, err := dataGCM.Open(nil, dataNonce, encrypted.Ciphertext, nil)
 	if err != nil {
