@@ -232,18 +232,18 @@ func (r *blobService) GetFromPubkey(ctx context.Context, pubkey string) ([]*core
 
 func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *core.BlobFilter) (*core.BlobListResult, error) {
 	// Build dynamic query with filters using blob_references for dedup support
-	baseQuery := `SELECT b.pubkey, b.hash, b.type, b.size, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size
+	// Uses COUNT(*) OVER() window function to get total count in a single query (50% fewer DB round trips)
+	baseQuery := `SELECT b.pubkey, b.hash, b.type, b.size, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size,
+		COUNT(*) OVER() as total_count
 		FROM blobs b
 		INNER JOIN blob_references br ON b.hash = br.hash
 		WHERE br.pubkey = $1`
-	countQuery := `SELECT COUNT(*) FROM blobs b INNER JOIN blob_references br ON b.hash = br.hash WHERE br.pubkey = $1`
 	args := []interface{}{pubkey}
 	argIndex := 2
 
 	// Apply type prefix filter
 	if filter != nil && filter.TypePrefix != "" {
 		baseQuery += fmt.Sprintf(" AND b.type LIKE $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND b.type LIKE $%d", argIndex)
 		args = append(args, filter.TypePrefix+"%")
 		argIndex++
 	}
@@ -251,7 +251,6 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 	// Apply since filter
 	if filter != nil && filter.Since > 0 {
 		baseQuery += fmt.Sprintf(" AND b.created >= $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND b.created >= $%d", argIndex)
 		args = append(args, filter.Since)
 		argIndex++
 	}
@@ -259,15 +258,8 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 	// Apply until filter
 	if filter != nil && filter.Until > 0 {
 		baseQuery += fmt.Sprintf(" AND b.created <= $%d", argIndex)
-		countQuery += fmt.Sprintf(" AND b.created <= $%d", argIndex)
 		args = append(args, filter.Until)
 		argIndex++
-	}
-
-	// Get total count before pagination
-	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, fmt.Errorf("count blobs: %w", err)
 	}
 
 	// Apply sorting
@@ -289,7 +281,7 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 		}
 	}
 
-	// Execute query
+	// Execute single query that returns both data and count
 	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query blobs: %w", err)
@@ -297,8 +289,10 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 	defer rows.Close()
 
 	var blobs []*core.Blob
+	var total int64
 	for rows.Next() {
 		var dbBlob db.Blob
+		var rowTotal int64
 		if err := rows.Scan(
 			&dbBlob.Pubkey,
 			&dbBlob.Hash,
@@ -309,8 +303,13 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 			&dbBlob.EncryptedDek,
 			&dbBlob.EncryptionNonce,
 			&dbBlob.OriginalSize,
+			&rowTotal,
 		); err != nil {
 			return nil, fmt.Errorf("scan blob: %w", err)
+		}
+		// Total count is the same for all rows, just take it from first row
+		if total == 0 {
+			total = rowTotal
 		}
 		blobs = append(blobs, r.dbBlobIntoBlobDescriptor(dbBlob))
 	}
