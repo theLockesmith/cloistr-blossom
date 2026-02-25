@@ -494,11 +494,14 @@ transcoding:
 
 ### P1 - High Priority
 
-(All P1 items completed)
+1. **Chunked Uploads** - Support large file uploads via chunked transfer
+2. **Resumable Uploads (tus)** - Implement tus protocol for resumable uploads
 
 ### P2 - Medium Priority
 
-(All P2 items completed)
+3. **WebSocket Notifications** - Real-time progress for uploads/transcoding
+4. **Blob Expiration** - Auto-delete policies with configurable TTL
+5. **Multi-region Replication** - Replicate blobs across storage backends
 
 ### Completed
 
