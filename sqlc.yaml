@@ -3,7 +3,7 @@ sql:
   # PostgreSQL for production
   - engine: "postgresql"
     queries: "db/queries"
-    schema: "db/migrations/postgres"
+    schema: "db/schema.sql"
     gen:
       go:
         package: "db"

@@ -129,6 +129,17 @@ type IPFSConfig struct {
 	AutoPin bool `yaml:"auto_pin"`
 }
 
+// ChunkedUploadConfig defines chunked upload settings.
+type ChunkedUploadConfig struct {
+	Enabled           bool   `yaml:"enabled"`             // Enable chunked uploads
+	DefaultChunkSize  int64  `yaml:"default_chunk_size"`  // Default chunk size in bytes (default: 5MB)
+	MinChunkSize      int64  `yaml:"min_chunk_size"`      // Minimum chunk size (default: 1MB)
+	MaxChunkSize      int64  `yaml:"max_chunk_size"`      // Maximum chunk size (default: 100MB)
+	MaxSessionTTL     string `yaml:"max_session_ttl"`     // Maximum session lifetime (default: 24h)
+	DefaultSessionTTL string `yaml:"default_session_ttl"` // Default session lifetime (default: 1h)
+	TempDir           string `yaml:"temp_dir"`            // Directory for temporary chunks
+}
+
 // TranscodingConfig defines video transcoding settings.
 type TranscodingConfig struct {
 	// Work directory for temporary transcoding files
@@ -215,9 +226,10 @@ type Config struct {
 	Cache        CacheConfig        `yaml:"cache"`
 	Encryption   EncryptionConfig   `yaml:"encryption"`
 	CDN          CDNConfig          `yaml:"cdn"`
-	RateLimiting RateLimitingConfig `yaml:"rate_limiting"`
-	IPFS         IPFSConfig         `yaml:"ipfs"`
-	Transcoding  TranscodingConfig  `yaml:"transcoding"`
+	RateLimiting   RateLimitingConfig   `yaml:"rate_limiting"`
+	IPFS           IPFSConfig           `yaml:"ipfs"`
+	Transcoding    TranscodingConfig    `yaml:"transcoding"`
+	ChunkedUpload  ChunkedUploadConfig  `yaml:"chunked_upload"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -341,6 +353,26 @@ func (c *Config) applyDefaults() {
 	// Default transcoding settings
 	if c.Transcoding.HWAccel.Type == "" {
 		c.Transcoding.HWAccel.Type = "none" // Default to software encoding
+	}
+
+	// Default chunked upload settings
+	if c.ChunkedUpload.DefaultChunkSize == 0 {
+		c.ChunkedUpload.DefaultChunkSize = 5 * 1024 * 1024 // 5MB
+	}
+	if c.ChunkedUpload.MinChunkSize == 0 {
+		c.ChunkedUpload.MinChunkSize = 1 * 1024 * 1024 // 1MB
+	}
+	if c.ChunkedUpload.MaxChunkSize == 0 {
+		c.ChunkedUpload.MaxChunkSize = 100 * 1024 * 1024 // 100MB
+	}
+	if c.ChunkedUpload.MaxSessionTTL == "" {
+		c.ChunkedUpload.MaxSessionTTL = "24h"
+	}
+	if c.ChunkedUpload.DefaultSessionTTL == "" {
+		c.ChunkedUpload.DefaultSessionTTL = "1h"
+	}
+	if c.ChunkedUpload.TempDir == "" {
+		c.ChunkedUpload.TempDir = "/tmp/blossom-chunks"
 	}
 }
 

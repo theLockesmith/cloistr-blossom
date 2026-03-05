@@ -36,7 +36,7 @@ func (q *Queries) DeleteBlobFromHash(ctx context.Context, hash string) error {
 }
 
 const getBlobFromHash = `-- name: GetBlobFromHash :one
-SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
+SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count, expires_at
 FROM blobs
 WHERE hash = $1
 LIMIT 1
@@ -57,6 +57,7 @@ func (q *Queries) GetBlobFromHash(ctx context.Context, hash string) (Blob, error
 		&i.EncryptionNonce,
 		&i.OriginalSize,
 		&i.RefCount,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -75,7 +76,7 @@ func (q *Queries) GetBlobRefCount(ctx context.Context, hash string) (int32, erro
 }
 
 const getBlobsFromPubkey = `-- name: GetBlobsFromPubkey :many
-SELECT b.pubkey, b.hash, b.type, b.size, b.blob, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size, b.ref_count
+SELECT b.pubkey, b.hash, b.type, b.size, b.blob, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size, b.ref_count, b.expires_at
 FROM blobs b
 INNER JOIN blob_references br ON b.hash = br.hash
 WHERE br.pubkey = $1
@@ -103,6 +104,7 @@ func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob
 			&i.EncryptionNonce,
 			&i.OriginalSize,
 			&i.RefCount,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -118,7 +120,7 @@ func (q *Queries) GetBlobsFromPubkey(ctx context.Context, pubkey string) ([]Blob
 }
 
 const getBlobsFromPubkeyLegacy = `-- name: GetBlobsFromPubkeyLegacy :many
-SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
+SELECT pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count, expires_at
 FROM blobs
 WHERE pubkey = $1
 `
@@ -145,6 +147,7 @@ func (q *Queries) GetBlobsFromPubkeyLegacy(ctx context.Context, pubkey string) (
 			&i.EncryptionNonce,
 			&i.OriginalSize,
 			&i.RefCount,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +187,7 @@ INSERT INTO blobs(
   original_size,
   ref_count
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-RETURNING pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count
+RETURNING pubkey, hash, type, size, blob, created, encryption_mode, encrypted_dek, encryption_nonce, original_size, ref_count, expires_at
 `
 
 type InsertBlobParams struct {
@@ -228,6 +231,7 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 		&i.EncryptionNonce,
 		&i.OriginalSize,
 		&i.RefCount,
+		&i.ExpiresAt,
 	)
 	return i, err
 }

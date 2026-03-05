@@ -22,6 +22,10 @@ type Services interface {
 	CDN() CDNService
 	IPFS() IPFSService
 	Torrent() TorrentService
+	ChunkedUpload() ChunkedUploadService
+	Notifications() NotificationService
+	Expiration() ExpirationService
+	Replication() ReplicationService
 	Cache() cache.Cache
 }
 

@@ -20,6 +20,7 @@ type Blob struct {
 	EncryptionNonce sql.NullString
 	OriginalSize    sql.NullInt64
 	RefCount        int32
+	ExpiresAt       sql.NullInt64
 }
 
 type BlobReference struct {
@@ -33,6 +34,19 @@ type Blocklist struct {
 	Reason    string
 	BlockedBy string
 	CreatedAt int64
+}
+
+type ExpirationPolicy struct {
+	ID         int32
+	Name       string
+	MimePrefix sql.NullString
+	TtlSeconds int32
+	MaxSize    sql.NullInt64
+	Pubkey     sql.NullString
+	Priority   int32
+	Enabled    bool
+	CreatedAt  int64
+	UpdatedAt  int64
 }
 
 type MimeType struct {
@@ -70,6 +84,31 @@ type TransparencyStat struct {
 	BlobsRemoved     int64
 	UsersBanned      int64
 	LastUpdated      int64
+}
+
+type UploadChunk struct {
+	SessionID   string
+	ChunkNum    int32
+	Size        int64
+	OffsetBytes int64
+	Hash        string
+	ReceivedAt  int64
+}
+
+type UploadSession struct {
+	ID             string
+	Pubkey         string
+	Hash           sql.NullString
+	TotalSize      int64
+	ChunkSize      int64
+	MimeType       sql.NullString
+	ChunksReceived int32
+	BytesReceived  int64
+	Status         string
+	EncryptionMode string
+	Created        int64
+	Updated        int64
+	ExpiresAt      int64
 }
 
 type User struct {

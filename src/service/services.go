@@ -15,20 +15,24 @@ import (
 )
 
 type services struct {
-	blobs      core.BlobStorage
-	acrs       core.ACRStorage
-	mimes      core.MimeTypeService
-	settings   core.SettingService
-	stats      core.StatService
-	quota      core.QuotaService
-	moderation core.ModerationService
-	media      core.MediaService
-	video      core.VideoService
-	cdn        core.CDNService
-	ipfs       core.IPFSService
-	torrent    core.TorrentService
-	cache      cache.Cache
-	conf       *config.Config
+	blobs         core.BlobStorage
+	acrs          core.ACRStorage
+	mimes         core.MimeTypeService
+	settings      core.SettingService
+	stats         core.StatService
+	quota         core.QuotaService
+	moderation    core.ModerationService
+	media         core.MediaService
+	video         core.VideoService
+	cdn           core.CDNService
+	ipfs          core.IPFSService
+	torrent       core.TorrentService
+	chunkedUpload core.ChunkedUploadService
+	notifications core.NotificationService
+	expiration    core.ExpirationService
+	replication   core.ReplicationService
+	cache         cache.Cache
+	conf          *config.Config
 }
 
 func New(
@@ -149,21 +153,56 @@ func New(
 
 	torrentService := NewTorrentService(storageBackend, appCache, log)
 
+	var chunkedUploadService core.ChunkedUploadService
+	if conf.ChunkedUpload.Enabled {
+		chunkedUploadService, err = NewChunkedUploadService(
+			database,
+			queries,
+			storageBackend,
+			blobService,
+			quotaService,
+			&conf.ChunkedUpload,
+			conf.CdnUrl,
+			log,
+		)
+		if err != nil {
+			log.Fatal("failed to initialize chunked upload service", zap.Error(err))
+		}
+		log.Info("chunked upload service enabled",
+			zap.Int64("default_chunk_size", conf.ChunkedUpload.DefaultChunkSize),
+			zap.String("temp_dir", conf.ChunkedUpload.TempDir))
+	}
+
+	// Initialize notification service for real-time updates
+	notificationService := NewNotificationService(log)
+	log.Info("notification service initialized")
+
+	// Initialize expiration service
+	expirationService := NewExpirationService(queries, storageBackend, core.DefaultExpirationConfig(), log)
+	log.Info("expiration service initialized")
+
+	// Initialize replication service (nil if not configured)
+	var replicationService core.ReplicationService
+
 	return &services{
-		blobs:      blobService,
-		acrs:       acrService,
-		mimes:      mimeTypeService,
-		settings:   settingsService,
-		stats:      statService,
-		quota:      quotaService,
-		moderation: moderationService,
-		media:      mediaService,
-		video:      videoService,
-		cdn:        cdnService,
-		ipfs:       ipfsService,
-		torrent:    torrentService,
-		cache:      appCache,
-		conf:       conf,
+		blobs:         blobService,
+		acrs:          acrService,
+		mimes:         mimeTypeService,
+		settings:      settingsService,
+		stats:         statService,
+		quota:         quotaService,
+		moderation:    moderationService,
+		media:         mediaService,
+		video:         videoService,
+		cdn:           cdnService,
+		ipfs:          ipfsService,
+		torrent:       torrentService,
+		chunkedUpload: chunkedUploadService,
+		notifications: notificationService,
+		expiration:    expirationService,
+		replication:   replicationService,
+		cache:         appCache,
+		conf:          conf,
 	}
 }
 
@@ -213,6 +252,22 @@ func (s *services) IPFS() core.IPFSService {
 
 func (s *services) Torrent() core.TorrentService {
 	return s.torrent
+}
+
+func (s *services) ChunkedUpload() core.ChunkedUploadService {
+	return s.chunkedUpload
+}
+
+func (s *services) Notifications() core.NotificationService {
+	return s.notifications
+}
+
+func (s *services) Expiration() core.ExpirationService {
+	return s.expiration
+}
+
+func (s *services) Replication() core.ReplicationService {
+	return s.replication
 }
 
 func (s *services) Cache() cache.Cache {

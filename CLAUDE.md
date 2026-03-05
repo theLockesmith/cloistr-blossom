@@ -89,6 +89,11 @@ git merge upstream/master
 | Deduplication | ✅ | Content-addressable dedup across users |
 | BUD-09 Reporting | ✅ | NIP-56 signed reports, re-upload prevention |
 | AV1/HEVC Codecs | ✅ | Modern codec support for better compression |
+| Chunked Uploads | ✅ | Large file uploads via chunked transfer |
+| Resumable Uploads (tus) | ✅ | Standard tus protocol for resumable uploads |
+| WebSocket Notifications | ✅ | Real-time progress for uploads/transcoding |
+| Blob Expiration | ✅ | Auto-delete policies with configurable TTL |
+| Multi-region Replication | ✅ | Replicate blobs across storage backends |
 
 ## Project Structure
 
@@ -296,6 +301,81 @@ When content is removed due to a report, the blob hash is added to a blocklist. 
 **Quality presets (HEVC):** 720p (1750kbps), 480p (700kbps), 360p (420kbps) - ~30% more efficient
 **Quality presets (AV1):** 720p (1500kbps), 480p (600kbps), 360p (360kbps) - ~40% more efficient
 
+### Chunked Uploads
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/upload/chunked` | Yes | Start a new chunked upload session |
+| PUT | `/upload/chunked/:session_id/:chunk_num` | No | Upload a chunk |
+| POST | `/upload/chunked/:session_id/complete` | No | Finalize upload |
+| DELETE | `/upload/chunked/:session_id` | No | Abort upload |
+| GET | `/upload/chunked/:session_id` | No | Get session status |
+
+**Create session request:**
+```json
+{
+  "total_size": 104857600,
+  "chunk_size": 5242880,
+  "mime_type": "video/mp4",
+  "hash": "abc123...",
+  "encryption_mode": "none"
+}
+```
+
+**Chunked upload workflow:**
+1. Create session: `POST /upload/chunked` with total size
+2. Upload chunks: `PUT /upload/chunked/:session/:chunk_num` with binary data
+3. Finalize: `POST /upload/chunked/:session/complete`
+4. Server assembles chunks and creates blob
+
+### Resumable Uploads (tus Protocol)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| OPTIONS | `/files` | No | Get tus protocol capabilities |
+| POST | `/files` | Yes | Create new upload |
+| HEAD | `/files/:id` | No | Get upload progress |
+| PATCH | `/files/:id` | No | Resume upload |
+| DELETE | `/files/:id` | Yes | Terminate upload |
+
+**Supported tus extensions:**
+- `creation` - Create new uploads
+- `creation-with-upload` - Send data with creation request
+- `termination` - Cancel uploads
+- `concatenation` - Combine partial uploads
+
+**tus upload workflow:**
+1. Create upload: `POST /files` with `Upload-Length` header
+2. Resume: `PATCH /files/:id` with `Upload-Offset` and `Content-Type: application/offset+octet-stream`
+3. On complete, blob is automatically created
+
+### WebSocket Notifications
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ws` | No | WebSocket connection (pubkey query param) |
+| GET | `/ws/status` | No | Get connection stats |
+
+**Notification types:**
+- `upload_progress` - Upload progress updates
+- `upload_complete` - Upload finished
+- `upload_failed` - Upload error
+- `transcode_progress` - Video transcoding progress
+- `transcode_complete` - Transcoding finished
+- `quota_warning` - Quota threshold reached
+
+**WebSocket message format:**
+```json
+{
+  "type": "upload_progress",
+  "timestamp": 1709312400,
+  "upload_id": "abc123",
+  "bytes_received": 5242880,
+  "total_bytes": 104857600,
+  "progress_pct": 5.0
+}
+```
+
 ### Content Deduplication
 
 Cloistr-blossom implements content-addressable deduplication, allowing multiple users to reference the same blob without storing duplicate data.
@@ -494,17 +574,22 @@ transcoding:
 
 ### P1 - High Priority
 
-1. **Chunked Uploads** - Support large file uploads via chunked transfer
-2. **Resumable Uploads (tus)** - Implement tus protocol for resumable uploads
+1. **End-to-End Encryption UI** - Integrate E2E encryption with cloistr-drive UI
+2. **Batch Operations** - Bulk upload/download/delete operations
 
 ### P2 - Medium Priority
 
-3. **WebSocket Notifications** - Real-time progress for uploads/transcoding
-4. **Blob Expiration** - Auto-delete policies with configurable TTL
-5. **Multi-region Replication** - Replicate blobs across storage backends
+3. **AI Content Moderation** - Automated CSAM/illegal content detection
+4. **Federation** - Cross-server blob mirroring via Nostr events
+5. **Analytics Dashboard** - Usage analytics and insights
 
 ### Completed
 
+- ~~Chunked Uploads~~ - Large file uploads via chunked transfer (2026-03-01)
+- ~~Resumable Uploads (tus)~~ - Standard tus protocol for resumable uploads (2026-03-01)
+- ~~WebSocket Notifications~~ - Real-time progress for uploads/transcoding (2026-03-01)
+- ~~Blob Expiration~~ - Auto-delete policies with configurable TTL (2026-03-01)
+- ~~Multi-region Replication~~ - Replicate blobs across storage backends (2026-03-01)
 - ~~AV1/HEVC Support~~ - Modern codec support for better compression (2026-02-23)
 - ~~BUD-09 Reporting~~ - NIP-56 signed reports with re-upload prevention (2026-02-23)
 - ~~Deduplication~~ - Content-addressable dedup across users (2026-02-23)

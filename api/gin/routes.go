@@ -219,5 +219,35 @@ func SetupRoutes(
 	// Admin dashboard and API
 	RegisterAdminRoutes(r, services, adminPubkey, log)
 
+	// Chunked upload endpoints
+	if services.ChunkedUpload() != nil {
+		chunkedHandler := NewChunkedUploadHandler(services.ChunkedUpload(), cdnBaseUrl)
+		RegisterChunkedUploadRoutes(r, chunkedHandler, nostrAuthMiddleware("upload", log))
+		log.Info("chunked upload routes registered")
+	}
+
+	// TUS resumable upload protocol endpoints
+	tusHandler, err := NewTusHandler(
+		services.Blob(),
+		services.Quota(),
+		TusConfig{
+			TempDir:    conf.ChunkedUpload.TempDir,
+			CDNBaseURL: cdnBaseUrl,
+		},
+		log,
+	)
+	if err != nil {
+		log.Error("failed to initialize tus handler", zap.Error(err))
+	} else {
+		RegisterTusRoutes(r, tusHandler, nostrAuthMiddleware("upload", log), log)
+	}
+
+	// WebSocket real-time notifications
+	if services.Notifications() != nil {
+		wsHandler := NewWebSocketHandler(services.Notifications(), log)
+		RegisterWebSocketRoutes(r, wsHandler, nostrAuthMiddleware("upload", log))
+		log.Info("websocket notification routes registered")
+	}
+
 	return r
 }
