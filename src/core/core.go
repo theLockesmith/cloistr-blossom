@@ -26,6 +26,7 @@ type Services interface {
 	Notifications() NotificationService
 	Expiration() ExpirationService
 	Replication() ReplicationService
+	Batch() BatchService
 	Cache() cache.Cache
 }
 

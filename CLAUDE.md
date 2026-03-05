@@ -94,6 +94,7 @@ git merge upstream/master
 | WebSocket Notifications | ✅ | Real-time progress for uploads/transcoding |
 | Blob Expiration | ✅ | Auto-delete policies with configurable TTL |
 | Multi-region Replication | ✅ | Replicate blobs across storage backends |
+| Batch Operations | ✅ | Bulk upload/download/delete operations |
 
 ## Project Structure
 
@@ -376,6 +377,67 @@ When content is removed due to a report, the blob hash is added to a blocklist. 
 }
 ```
 
+### Batch Operations
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/batch/upload` | Yes | Upload multiple files at once |
+| POST | `/batch/download` | No | Download multiple blobs as archive |
+| DELETE | `/batch` | Yes | Delete multiple blobs |
+| POST | `/batch/status` | No | Check status of multiple blobs |
+| GET | `/batch/jobs/:job_id` | No | Get async job status |
+| DELETE | `/batch/jobs/:job_id` | Yes | Cancel a batch job |
+
+**Batch upload (multipart form):**
+- `files`: Multiple files to upload
+- `encryption_mode`: `none`, `server`, or `e2e`
+- `expires_in`: TTL in seconds (optional)
+
+**Batch download request:**
+```json
+{
+  "hashes": ["abc123...", "def456..."],
+  "format": "zip",  // "zip", "tar", or "tar.gz"
+  "flatten": false
+}
+```
+
+**Batch delete request:**
+```json
+{
+  "hashes": ["abc123...", "def456..."]
+}
+```
+
+**Batch status request:**
+```json
+{
+  "hashes": ["abc123...", "def456..."]
+}
+```
+
+**Batch status response:**
+```json
+{
+  "items": [
+    {
+      "hash": "abc123...",
+      "exists": true,
+      "size": 1048576,
+      "mime_type": "image/jpeg",
+      "created": 1709312400,
+      "url": "https://cdn.example.com/abc123"
+    }
+  ]
+}
+```
+
+**Default limits:**
+- Max upload files: 50
+- Max download files: 100
+- Max delete files: 100
+- Max total upload size: 500 MB
+
 ### Content Deduplication
 
 Cloistr-blossom implements content-addressable deduplication, allowing multiple users to reference the same blob without storing duplicate data.
@@ -575,16 +637,16 @@ transcoding:
 ### P1 - High Priority
 
 1. **End-to-End Encryption UI** - Integrate E2E encryption with cloistr-drive UI
-2. **Batch Operations** - Bulk upload/download/delete operations
 
 ### P2 - Medium Priority
 
-3. **AI Content Moderation** - Automated CSAM/illegal content detection
-4. **Federation** - Cross-server blob mirroring via Nostr events
-5. **Analytics Dashboard** - Usage analytics and insights
+2. **AI Content Moderation** - Automated CSAM/illegal content detection
+3. **Federation** - Cross-server blob mirroring via Nostr events
+4. **Analytics Dashboard** - Usage analytics and insights
 
 ### Completed
 
+- ~~Batch Operations~~ - Bulk upload/download/delete operations (2026-03-05)
 - ~~Chunked Uploads~~ - Large file uploads via chunked transfer (2026-03-01)
 - ~~Resumable Uploads (tus)~~ - Standard tus protocol for resumable uploads (2026-03-01)
 - ~~WebSocket Notifications~~ - Real-time progress for uploads/transcoding (2026-03-01)

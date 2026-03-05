@@ -31,6 +31,7 @@ type services struct {
 	notifications core.NotificationService
 	expiration    core.ExpirationService
 	replication   core.ReplicationService
+	batch         core.BatchService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -184,6 +185,21 @@ func New(
 	// Initialize replication service (nil if not configured)
 	var replicationService core.ReplicationService
 
+	// Initialize batch service
+	batchService, err := NewBatchService(
+		blobService,
+		storageBackend,
+		quotaService,
+		expirationService,
+		core.DefaultBatchConfig(),
+		conf.CdnUrl,
+		log,
+	)
+	if err != nil {
+		log.Fatal("failed to initialize batch service", zap.Error(err))
+	}
+	log.Info("batch service initialized")
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -201,6 +217,7 @@ func New(
 		notifications: notificationService,
 		expiration:    expirationService,
 		replication:   replicationService,
+		batch:         batchService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -268,6 +285,10 @@ func (s *services) Expiration() core.ExpirationService {
 
 func (s *services) Replication() core.ReplicationService {
 	return s.replication
+}
+
+func (s *services) Batch() core.BatchService {
+	return s.batch
 }
 
 func (s *services) Cache() cache.Cache {

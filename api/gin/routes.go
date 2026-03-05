@@ -249,5 +249,29 @@ func SetupRoutes(
 		log.Info("websocket notification routes registered")
 	}
 
+	// Batch operations endpoints
+	if services.Batch() != nil {
+		batchController := NewBatchController(services.Batch())
+		batch := r.Group("/batch")
+		{
+			// Upload requires auth
+			batch.POST("/upload", nostrAuthMiddleware("upload", log), batchController.BatchUpload)
+
+			// Download can be done without auth (public blobs) or with auth
+			batch.POST("/download", batchController.BatchDownload)
+
+			// Delete requires auth
+			batch.DELETE("", nostrAuthMiddleware("delete", log), batchController.BatchDelete)
+
+			// Status check doesn't require auth
+			batch.POST("/status", batchController.BatchStatus)
+
+			// Job management
+			batch.GET("/jobs/:job_id", batchController.GetBatchJob)
+			batch.DELETE("/jobs/:job_id", nostrAuthMiddleware("delete", log), batchController.CancelBatchJob)
+		}
+		log.Info("batch operation routes registered")
+	}
+
 	return r
 }
