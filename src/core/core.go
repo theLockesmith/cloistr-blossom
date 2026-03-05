@@ -27,6 +27,7 @@ type Services interface {
 	Expiration() ExpirationService
 	Replication() ReplicationService
 	Batch() BatchService
+	AIModeration() AIModerationService
 	Cache() cache.Cache
 }
 

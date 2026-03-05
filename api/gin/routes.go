@@ -273,5 +273,12 @@ func SetupRoutes(
 		log.Info("batch operation routes registered")
 	}
 
+	// AI moderation admin routes
+	if services.AIModeration() != nil {
+		aiModController := NewAIModerationController(services.AIModeration())
+		RegisterAIModerationRoutes(r, aiModController, adminAuthMiddleware(adminPubkey))
+		log.Info("AI moderation routes registered")
+	}
+
 	return r
 }

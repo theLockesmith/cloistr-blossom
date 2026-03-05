@@ -32,6 +32,7 @@ type services struct {
 	expiration    core.ExpirationService
 	replication   core.ReplicationService
 	batch         core.BatchService
+	aiModeration  core.AIModerationService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -200,6 +201,18 @@ func New(
 	}
 	log.Info("batch service initialized")
 
+	// Initialize AI moderation service
+	aiModerationService, err := NewAIModerationService(
+		core.DefaultAIModerationConfig(),
+		appCache,
+		moderationService,
+		log,
+	)
+	if err != nil {
+		log.Fatal("failed to initialize AI moderation service", zap.Error(err))
+	}
+	log.Info("AI moderation service initialized")
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -218,6 +231,7 @@ func New(
 		expiration:    expirationService,
 		replication:   replicationService,
 		batch:         batchService,
+		aiModeration:  aiModerationService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -289,6 +303,10 @@ func (s *services) Replication() core.ReplicationService {
 
 func (s *services) Batch() core.BatchService {
 	return s.batch
+}
+
+func (s *services) AIModeration() core.AIModerationService {
+	return s.aiModeration
 }
 
 func (s *services) Cache() cache.Cache {

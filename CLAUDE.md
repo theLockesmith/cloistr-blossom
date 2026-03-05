@@ -95,6 +95,7 @@ git merge upstream/master
 | Blob Expiration | ✅ | Auto-delete policies with configurable TTL |
 | Multi-region Replication | ✅ | Replicate blobs across storage backends |
 | Batch Operations | ✅ | Bulk upload/download/delete operations |
+| AI Content Moderation | ✅ | Pluggable providers for automated content scanning |
 
 ## Project Structure
 
@@ -438,6 +439,68 @@ When content is removed due to a report, the blob hash is added to a blocklist. 
 - Max delete files: 100
 - Max total upload size: 500 MB
 
+### AI Content Moderation (Admin)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/admin/ai-moderation/stats` | Admin | Get moderation statistics |
+| GET | `/admin/ai-moderation/providers` | Admin | List registered AI providers |
+| GET | `/admin/ai-moderation/queue` | Admin | Get scan queue status |
+| GET | `/admin/ai-moderation/quarantine` | Admin | List quarantined blobs |
+| GET | `/admin/ai-moderation/quarantine/:hash` | Admin | Get quarantined blob details |
+| POST | `/admin/ai-moderation/quarantine/:hash/review` | Admin | Approve/reject quarantined blob |
+| POST | `/admin/ai-moderation/scan/:hash` | Admin | Manually trigger scan |
+| GET | `/admin/ai-moderation/scan/:hash` | Admin | Get scan result |
+
+**Query parameters for GET /quarantine:**
+- `status` - Filter by status (pending, approved, rejected)
+- `limit` - Max results (1-100, default 50)
+- `offset` - Pagination offset
+
+**Review request:**
+```json
+{
+  "approved": true
+}
+```
+
+**Pluggable Providers:**
+- `HashBlocklistProvider` - Fast local hash matching against known bad content
+- `AWSRekognitionProvider` - AWS Rekognition for image/video moderation (stub)
+- `GoogleVisionProvider` - Google Cloud Vision Safe Search (stub)
+- `CustomAPIProvider` - Custom webhook for self-hosted ML models
+
+**Configuration:**
+```yaml
+ai_moderation:
+  enabled: true
+  scan_timeout: 30s
+  max_file_size: 104857600  # 100MB
+  scan_images: true
+  scan_videos: true
+  action_thresholds:
+    csam: 0.001      # Block with very low tolerance
+    illegal: 0.5     # Block at 50% confidence
+    explicit_adult: 0.8  # Flag for review
+  providers:
+    hash_blocklist:
+      enabled: true
+      list_url: "https://example.com/blocklist.csv"
+    custom_api:
+      enabled: true
+      endpoint: "https://my-ml-service.local/scan"
+      api_key: "${AI_MODERATION_API_KEY}"
+```
+
+**Scan Actions:**
+- `allow` - Content is safe to upload
+- `block` - Content blocked immediately
+- `quarantine` - Content held for human review
+- `flag` - Content allowed but flagged for monitoring
+
+**Upload Integration:**
+Content is automatically scanned during upload when AI moderation is enabled. The scan happens before the blob is stored, and the appropriate action is taken based on the scan result.
+
 ### Content Deduplication
 
 Cloistr-blossom implements content-addressable deduplication, allowing multiple users to reference the same blob without storing duplicate data.
@@ -640,12 +703,12 @@ transcoding:
 
 ### P2 - Medium Priority
 
-2. **AI Content Moderation** - Automated CSAM/illegal content detection
-3. **Federation** - Cross-server blob mirroring via Nostr events
-4. **Analytics Dashboard** - Usage analytics and insights
+2. **Federation** - Cross-server blob mirroring via Nostr events
+3. **Analytics Dashboard** - Usage analytics and insights
 
 ### Completed
 
+- ~~AI Content Moderation~~ - Pluggable providers for automated content scanning (2026-03-05)
 - ~~Batch Operations~~ - Bulk upload/download/delete operations (2026-03-05)
 - ~~Chunked Uploads~~ - Large file uploads via chunked transfer (2026-03-01)
 - ~~Resumable Uploads (tus)~~ - Standard tus protocol for resumable uploads (2026-03-01)

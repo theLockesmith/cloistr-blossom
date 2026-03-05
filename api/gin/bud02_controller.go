@@ -10,6 +10,7 @@ import (
 	bud02 "git.coldforge.xyz/coldforge/cloistr-blossom/src/bud-02"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
 )
 
 func uploadBlob(
@@ -60,6 +61,49 @@ func uploadBlob(
 				encryptionMode = core.EncryptionModeE2E
 			case "none":
 				encryptionMode = core.EncryptionModeNone
+			}
+		}
+
+		// AI content moderation scanning
+		if aiMod := services.AIModeration(); aiMod != nil && aiMod.IsEnabled() {
+			mimeType := ctx.GetHeader("Content-Type")
+			if aiMod.ShouldScan(mimeType, int64(len(bodyBytes))) {
+				hash, _ := hashing.Hash(bodyBytes)
+				scanReq := &core.ScanRequest{
+					Hash:     hash,
+					Data:     bodyBytes,
+					MimeType: mimeType,
+					Size:     int64(len(bodyBytes)),
+					Pubkey:   pubkey,
+				}
+
+				result, err := aiMod.ScanContent(ctx.Request.Context(), scanReq)
+				if err == nil {
+					switch result.RecommendedAction {
+					case core.ScanActionBlock:
+						metrics.BlockedUploadsTotal.Inc()
+						ctx.AbortWithStatusJSON(
+							http.StatusForbidden,
+							apiError{Message: "content blocked by automated moderation"},
+						)
+						return
+					case core.ScanActionQuarantine:
+						// Quarantine the content for review
+						_ = aiMod.QuarantineBlob(ctx.Request.Context(), hash, pubkey, result)
+						ctx.AbortWithStatusJSON(
+							http.StatusAccepted,
+							gin.H{
+								"message": "content is pending review",
+								"status":  "quarantined",
+								"hash":    hash,
+							},
+						)
+						return
+					case core.ScanActionFlag:
+						// Allow but create a report for human review
+						// The upload will continue normally
+					}
+				}
 			}
 		}
 
