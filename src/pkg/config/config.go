@@ -12,6 +12,21 @@ type AccessControlRule struct {
 	Resource string `yaml:"resource"`
 }
 
+// PlatformConfig defines Cloistr unified platform integration settings.
+type PlatformConfig struct {
+	// Mode can be "platform" (use shared PostgreSQL) or "standalone" (use local config)
+	// If empty, defaults to "standalone" for backwards compatibility
+	Mode string `yaml:"mode"`
+
+	// DatabaseURL is the connection string for the unified platform database
+	// Required when Mode is "platform"
+	// Example: postgres://cloistr:password@postgres-rw.db.coldforge.xyz:5432/cloistr
+	DatabaseURL string `yaml:"database_url"`
+
+	// ServiceID identifies this service in the platform (default: "blossom")
+	ServiceID string `yaml:"service_id"`
+}
+
 // StorageConfig defines the blob storage backend configuration.
 type StorageConfig struct {
 	Backend string             `yaml:"backend"` // "local" or "s3"
@@ -220,16 +235,17 @@ type Config struct {
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
 	// New configuration sections
-	Storage      StorageConfig      `yaml:"storage"`
-	Database     DatabaseConfig     `yaml:"database"`
-	Quota        QuotaConfig        `yaml:"quota"`
-	Cache        CacheConfig        `yaml:"cache"`
-	Encryption   EncryptionConfig   `yaml:"encryption"`
-	CDN          CDNConfig          `yaml:"cdn"`
-	RateLimiting   RateLimitingConfig   `yaml:"rate_limiting"`
-	IPFS           IPFSConfig           `yaml:"ipfs"`
-	Transcoding    TranscodingConfig    `yaml:"transcoding"`
-	ChunkedUpload  ChunkedUploadConfig  `yaml:"chunked_upload"`
+	Storage       StorageConfig        `yaml:"storage"`
+	Database      DatabaseConfig       `yaml:"database"`
+	Quota         QuotaConfig          `yaml:"quota"`
+	Cache         CacheConfig          `yaml:"cache"`
+	Encryption    EncryptionConfig     `yaml:"encryption"`
+	CDN           CDNConfig            `yaml:"cdn"`
+	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
+	IPFS          IPFSConfig           `yaml:"ipfs"`
+	Transcoding   TranscodingConfig    `yaml:"transcoding"`
+	ChunkedUpload ChunkedUploadConfig  `yaml:"chunked_upload"`
+	Platform      PlatformConfig       `yaml:"platform"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -374,6 +390,14 @@ func (c *Config) applyDefaults() {
 	if c.ChunkedUpload.TempDir == "" {
 		c.ChunkedUpload.TempDir = "/tmp/blossom-chunks"
 	}
+
+	// Default platform settings (standalone mode for backwards compatibility)
+	if c.Platform.Mode == "" {
+		c.Platform.Mode = "standalone"
+	}
+	if c.Platform.ServiceID == "" {
+		c.Platform.ServiceID = "blossom"
+	}
 }
 
 // GetDatabasePath returns the SQLite database path for backwards compatibility.
@@ -389,4 +413,14 @@ func (c *Config) GetDatabasePath() string {
 // when creating config structs directly (e.g., in tests).
 func (c *Config) ApplyDefaults() {
 	c.applyDefaults()
+}
+
+// IsPlatformMode returns true if running in unified platform mode.
+func (c *Config) IsPlatformMode() bool {
+	return c.Platform.Mode == "platform"
+}
+
+// IsStandaloneMode returns true if running in standalone mode.
+func (c *Config) IsStandaloneMode() bool {
+	return c.Platform.Mode == "" || c.Platform.Mode == "standalone"
 }

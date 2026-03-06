@@ -11,6 +11,7 @@ import (
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.coldforge.xyz/coldforge/cloistr-common/platform"
 	"go.uber.org/zap"
 )
 
@@ -75,12 +76,53 @@ func New(
 		log.Fatal(err.Error())
 	}
 
-	acrService, err := NewACRService(
-		conf,
-		log,
-	)
-	if err != nil {
-		log.Fatal(err.Error())
+	// Initialize ACR and Quota services based on platform mode
+	var acrService core.ACRStorage
+	var quotaService core.QuotaService
+
+	if conf.IsPlatformMode() {
+		// Platform mode: use unified platform database
+		log.Info("initializing services in platform mode",
+			zap.String("database_url", maskDatabaseURL(conf.Platform.DatabaseURL)),
+			zap.String("service_id", conf.Platform.ServiceID))
+
+		platformClient, err := platform.NewClient(platform.Config{
+			Mode:        platform.ModePlatform,
+			DatabaseURL: conf.Platform.DatabaseURL,
+			ServiceID:   conf.Platform.ServiceID,
+		})
+		if err != nil {
+			log.Fatal("failed to initialize platform client", zap.Error(err))
+		}
+
+		acrService, err = NewPlatformACRService(platformClient, log)
+		if err != nil {
+			log.Fatal("failed to initialize platform ACR service", zap.Error(err))
+		}
+
+		quotaService, err = NewPlatformQuotaService(
+			platformClient,
+			conf.Quota.DefaultBytes,
+			conf.Quota.MaxBytes,
+			conf.Quota.Enabled,
+			log,
+		)
+		if err != nil {
+			log.Fatal("failed to initialize platform quota service", zap.Error(err))
+		}
+	} else {
+		// Standalone mode: use local config and database
+		log.Info("initializing services in standalone mode")
+
+		acrService, err = NewACRService(conf, log)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		quotaService, err = NewQuotaService(queries, &conf.Quota, log)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
 	}
 
 	settingsService, err := NewSettingService(
@@ -101,11 +143,6 @@ func New(
 	}
 
 	statService, err := NewStatService(queries)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	quotaService, err := NewQuotaService(queries, &conf.Quota, log)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -315,6 +352,33 @@ func (s *services) Cache() cache.Cache {
 
 func (s *services) Init(ctx context.Context) error {
 	return nil
+}
+
+// maskDatabaseURL masks the password in a database URL for safe logging.
+func maskDatabaseURL(url string) string {
+	if url == "" {
+		return "(not set)"
+	}
+	// Simple masking - in production, use a proper URL parser
+	// This just masks anything between :// and @
+	start := 0
+	for i := 0; i < len(url)-2; i++ {
+		if url[i:i+3] == "://" {
+			start = i + 3
+			break
+		}
+	}
+	end := len(url)
+	for i := start; i < len(url); i++ {
+		if url[i] == '@' {
+			end = i
+			break
+		}
+	}
+	if start > 0 && end < len(url) {
+		return url[:start] + "***@" + url[end+1:]
+	}
+	return url
 }
 
 // initStorageBackend creates the appropriate storage backend based on config.
