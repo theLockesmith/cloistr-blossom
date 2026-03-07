@@ -73,6 +73,7 @@ git merge upstream/master
 | PostgreSQL Support | ✅ | postgres-rw.db.coldforge.xyz |
 | Storage Quotas | ✅ | Per-pubkey limits |
 | Server-side Encryption | ✅ | AES-256-GCM at rest |
+| E2E Encryption UI | ✅ | Drive UI with encryption indicators and key hierarchy |
 | Prometheus Metrics | ✅ | /metrics endpoint |
 | Grafana Dashboard | ✅ | coldforge-blossom dashboard |
 | Content Moderation | ✅ | Reporting, blocklist, transparency |
@@ -699,15 +700,15 @@ transcoding:
 
 ### P1 - High Priority
 
-1. **End-to-End Encryption UI** - Integrate E2E encryption with cloistr-drive UI
+1. **Federation** - Cross-server blob mirroring via Nostr events
 
 ### P2 - Medium Priority
 
-2. **Federation** - Cross-server blob mirroring via Nostr events
-3. **Analytics Dashboard** - Usage analytics and insights
+2. **Analytics Dashboard** - Usage analytics and insights
 
 ### Completed
 
+- ~~E2E Encryption UI~~ - Integrated E2E encryption with cloistr-drive UI (2026-03-06)
 - ~~AI Content Moderation~~ - Pluggable providers for automated content scanning (2026-03-05)
 - ~~Batch Operations~~ - Bulk upload/download/delete operations (2026-03-05)
 - ~~Chunked Uploads~~ - Large file uploads via chunked transfer (2026-03-01)

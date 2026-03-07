@@ -16,6 +16,7 @@ type blobDescriptor struct {
 	Size              int64              `json:"size"`
 	Type              string             `json:"type"`
 	Uploaded          int64              `json:"uploaded"`
+	EncryptionMode    string             `json:"encryption_mode,omitempty"`
 	NIP94FileMetadata *nip94FileMetadata `json:"nip94,omitempty"`
 }
 
@@ -40,11 +41,12 @@ type nip94FileMetadata struct {
 
 func fromDomainBlobDescriptor(blob *core.Blob) *blobDescriptor {
 	apiBlob := &blobDescriptor{
-		Url:      blob.Url,
-		Sha256:   blob.Sha256,
-		Size:     blob.Size,
-		Type:     blob.Type,
-		Uploaded: blob.Uploaded,
+		Url:            blob.Url,
+		Sha256:         blob.Sha256,
+		Size:           blob.Size,
+		Type:           blob.Type,
+		Uploaded:       blob.Uploaded,
+		EncryptionMode: string(blob.EncryptionMode),
 	}
 
 	if blob.NIP94 != nil {

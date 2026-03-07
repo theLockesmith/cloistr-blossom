@@ -61,6 +61,12 @@ func uploadBlob(
 				encryptionMode = core.EncryptionModeE2E
 			case "none":
 				encryptionMode = core.EncryptionModeNone
+			default:
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{Message: "invalid encryption mode: valid values are none, server, e2e"},
+				)
+				return
 			}
 		}
 
