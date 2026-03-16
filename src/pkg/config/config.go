@@ -155,6 +155,42 @@ type ChunkedUploadConfig struct {
 	TempDir           string `yaml:"temp_dir"`            // Directory for temporary chunks
 }
 
+// FederationConfig defines Nostr-based federation settings.
+type FederationConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable federation
+
+	// Mode determines federation behavior:
+	// - "publish": Only publish blob events to relays
+	// - "subscribe": Only subscribe to blob events from relays
+	// - "both": Full federation (publish and subscribe)
+	Mode string `yaml:"mode"`
+
+	// Server's Nostr private key for signing federation events
+	// Can be nsec or hex format. Required when federation is enabled.
+	ServerNsec string `yaml:"server_nsec"`
+
+	// Relay URLs for publishing and subscribing to federation events
+	RelayURLs []string `yaml:"relay_urls"`
+
+	// Auto-mirror blobs discovered via federation
+	AutoMirror bool `yaml:"auto_mirror"`
+
+	// Minimum reference count before auto-mirroring a blob (default: 2)
+	MirrorMinRefs int `yaml:"mirror_min_refs"`
+
+	// Number of worker goroutines for event processing (default: 4)
+	WorkerCount int `yaml:"worker_count"`
+
+	// Batch size for event processing (default: 100)
+	BatchSize int `yaml:"batch_size"`
+
+	// Max retry attempts for publishing events (default: 3)
+	RetryAttempts int `yaml:"retry_attempts"`
+
+	// Delay between retries (default: "1m")
+	RetryDelay string `yaml:"retry_delay"`
+}
+
 // TranscodingConfig defines video transcoding settings.
 type TranscodingConfig struct {
 	// Work directory for temporary transcoding files
@@ -245,6 +281,7 @@ type Config struct {
 	IPFS          IPFSConfig           `yaml:"ipfs"`
 	Transcoding   TranscodingConfig    `yaml:"transcoding"`
 	ChunkedUpload ChunkedUploadConfig  `yaml:"chunked_upload"`
+	Federation    FederationConfig     `yaml:"federation"`
 	Platform      PlatformConfig       `yaml:"platform"`
 }
 
@@ -389,6 +426,26 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ChunkedUpload.TempDir == "" {
 		c.ChunkedUpload.TempDir = "/tmp/blossom-chunks"
+	}
+
+	// Default federation settings
+	if c.Federation.Mode == "" {
+		c.Federation.Mode = "both" // Full federation by default when enabled
+	}
+	if c.Federation.MirrorMinRefs == 0 {
+		c.Federation.MirrorMinRefs = 2
+	}
+	if c.Federation.WorkerCount == 0 {
+		c.Federation.WorkerCount = 4
+	}
+	if c.Federation.BatchSize == 0 {
+		c.Federation.BatchSize = 100
+	}
+	if c.Federation.RetryAttempts == 0 {
+		c.Federation.RetryAttempts = 3
+	}
+	if c.Federation.RetryDelay == "" {
+		c.Federation.RetryDelay = "1m"
 	}
 
 	// Default platform settings (standalone mode for backwards compatibility)

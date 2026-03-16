@@ -34,6 +34,7 @@ type services struct {
 	replication   core.ReplicationService
 	batch         core.BatchService
 	aiModeration  core.AIModerationService
+	federation    core.FederationService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -250,6 +251,23 @@ func New(
 	}
 	log.Info("AI moderation service initialized")
 
+	// Initialize federation service
+	federationService, err := NewFederationService(
+		conf.Federation,
+		conf.CdnUrl,
+		queries,
+		storageBackend,
+		log,
+	)
+	if err != nil {
+		log.Fatal("failed to initialize federation service", zap.Error(err))
+	}
+	if conf.Federation.Enabled {
+		log.Info("federation service initialized",
+			zap.String("mode", conf.Federation.Mode),
+			zap.Int("relay_count", len(conf.Federation.RelayURLs)))
+	}
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -269,6 +287,7 @@ func New(
 		replication:   replicationService,
 		batch:         batchService,
 		aiModeration:  aiModerationService,
+		federation:    federationService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -344,6 +363,10 @@ func (s *services) Batch() core.BatchService {
 
 func (s *services) AIModeration() core.AIModerationService {
 	return s.aiModeration
+}
+
+func (s *services) Federation() core.FederationService {
+	return s.federation
 }
 
 func (s *services) Cache() cache.Cache {

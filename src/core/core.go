@@ -28,6 +28,7 @@ type Services interface {
 	Replication() ReplicationService
 	Batch() BatchService
 	AIModeration() AIModerationService
+	Federation() FederationService
 	Cache() cache.Cache
 }
 

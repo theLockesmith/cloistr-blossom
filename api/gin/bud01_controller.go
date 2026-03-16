@@ -144,6 +144,23 @@ func getBlob(
 			hash,
 		)
 		if err != nil {
+			// Check federation for fallback URLs
+			if federation := services.Federation(); federation != nil && federation.IsEnabled() {
+				fallbackURLs, fallbackErr := federation.GetFallbackURLs(ctx.Request.Context(), hash)
+				if fallbackErr == nil && len(fallbackURLs) > 0 {
+					// Return 404 with fallback URLs in header
+					ctx.Header("X-Fallback-URLs", strings.Join(fallbackURLs, ", "))
+					metrics.DownloadsTotal.WithLabelValues("fallback").Inc()
+					ctx.AbortWithStatusJSON(
+						http.StatusNotFound,
+						apiError{
+							Message: "blob not found locally, check X-Fallback-URLs header for alternative sources",
+						},
+					)
+					return
+				}
+			}
+
 			metrics.DownloadsTotal.WithLabelValues("error").Inc()
 			ctx.AbortWithStatusJSON(
 				http.StatusBadRequest,

@@ -155,6 +155,46 @@ quota:
 #   #   type: "vaapi"
 #   #   device: "/dev/dri/renderD128"
 
+# Federation configuration (optional)
+# Enable Nostr-based cross-server blob discovery and mirroring.
+# Uses kind 1063 (NIP-94 file metadata) and kind 10063 (BUD-03 server list) events.
+# federation:
+#   enabled: true
+#
+#   # Federation mode:
+#   # - "publish": Only publish blob events to relays
+#   # - "subscribe": Only subscribe to events from relays
+#   # - "both": Full federation (publish and subscribe)
+#   mode: "both"
+#
+#   # Server's Nostr private key (nsec or hex format)
+#   # Used to sign published events. Generate with: npx nostr-tools keygen
+#   server_nsec: ${FEDERATION_NSEC}
+#
+#   # Nostr relays to connect to for federation
+#   relay_urls:
+#     - "wss://relay.damus.io"
+#     - "wss://nos.lol"
+#     - "wss://relay.nostr.band"
+#
+#   # Auto-mirror popular blobs from other servers
+#   # When enabled, blobs referenced by multiple users are automatically mirrored locally
+#   auto_mirror: true
+#
+#   # Minimum number of user references before auto-mirroring a blob
+#   # Higher values reduce storage but may miss less popular content
+#   mirror_min_refs: 2
+#
+#   # Number of worker goroutines for async publishing/mirroring
+#   worker_count: 4
+#
+#   # Number of events to process in each batch
+#   batch_size: 50
+#
+#   # Retry settings for failed operations
+#   retry_attempts: 3
+#   retry_delay: "5s"
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 

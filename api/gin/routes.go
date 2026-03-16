@@ -280,5 +280,13 @@ func SetupRoutes(
 		log.Info("AI moderation routes registered")
 	}
 
+	// Federation admin routes
+	if services.Federation() != nil && services.Federation().IsEnabled() {
+		admin := r.Group("/admin")
+		admin.Use(adminAuthMiddleware(adminPubkey))
+		RegisterFederationRoutes(admin, services)
+		log.Info("federation routes registered")
+	}
+
 	return r
 }

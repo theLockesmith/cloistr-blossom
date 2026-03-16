@@ -122,3 +122,67 @@ CREATE TABLE IF NOT EXISTS transparency_stats (
     users_banned      BIGINT NOT NULL DEFAULT 0,
     last_updated      BIGINT NOT NULL
 );
+
+-- Federation tables
+
+-- Federated blobs discovered via kind 1063 events
+CREATE TABLE IF NOT EXISTS federated_blobs (
+    hash            TEXT PRIMARY KEY,
+    size            BIGINT NOT NULL,
+    mime_type       TEXT NOT NULL,
+    ref_count       INTEGER NOT NULL DEFAULT 1,
+    status          TEXT NOT NULL DEFAULT 'discovered',
+    discovered_at   BIGINT NOT NULL,
+    mirrored_at     BIGINT,
+    last_seen_at    BIGINT NOT NULL
+);
+
+-- Remote URLs for federated blobs
+CREATE TABLE IF NOT EXISTS federated_blob_urls (
+    id          SERIAL PRIMARY KEY,
+    blob_hash   TEXT NOT NULL REFERENCES federated_blobs(hash) ON DELETE CASCADE,
+    url         TEXT NOT NULL,
+    server_id   TEXT,
+    priority    INTEGER NOT NULL DEFAULT 0,
+    healthy     BOOLEAN NOT NULL DEFAULT TRUE,
+    last_check  BIGINT,
+    created_at  BIGINT NOT NULL,
+    UNIQUE(blob_hash, url)
+);
+
+-- Known Blossom servers discovered via kind 10063 events
+CREATE TABLE IF NOT EXISTS known_servers (
+    url         TEXT PRIMARY KEY,
+    pubkey      TEXT,
+    user_count  INTEGER NOT NULL DEFAULT 0,
+    blob_count  INTEGER NOT NULL DEFAULT 0,
+    healthy     BOOLEAN NOT NULL DEFAULT TRUE,
+    first_seen  BIGINT NOT NULL,
+    last_seen   BIGINT NOT NULL,
+    last_check  BIGINT
+);
+
+-- Federation events (published and received)
+CREATE TABLE IF NOT EXISTS federation_events (
+    id          TEXT PRIMARY KEY,
+    event_id    TEXT,
+    event_kind  INTEGER NOT NULL,
+    pubkey      TEXT NOT NULL,
+    blob_hash   TEXT,
+    direction   TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    error       TEXT,
+    relay_url   TEXT,
+    created_at  BIGINT NOT NULL,
+    published_at BIGINT,
+    retries     INTEGER NOT NULL DEFAULT 0
+);
+
+-- Users who have this server in their kind 10063 server list
+CREATE TABLE IF NOT EXISTS federated_users (
+    pubkey      TEXT PRIMARY KEY,
+    event_id    TEXT NOT NULL,
+    server_rank INTEGER NOT NULL DEFAULT 0,
+    created_at  BIGINT NOT NULL,
+    updated_at  BIGINT NOT NULL
+);

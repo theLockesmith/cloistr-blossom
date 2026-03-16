@@ -137,6 +137,11 @@ func uploadBlob(
 		metrics.UploadsTotal.WithLabelValues("success", string(blobDescriptor.EncryptionMode)).Inc()
 		metrics.UploadBytes.Add(float64(len(bodyBytes)))
 
+		// Publish to federation if enabled (async, non-blocking)
+		if federation := services.Federation(); federation != nil && federation.IsEnabled() {
+			go federation.PublishBlobAsync(ctx.Request.Context(), blobDescriptor)
+		}
+
 		ctx.JSON(
 			http.StatusOK,
 			fromDomainBlobDescriptor(blobDescriptor),

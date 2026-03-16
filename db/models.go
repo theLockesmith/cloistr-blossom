@@ -49,6 +49,62 @@ type ExpirationPolicy struct {
 	UpdatedAt  int64
 }
 
+type FederatedBlob struct {
+	Hash         string
+	Size         int64
+	MimeType     string
+	RefCount     int32
+	Status       string
+	DiscoveredAt int64
+	MirroredAt   sql.NullInt64
+	LastSeenAt   int64
+}
+
+type FederatedBlobUrl struct {
+	ID        int32
+	BlobHash  string
+	Url       string
+	ServerID  sql.NullString
+	Priority  int32
+	Healthy   bool
+	LastCheck sql.NullInt64
+	CreatedAt int64
+}
+
+type FederatedUser struct {
+	Pubkey     string
+	EventID    string
+	ServerRank int32
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
+type FederationEvent struct {
+	ID          string
+	EventID     sql.NullString
+	EventKind   int32
+	Pubkey      string
+	BlobHash    sql.NullString
+	Direction   string
+	Status      string
+	Error       sql.NullString
+	RelayUrl    sql.NullString
+	CreatedAt   int64
+	PublishedAt sql.NullInt64
+	Retries     int32
+}
+
+type KnownServer struct {
+	Url       string
+	Pubkey    sql.NullString
+	UserCount int32
+	BlobCount int32
+	Healthy   bool
+	FirstSeen int64
+	LastSeen  int64
+	LastCheck sql.NullInt64
+}
+
 type MimeType struct {
 	Extension string
 	MimeType  string
