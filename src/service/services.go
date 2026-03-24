@@ -35,6 +35,7 @@ type services struct {
 	batch         core.BatchService
 	aiModeration  core.AIModerationService
 	federation    core.FederationService
+	analytics     core.AnalyticsService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -268,6 +269,13 @@ func New(
 			zap.Int("relay_count", len(conf.Federation.RelayURLs)))
 	}
 
+	// Initialize analytics service
+	analyticsService, err := NewAnalyticsService(queries, log)
+	if err != nil {
+		log.Fatal("failed to initialize analytics service", zap.Error(err))
+	}
+	log.Info("analytics service initialized")
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -288,6 +296,7 @@ func New(
 		batch:         batchService,
 		aiModeration:  aiModerationService,
 		federation:    federationService,
+		analytics:     analyticsService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -367,6 +376,10 @@ func (s *services) AIModeration() core.AIModerationService {
 
 func (s *services) Federation() core.FederationService {
 	return s.federation
+}
+
+func (s *services) Analytics() core.AnalyticsService {
+	return s.analytics
 }
 
 func (s *services) Cache() cache.Cache {

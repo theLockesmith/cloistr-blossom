@@ -54,6 +54,7 @@ git fetch upstream && git merge upstream/master  # Sync with upstream
 | WebSocket Notifications | Done |
 | Federation (kind 1063/10063) | Done |
 | Deduplication | Done |
+| Analytics Dashboard | Done |
 
 ## Project Structure
 
@@ -109,9 +110,7 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 
 ## Roadmap
 
-| Item | Priority |
-|------|----------|
-| Analytics Dashboard | P1 |
+*No items currently scheduled - all features complete.*
 
 ## Monitoring
 

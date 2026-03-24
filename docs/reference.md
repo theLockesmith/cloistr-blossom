@@ -175,6 +175,40 @@ For quick start and essential info, see [CLAUDE.md](../CLAUDE.md).
 
 **Modes:** publish, subscribe, both
 
+### Analytics Dashboard (Admin)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/admin/analytics` | Admin | Analytics dashboard page |
+| GET | `/admin/api/analytics/overview` | Admin | Dashboard summary stats |
+| GET | `/admin/api/analytics/storage` | Admin | Storage trends |
+| GET | `/admin/api/analytics/activity` | Admin | Upload/download activity |
+| GET | `/admin/api/analytics/users` | Admin | User growth and top users |
+| GET | `/admin/api/analytics/content` | Admin | Content type breakdown |
+
+**Query parameters for time-series endpoints:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `start_time` | int64 | Unix timestamp (period start) |
+| `end_time` | int64 | Unix timestamp (period end) |
+| `bucket` | string | Time bucket: `hourly`, `daily`, `weekly`, `monthly` |
+| `limit` | int | Max results for top-N queries (1-100) |
+
+**Overview response fields:**
+- `total_storage`, `total_blobs`, `total_users` - Current totals
+- `storage_growth`, `blob_growth`, `user_growth` - Week-over-week % change
+- `uploads_last_24h`, `bytes_in_last_24h`, `new_users_last_24h` - Recent activity
+
+**Storage analytics:**
+- `bytes_over_time`, `blobs_over_time` - Time series with cumulative values
+- `deduplication_pct` - Percentage storage saved via deduplication
+
+**Content analytics:**
+- `by_mime_type` - Breakdown by MIME type (blob count, total size)
+- `by_category` - Breakdown by category (image, video, audio, text, document, archive, other)
+- `encryption_pct` - Percentage of blobs encrypted
+
 ### List Endpoint Filters
 
 `/list/:pubkey` query parameters:
@@ -334,6 +368,7 @@ ai_moderation:
 
 ## Completed Features (History)
 
+- Analytics Dashboard (2026-03-23)
 - Federation - Nostr cross-server discovery (2026-03-07)
 - E2E Encryption UI (2026-03-06)
 - AI Content Moderation (2026-03-05)
@@ -350,4 +385,4 @@ ai_moderation:
 
 ---
 
-**Last Updated:** 2026-03-11
+**Last Updated:** 2026-03-23

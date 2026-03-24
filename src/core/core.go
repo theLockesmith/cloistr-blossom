@@ -29,6 +29,7 @@ type Services interface {
 	Batch() BatchService
 	AIModeration() AIModerationService
 	Federation() FederationService
+	Analytics() AnalyticsService
 	Cache() cache.Cache
 }
 

@@ -339,6 +339,7 @@ func adminDashboardHTML(stats AdminStats) string {
             <div class="header-content">
                 <h1>🌸 Blossom Admin</h1>
                 <div class="header-right">
+                    <a href="/admin/analytics" class="btn btn-primary" style="margin-right: 10px; text-decoration: none;">Analytics</a>
                     <span class="admin-info" id="admin-info"></span>
                     <button class="btn btn-secondary" onclick="logout()">Logout</button>
                 </div>
@@ -718,6 +719,9 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 	// Dashboard page
 	protected.GET("/", adminDashboard(services))
 
+	// Analytics page
+	protected.GET("/analytics", analyticsPage())
+
 	// Protected API routes
 	protectedAPI := api.Group("")
 	protectedAPI.Use(AdminSessionMiddleware(authManager))
@@ -739,4 +743,7 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 	protectedAPI.GET("/blocklist", listBlocklist(services))
 	protectedAPI.POST("/blocklist", addToBlocklist(services))
 	protectedAPI.DELETE("/blocklist/:pubkey", removeFromBlocklist(services))
+
+	// Analytics API routes
+	RegisterAnalyticsRoutes(protectedAPI, services, log)
 }
