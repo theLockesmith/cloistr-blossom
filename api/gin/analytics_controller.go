@@ -120,6 +120,19 @@ func getContentAnalytics(services core.Services) gin.HandlerFunc {
 	}
 }
 
+// getRealtimeMetrics returns live Prometheus metrics.
+func getRealtimeMetrics(services core.Services) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		metrics, err := services.Analytics().GetRealtimeMetrics(ctx.Request.Context())
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, metrics)
+	}
+}
+
 // RegisterAnalyticsRoutes registers analytics routes on the admin API.
 func RegisterAnalyticsRoutes(protectedAPI *gin.RouterGroup, services core.Services, log *zap.Logger) {
 	analytics := protectedAPI.Group("/analytics")
@@ -129,6 +142,7 @@ func RegisterAnalyticsRoutes(protectedAPI *gin.RouterGroup, services core.Servic
 		analytics.GET("/activity", getActivityAnalytics(services))
 		analytics.GET("/users", getUserAnalytics(services))
 		analytics.GET("/content", getContentAnalytics(services))
+		analytics.GET("/realtime", getRealtimeMetrics(services))
 	}
 	log.Info("analytics routes registered")
 }
@@ -192,6 +206,13 @@ func analyticsPageHTML() string {
 
         <div class="stats-grid" id="overview-stats">
             <div class="loading">Loading overview...</div>
+        </div>
+
+        <div class="section">
+            <h2>Real-time Metrics (Prometheus)</h2>
+            <div class="stats-grid" id="realtime-stats">
+                <div class="loading">Loading metrics...</div>
+            </div>
         </div>
 
         <div class="chart-grid">
@@ -475,8 +496,51 @@ func analyticsPageHTML() string {
             });
         }
 
+        async function loadRealtimeMetrics() {
+            try {
+                const resp = await fetch('/admin/api/analytics/realtime');
+                const data = await resp.json();
+                renderRealtimeMetrics(data);
+            } catch (err) {
+                console.error('Failed to load realtime metrics:', err);
+            }
+        }
+
+        function renderRealtimeMetrics(data) {
+            const errorRateClass = data.error_rate > 5 ? 'negative' : (data.error_rate > 1 ? '' : 'positive');
+            const html = ` + "`" + `
+                <div class="stat-card">
+                    <h3>Downloads (total)</h3>
+                    <div class="value">${formatNumber(data.downloads_total)}</div>
+                    <div class="change">${formatBytes(data.download_bytes)} transferred</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Uploads (total)</h3>
+                    <div class="value">${formatNumber(data.uploads_total)}</div>
+                    <div class="change">${formatBytes(data.upload_bytes)} received</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Error Rate</h3>
+                    <div class="value ${errorRateClass}">${data.error_rate.toFixed(2)}%</div>
+                    <div class="change">${formatNumber(data.errors_upload + data.errors_download + data.errors_storage)} total errors</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Rate Limited</h3>
+                    <div class="value">${formatNumber(data.rate_limited_total)}</div>
+                    <div class="change">requests throttled</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Reports</h3>
+                    <div class="value">${formatNumber(data.reports_total)}</div>
+                    <div class="change">${formatNumber(data.blocked_uploads)} blocked uploads</div>
+                </div>
+            ` + "`" + `;
+            document.getElementById('realtime-stats').innerHTML = html;
+        }
+
         function loadAllData() {
             loadOverview();
+            loadRealtimeMetrics();
             loadStorageChart();
             loadActivityChart();
             loadUsersChart();
@@ -485,6 +549,9 @@ func analyticsPageHTML() string {
 
         // Initial load
         loadAllData();
+
+        // Auto-refresh realtime metrics every 30 seconds
+        setInterval(loadRealtimeMetrics, 30000);
     </script>
 </body>
 </html>`

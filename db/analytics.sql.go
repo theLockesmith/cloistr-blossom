@@ -118,11 +118,25 @@ func (q *Queries) GetContentTypeBreakdown(ctx context.Context, limit int32) ([]G
 }
 
 const getDeduplicationStats = `-- name: GetDeduplicationStats :one
+WITH blob_stats AS (
+    SELECT COUNT(*) AS unique_blobs, COALESCE(SUM(size), 0) AS actual_storage
+    FROM blobs
+),
+ref_stats AS (
+    SELECT COUNT(*) AS total_references
+    FROM blob_references
+),
+logical_stats AS (
+    SELECT COALESCE(SUM(b.size), 0) AS logical_storage
+    FROM blob_references br
+    JOIN blobs b ON br.hash = b.hash
+)
 SELECT
-    (SELECT COUNT(*) FROM blobs) AS unique_blobs,
-    (SELECT COUNT(*) FROM blob_references) AS total_references,
-    (SELECT COALESCE(SUM(size), 0) FROM blobs) AS actual_storage,
-    (SELECT COALESCE(SUM(b.size), 0) FROM blob_references br JOIN blobs b ON br.hash = b.hash) AS logical_storage
+    bs.unique_blobs,
+    rs.total_references,
+    bs.actual_storage,
+    ls.logical_storage
+FROM blob_stats bs, ref_stats rs, logical_stats ls
 `
 
 type GetDeduplicationStatsRow struct {
@@ -132,7 +146,7 @@ type GetDeduplicationStatsRow struct {
 	LogicalStorage  interface{}
 }
 
-// Get deduplication statistics
+// Get deduplication statistics using CTEs for single-pass efficiency
 func (q *Queries) GetDeduplicationStats(ctx context.Context) (GetDeduplicationStatsRow, error) {
 	row := q.db.QueryRowContext(ctx, getDeduplicationStats)
 	var i GetDeduplicationStatsRow
@@ -219,11 +233,27 @@ func (q *Queries) GetNewUsersPerDay(ctx context.Context, arg GetNewUsersPerDayPa
 }
 
 const getRecentActivity = `-- name: GetRecentActivity :one
+WITH recent_blobs AS (
+    SELECT COUNT(*) AS uploads, COALESCE(SUM(b.size), 0) AS bytes_uploaded
+    FROM blobs b
+    WHERE b.created >= $1
+),
+recent_refs AS (
+    SELECT COUNT(*) AS references
+    FROM blob_references br
+    WHERE br.created >= $1
+),
+recent_users AS (
+    SELECT COUNT(*) AS new_users
+    FROM users u
+    WHERE u.created_at >= $1
+)
 SELECT
-    (SELECT COUNT(*) FROM blobs b WHERE b.created >= $1) AS uploads,
-    (SELECT COUNT(*) FROM blob_references br WHERE br.created >= $1) AS references,
-    (SELECT COALESCE(SUM(b2.size), 0) FROM blobs b2 WHERE b2.created >= $1) AS bytes_uploaded,
-    (SELECT COUNT(*) FROM users u WHERE u.created_at >= $1) AS new_users
+    rb.uploads,
+    rr.references,
+    rb.bytes_uploaded,
+    ru.new_users
+FROM recent_blobs rb, recent_refs rr, recent_users ru
 `
 
 type GetRecentActivityRow struct {
@@ -233,7 +263,7 @@ type GetRecentActivityRow struct {
 	NewUsers      int64
 }
 
-// Get activity counts for the last N seconds
+// Get activity counts for the last N seconds using CTEs
 func (q *Queries) GetRecentActivity(ctx context.Context, created int64) (GetRecentActivityRow, error) {
 	row := q.db.QueryRowContext(ctx, getRecentActivity, created)
 	var i GetRecentActivityRow

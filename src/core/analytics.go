@@ -136,6 +136,34 @@ func DefaultAnalyticsQuery() AnalyticsQuery {
 	}
 }
 
+// RealtimeMetrics contains live metrics from Prometheus.
+type RealtimeMetrics struct {
+	// Traffic totals (since server start)
+	DownloadsTotal   int64   `json:"downloads_total"`
+	DownloadsErrors  int64   `json:"downloads_errors"`
+	DownloadBytes    int64   `json:"download_bytes"`
+	UploadsTotal     int64   `json:"uploads_total"`
+	UploadsErrors    int64   `json:"uploads_errors"`
+	UploadBytes      int64   `json:"upload_bytes"`
+
+	// Error breakdown
+	ErrorsUpload     int64   `json:"errors_upload"`
+	ErrorsDownload   int64   `json:"errors_download"`
+	ErrorsStorage    int64   `json:"errors_storage"`
+	ErrorsDatabase   int64   `json:"errors_database"`
+	ErrorsAuth       int64   `json:"errors_auth"`
+
+	// Rate limiting
+	RateLimitedTotal int64   `json:"rate_limited_total"`
+
+	// Calculated rates
+	ErrorRate        float64 `json:"error_rate"`
+
+	// Moderation
+	ReportsTotal     int64   `json:"reports_total"`
+	BlockedUploads   int64   `json:"blocked_uploads"`
+}
+
 // AnalyticsService provides analytics and reporting functionality.
 type AnalyticsService interface {
 	// GetOverview returns a high-level dashboard summary.
@@ -152,4 +180,7 @@ type AnalyticsService interface {
 
 	// GetContentAnalytics returns content type breakdown.
 	GetContentAnalytics(ctx context.Context) (*ContentAnalytics, error)
+
+	// GetRealtimeMetrics returns live metrics from Prometheus.
+	GetRealtimeMetrics(ctx context.Context) (*RealtimeMetrics, error)
 }

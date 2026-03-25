@@ -5,20 +5,23 @@ import (
 	"time"
 
 	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 	"go.uber.org/zap"
 )
 
 type analyticsService struct {
-	queries *db.Queries
-	log     *zap.Logger
+	queries       *db.Queries
+	metricsReader *metrics.Reader
+	log           *zap.Logger
 }
 
 // NewAnalyticsService creates a new analytics service.
 func NewAnalyticsService(queries *db.Queries, log *zap.Logger) (core.AnalyticsService, error) {
 	return &analyticsService{
-		queries: queries,
-		log:     log,
+		queries:       queries,
+		metricsReader: metrics.NewReader(),
+		log:           log,
 	}, nil
 }
 
@@ -121,6 +124,13 @@ func (s *analyticsService) GetOverview(ctx context.Context) (*core.AnalyticsOver
 	// Activity growth (based on active users as a proxy for upload activity)
 	activityGrowth := calculateGrowthPct(activeLastWeek, activeThisWeek)
 
+	// Get real-time metrics from Prometheus
+	realtimeMetrics, err := s.metricsReader.GetRealtimeMetrics()
+	if err != nil {
+		s.log.Warn("failed to get realtime metrics", zap.Error(err))
+		realtimeMetrics = &metrics.RealtimeMetrics{} // Use empty metrics on error
+	}
+
 	overview := &core.AnalyticsOverview{
 		TotalStorage:     currentStorage,
 		TotalBlobs:       currentBlobs,
@@ -129,15 +139,15 @@ func (s *analyticsService) GetOverview(ctx context.Context) (*core.AnalyticsOver
 		BlobGrowth:       blobGrowth,
 		UserGrowth:       userGrowth,
 		UploadActivity:   activityGrowth,
-		DownloadActivity: 0, // Downloads not tracked in DB, would need Prometheus
+		DownloadActivity: 0, // Would need time-series Prometheus data
 		UploadsLast24h:   recentActivity.Uploads,
-		DownloadsLast24h: 0, // Not tracked in DB
+		DownloadsLast24h: int64(realtimeMetrics.DownloadsTotal), // From Prometheus
 		BytesInLast24h:   toInt64(recentActivity.BytesUploaded),
-		BytesOutLast24h:  0, // Not tracked in DB
+		BytesOutLast24h:  int64(realtimeMetrics.DownloadBytes), // From Prometheus
 		NewUsersLast24h:  recentActivity.NewUsers,
-		ErrorRate:        0, // Would need Prometheus metrics
-		AvgResponseTime:  0, // Would need Prometheus metrics
-		RateLimitedCount: 0, // Would need Prometheus metrics
+		ErrorRate:        realtimeMetrics.ErrorRate(),             // From Prometheus
+		AvgResponseTime:  0,                                       // Would need histogram percentile
+		RateLimitedCount: int64(realtimeMetrics.TotalRateLimited()), // From Prometheus
 	}
 
 	return overview, nil
@@ -392,6 +402,31 @@ func (s *analyticsService) GetContentAnalytics(ctx context.Context) (*core.Conte
 		ByMimeType:    byMimeType,
 		ByCategory:    byCategory,
 		EncryptionPct: encryptionPct,
+	}, nil
+}
+
+func (s *analyticsService) GetRealtimeMetrics(ctx context.Context) (*core.RealtimeMetrics, error) {
+	m, err := s.metricsReader.GetRealtimeMetrics()
+	if err != nil {
+		return nil, err
+	}
+
+	return &core.RealtimeMetrics{
+		DownloadsTotal:   int64(m.DownloadsTotal),
+		DownloadsErrors:  int64(m.DownloadsErrors),
+		DownloadBytes:    int64(m.DownloadBytes),
+		UploadsTotal:     int64(m.UploadsTotal),
+		UploadsErrors:    int64(m.UploadsErrors),
+		UploadBytes:      int64(m.UploadBytes),
+		ErrorsUpload:     int64(m.ErrorsUpload),
+		ErrorsDownload:   int64(m.ErrorsDownload),
+		ErrorsStorage:    int64(m.ErrorsStorage),
+		ErrorsDatabase:   int64(m.ErrorsDatabase),
+		ErrorsAuth:       int64(m.ErrorsAuth),
+		RateLimitedTotal: int64(m.TotalRateLimited()),
+		ErrorRate:        m.ErrorRate(),
+		ReportsTotal:     int64(m.ReportsTotal),
+		BlockedUploads:   int64(m.BlockedUploads),
 	}, nil
 }
 
