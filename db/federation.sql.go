@@ -131,6 +131,19 @@ func (q *Queries) CountKnownServers(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countUsersWithServer = `-- name: CountUsersWithServer :one
+SELECT COUNT(DISTINCT pubkey) as count
+FROM user_server_lists
+WHERE server_url = $1
+`
+
+func (q *Queries) CountUsersWithServer(ctx context.Context, serverUrl string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUsersWithServer, serverUrl)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createFederationEvent = `-- name: CreateFederationEvent :one
 
 INSERT INTO federation_events (id, event_kind, pubkey, blob_hash, direction, status, relay_url, created_at)
@@ -194,6 +207,16 @@ WHERE pubkey = $1
 
 func (q *Queries) DeleteFederatedUser(ctx context.Context, pubkey string) error {
 	_, err := q.db.ExecContext(ctx, deleteFederatedUser, pubkey)
+	return err
+}
+
+const deleteUserServerList = `-- name: DeleteUserServerList :exec
+DELETE FROM user_server_lists
+WHERE pubkey = $1
+`
+
+func (q *Queries) DeleteUserServerList(ctx context.Context, pubkey string) error {
+	_, err := q.db.ExecContext(ctx, deleteUserServerList, pubkey)
 	return err
 }
 
@@ -393,6 +416,73 @@ func (q *Queries) GetKnownServer(ctx context.Context, url string) (KnownServer, 
 		&i.LastCheck,
 	)
 	return i, err
+}
+
+const getUserServerList = `-- name: GetUserServerList :many
+SELECT server_url
+FROM user_server_lists
+WHERE pubkey = $1
+ORDER BY rank ASC
+`
+
+func (q *Queries) GetUserServerList(ctx context.Context, pubkey string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getUserServerList, pubkey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var server_url string
+		if err := rows.Scan(&server_url); err != nil {
+			return nil, err
+		}
+		items = append(items, server_url)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserServerListFull = `-- name: GetUserServerListFull :many
+SELECT pubkey, server_url, rank, event_id, created_at, updated_at
+FROM user_server_lists
+WHERE pubkey = $1
+ORDER BY rank ASC
+`
+
+func (q *Queries) GetUserServerListFull(ctx context.Context, pubkey string) ([]UserServerList, error) {
+	rows, err := q.db.QueryContext(ctx, getUserServerListFull, pubkey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UserServerList
+	for rows.Next() {
+		var i UserServerList
+		if err := rows.Scan(
+			&i.Pubkey,
+			&i.ServerUrl,
+			&i.Rank,
+			&i.EventID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const incrementServerBlobCount = `-- name: IncrementServerBlobCount :exec
@@ -952,4 +1042,34 @@ func (q *Queries) UpsertKnownServer(ctx context.Context, arg UpsertKnownServerPa
 		&i.LastCheck,
 	)
 	return i, err
+}
+
+const upsertUserServerList = `-- name: UpsertUserServerList :exec
+
+INSERT INTO user_server_lists (pubkey, server_url, rank, event_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $5)
+ON CONFLICT (pubkey, server_url) DO UPDATE SET
+    rank = excluded.rank,
+    event_id = excluded.event_id,
+    updated_at = excluded.updated_at
+`
+
+type UpsertUserServerListParams struct {
+	Pubkey    string
+	ServerUrl string
+	Rank      int32
+	EventID   string
+	CreatedAt int64
+}
+
+// BUD-03: User server list queries
+func (q *Queries) UpsertUserServerList(ctx context.Context, arg UpsertUserServerListParams) error {
+	_, err := q.db.ExecContext(ctx, upsertUserServerList,
+		arg.Pubkey,
+		arg.ServerUrl,
+		arg.Rank,
+		arg.EventID,
+		arg.CreatedAt,
+	)
+	return err
 }

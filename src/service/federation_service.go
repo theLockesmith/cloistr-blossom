@@ -415,13 +415,41 @@ func (s *federationService) handleFileMetadataEvent(ctx context.Context, event *
 }
 
 func (s *federationService) handleServerListEvent(ctx context.Context, event *nostr.Event) {
-	// kind 10063 contains a list of Blossom server URLs in "r" tags
+	// kind 10063 contains a list of Blossom server URLs in "server" tags (BUD-03)
+	// Also check "r" tags for backwards compatibility
+	now := time.Now().Unix()
+
+	// Delete existing server list for this user (replaceable event)
+	if err := s.queries.DeleteUserServerList(ctx, event.PubKey); err != nil {
+		s.log.Warn("failed to delete old server list",
+			zap.String("pubkey", event.PubKey),
+			zap.Error(err))
+	}
+
 	var rank int
 	for _, tag := range event.Tags {
-		if len(tag) < 2 || tag[0] != "r" {
+		if len(tag) < 2 {
+			continue
+		}
+		// BUD-03 specifies "server" tag, but also accept "r" for compatibility
+		if tag[0] != "server" && tag[0] != "r" {
 			continue
 		}
 		serverURL := tag[1]
+
+		// Store in user's server list (BUD-03)
+		if err := s.queries.UpsertUserServerList(ctx, db.UpsertUserServerListParams{
+			Pubkey:    event.PubKey,
+			ServerUrl: serverURL,
+			Rank:      int32(rank),
+			EventID:   event.ID,
+			CreatedAt: now,
+		}); err != nil {
+			s.log.Warn("failed to store user server list entry",
+				zap.String("pubkey", event.PubKey),
+				zap.String("server", serverURL),
+				zap.Error(err))
+		}
 
 		// Check if this is our server
 		if strings.Contains(serverURL, s.cdnBaseURL) {
@@ -430,7 +458,7 @@ func (s *federationService) handleServerListEvent(ctx context.Context, event *no
 				Pubkey:     event.PubKey,
 				EventID:    event.ID,
 				ServerRank: int32(rank),
-				CreatedAt:  time.Now().Unix(),
+				CreatedAt:  now,
 			})
 			if err != nil {
 				s.log.Warn("failed to upsert federated user",
@@ -439,14 +467,18 @@ func (s *federationService) handleServerListEvent(ctx context.Context, event *no
 			}
 		}
 
-		// Record the server
+		// Record the server as a known server
 		_, _ = s.queries.UpsertKnownServer(ctx, db.UpsertKnownServerParams{
 			Url:       serverURL,
-			FirstSeen: time.Now().Unix(),
+			FirstSeen: now,
 		})
 
 		rank++
 	}
+
+	s.log.Debug("processed server list event",
+		zap.String("pubkey", event.PubKey),
+		zap.Int("server_count", rank))
 }
 
 // ProcessEvent handles an incoming Nostr event (for manual processing).
@@ -742,11 +774,13 @@ func (s *federationService) GetFederatedUsers(ctx context.Context, limit, offset
 	return result, nil
 }
 
-// GetUserServerList returns the server list for a user.
+// GetUserServerList returns the server list for a user from their kind 10063 event.
 func (s *federationService) GetUserServerList(ctx context.Context, pubkey string) ([]string, error) {
-	// This would require querying relays for the user's kind 10063 event
-	// For now, return empty
-	return nil, nil
+	servers, err := s.queries.GetUserServerList(ctx, pubkey)
+	if err != nil {
+		return nil, err
+	}
+	return servers, nil
 }
 
 // GetEventHistory returns recent federation events.

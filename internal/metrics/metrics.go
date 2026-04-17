@@ -133,6 +133,64 @@ var (
 		},
 		[]string{"type"},
 	)
+
+	// Payment metrics (BUD-07)
+
+	// PaymentRequestsTotal counts payment requests by method.
+	PaymentRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "payment_requests_total",
+			Help:      "Total payment requests created by method",
+		},
+		[]string{"method"},
+	)
+
+	// PaymentsVerifiedTotal counts verified payments by method.
+	PaymentsVerifiedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "payments_verified_total",
+			Help:      "Total verified payments by method",
+		},
+		[]string{"method"},
+	)
+
+	// PaymentRequiredTotal counts 402 Payment Required responses.
+	PaymentRequiredTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "payment_required_total",
+			Help:      "Total 402 Payment Required responses",
+		},
+	)
+
+	// PaymentSatsReceived tracks total satoshis received.
+	PaymentSatsReceived = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "payment_sats_received_total",
+			Help:      "Total satoshis received from payments",
+		},
+	)
+
+	// FreeTierUploadsTotal counts uploads within free tier.
+	FreeTierUploadsTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "free_tier_uploads_total",
+			Help:      "Total uploads within free tier allowance",
+		},
+	)
+
+	// FreeTierBytesUsed tracks bytes consumed from free tier.
+	FreeTierBytesUsed = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "free_tier_bytes_used_total",
+			Help:      "Total bytes consumed from free tier allowance",
+		},
+	)
 )
 
 // Init initializes all CounterVec metrics with default label values.
@@ -179,4 +237,10 @@ func Init() {
 	RateLimitedTotal.WithLabelValues("general").Add(0)
 	RateLimitedTotal.WithLabelValues("bandwidth_upload").Add(0)
 	RateLimitedTotal.WithLabelValues("bandwidth_download").Add(0)
+
+	// Initialize payment counters
+	PaymentRequestsTotal.WithLabelValues("lightning").Add(0)
+	PaymentRequestsTotal.WithLabelValues("cashu").Add(0)
+	PaymentsVerifiedTotal.WithLabelValues("lightning").Add(0)
+	PaymentsVerifiedTotal.WithLabelValues("cashu").Add(0)
 }

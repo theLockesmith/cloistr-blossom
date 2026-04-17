@@ -65,6 +65,97 @@ For quick start and essential info, see [CLAUDE.md](../CLAUDE.md).
 - `default=true` - Set as default
 - `forced=true` - Mark as forced
 
+### BUD-03 User Server List
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/servers/:pubkey` | No | Get user's Blossom server list |
+
+Returns the server URLs from a user's kind 10063 event, ordered by preference.
+
+**Response:**
+```json
+{
+  "pubkey": "abc123...",
+  "servers": [
+    "https://blossom.example.com",
+    "https://backup.example.com"
+  ]
+}
+```
+
+**Note:** Requires federation to be enabled. Server lists are cached from kind 10063 events received via Nostr relays.
+
+### BUD-10 Blossom URI Schema
+
+The server supports BUD-10 `blossom:` URIs for blob references.
+
+**URI Format:**
+```
+blossom:hash.ext?xs=server&as=author&sz=size
+```
+
+| Component | Description |
+|-----------|-------------|
+| `hash` | 64-char hex SHA256 blob hash |
+| `ext` | File extension (e.g., `jpg`, `mp4`) |
+| `xs` | Server hint URL (can have multiple) |
+| `as` | Author pubkey |
+| `sz` | File size in bytes |
+
+**Server-side support:**
+
+1. **Mirror endpoint accepts blossom: URIs** - The `/mirror` endpoint can accept a `blossom:` URI in the `url` field. Server hints are used to fetch the blob.
+
+2. **Blob responses include blossom_uri** - All blob descriptor responses include a `blossom_uri` field for easy sharing.
+
+**Example response:**
+```json
+{
+  "url": "https://files.cloistr.xyz/abc123...",
+  "sha256": "abc123...",
+  "size": 12345,
+  "type": "image/jpeg",
+  "blossom_uri": "blossom:abc123...jpg?xs=files.cloistr.xyz&sz=12345"
+}
+```
+
+**Example mirror with blossom: URI:**
+```bash
+curl -X PUT https://files.cloistr.xyz/mirror \
+  -H "Authorization: Nostr base64event" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "blossom:abc123...jpg?xs=other-server.com"}'
+```
+
+### BUD-07 Payments
+
+Paid uploads via Lightning Network (BOLT-11) or Cashu (ecash).
+
+**Headers for payment request (402 response):**
+| Header | Description |
+|--------|-------------|
+| `X-Lightning` | BOLT-11 Lightning invoice |
+| `X-Cashu` | Cashu payment request |
+| `X-Payment-Request` | Payment request ID for tracking |
+| `X-Payment-Amount` | Amount in satoshis |
+
+**Headers for payment proof (upload request):**
+| Header | Description |
+|--------|-------------|
+| `X-Lightning` | Lightning preimage (hex) |
+| `X-Cashu` | Cashu token (cashuA... format) |
+| `X-Payment-Request` | Payment request ID |
+
+**Flow:**
+1. Upload request without payment → 402 Payment Required + payment headers
+2. Client pays via Lightning or Cashu
+3. Retry upload with proof headers → 200 OK
+
+**Free tier:** Configurable free bytes per pubkey before payment required.
+
+**Pricing:** Per-byte pricing (e.g., 0.000001 sats/byte = 1 sat/MB).
+
 ### BUD-09 Content Reporting
 
 | Method | Path | Auth | Description |
@@ -334,6 +425,24 @@ ai_moderation:
     custom_api:
       enabled: true
       endpoint: "https://my-ml-service.local/scan"
+
+payment:
+  enabled: true
+  satoshis_per_byte: 0.000001  # 1 sat per MB
+  min_payment_sats: 1
+  free_bytes_limit: 104857600   # 100 MB free per user
+  request_expiry_mins: 30
+  lightning:
+    enabled: true
+    lnd_host: localhost
+    rest_port: 8080
+    tls_cert_path: /path/to/tls.cert
+    macaroon_path: /path/to/invoice.macaroon
+    invoice_memo: "Blossom Upload"
+  cashu:
+    enabled: true
+    mint_urls:
+      - "https://mint.minibits.cash/Bitcoin"
 ```
 
 ---
@@ -363,11 +472,20 @@ ai_moderation:
 - `cloistr_blossom_active_users`
 - `cloistr_blossom_errors_total{type}`
 - `cloistr_blossom_reports_total{reason}`
+- `cloistr_blossom_payment_requests_total{method}` - Payment requests by method (lightning, cashu)
+- `cloistr_blossom_payments_verified_total{method}` - Verified payments by method
+- `cloistr_blossom_payment_required_total` - 402 responses issued
+- `cloistr_blossom_payment_sats_received_total` - Total satoshis received
+- `cloistr_blossom_free_tier_uploads_total` - Uploads within free tier
+- `cloistr_blossom_free_tier_bytes_used_total` - Bytes consumed from free tier
 
 ---
 
 ## Completed Features (History)
 
+- BUD-10 Blossom URI Schema (2026-03-25)
+- BUD-03 User Server List (2026-03-25)
+- BUD-07 Payments - Lightning/Cashu (2026-03-25)
 - Analytics Dashboard (2026-03-23)
 - Federation - Nostr cross-server discovery (2026-03-07)
 - E2E Encryption UI (2026-03-06)
@@ -385,4 +503,4 @@ ai_moderation:
 
 ---
 
-**Last Updated:** 2026-03-23
+**Last Updated:** 2026-03-30

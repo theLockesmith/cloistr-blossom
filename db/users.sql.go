@@ -28,7 +28,7 @@ func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) error {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
 VALUES ($1, $2, 0, FALSE, $3, $4)
-RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
+RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at, free_bytes_used, free_bytes_limit
 `
 
 type CreateUserParams struct {
@@ -53,6 +53,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsBanned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FreeBytesUsed,
+		&i.FreeBytesLimit,
 	)
 	return i, err
 }
@@ -87,7 +89,7 @@ const getOrCreateUser = `-- name: GetOrCreateUser :one
 INSERT INTO users (pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at)
 VALUES ($1, $2, 0, FALSE, $3, $4)
 ON CONFLICT(pubkey) DO UPDATE SET updated_at = excluded.updated_at
-RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
+RETURNING pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at, free_bytes_used, free_bytes_limit
 `
 
 type GetOrCreateUserParams struct {
@@ -112,12 +114,14 @@ func (q *Queries) GetOrCreateUser(ctx context.Context, arg GetOrCreateUserParams
 		&i.IsBanned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FreeBytesUsed,
+		&i.FreeBytesLimit,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
+SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at, free_bytes_used, free_bytes_limit
 FROM users
 WHERE pubkey = $1
 LIMIT 1
@@ -133,6 +137,8 @@ func (q *Queries) GetUser(ctx context.Context, pubkey string) (User, error) {
 		&i.IsBanned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FreeBytesUsed,
+		&i.FreeBytesLimit,
 	)
 	return i, err
 }
@@ -186,7 +192,7 @@ func (q *Queries) IncrementUserUsage(ctx context.Context, arg IncrementUserUsage
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at
+SELECT pubkey, quota_bytes, used_bytes, is_banned, created_at, updated_at, free_bytes_used, free_bytes_limit
 FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -213,6 +219,8 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.IsBanned,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FreeBytesUsed,
+			&i.FreeBytesLimit,
 		); err != nil {
 			return nil, err
 		}

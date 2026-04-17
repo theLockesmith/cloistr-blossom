@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	bud04 "git.coldforge.xyz/coldforge/cloistr-blossom/src/bud-04"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/blossom"
 )
 
 func mirrorBlob(
@@ -36,6 +37,7 @@ func mirrorBlob(
 					Message: "pubkey missing from context",
 				},
 			)
+			return
 		}
 
 		if authSha256 == "" {
@@ -45,6 +47,7 @@ func mirrorBlob(
 					Message: "blob hash missing from context",
 				},
 			)
+			return
 		}
 
 		mirrorInput := &mirrorInput{}
@@ -55,17 +58,69 @@ func mirrorBlob(
 					Message: "invalid request body",
 				},
 			)
+			return
 		}
 
-		blobUrl, err := url.Parse(mirrorInput.Url)
-		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: "invalid blob URL",
-				},
-			)
+		// BUD-10: Support blossom: URI scheme
+		var blobUrl *url.URL
+		var blossomURI *blossom.URI
+		if blossom.IsBlossom(mirrorInput.Url) {
+			var err error
+			blossomURI, err = blossom.Parse(mirrorInput.Url)
+			if err != nil {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{
+						Message: "invalid blossom URI: " + err.Error(),
+					},
+				)
+				return
+			}
+			// Validate that auth hash matches URI hash
+			if authSha256 != "" && authSha256 != blossomURI.Hash {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{
+						Message: "auth hash does not match blossom URI hash",
+					},
+				)
+				return
+			}
+			// Use first server hint as URL
+			httpURLs := blossomURI.ToHTTPURLs()
+			if len(httpURLs) == 0 {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{
+						Message: "blossom URI has no server hints",
+					},
+				)
+				return
+			}
+			blobUrl, err = url.Parse(httpURLs[0])
+			if err != nil {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{
+						Message: "invalid server URL from blossom URI",
+					},
+				)
+				return
+			}
+		} else {
+			var err error
+			blobUrl, err = url.Parse(mirrorInput.Url)
+			if err != nil {
+				ctx.AbortWithStatusJSON(
+					http.StatusBadRequest,
+					apiError{
+						Message: "invalid blob URL",
+					},
+				)
+				return
+			}
 		}
+		_ = blossomURI // May be used for future server fallback logic
 
 		// Determine encryption mode from header
 		encryptionMode := core.EncryptionModeNone

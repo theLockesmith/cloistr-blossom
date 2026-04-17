@@ -200,3 +200,34 @@ FROM federated_users;
 -- name: DeleteFederatedUser :exec
 DELETE FROM federated_users
 WHERE pubkey = $1;
+
+-- BUD-03: User server list queries
+
+-- name: UpsertUserServerList :exec
+INSERT INTO user_server_lists (pubkey, server_url, rank, event_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $5)
+ON CONFLICT (pubkey, server_url) DO UPDATE SET
+    rank = excluded.rank,
+    event_id = excluded.event_id,
+    updated_at = excluded.updated_at;
+
+-- name: GetUserServerList :many
+SELECT server_url
+FROM user_server_lists
+WHERE pubkey = $1
+ORDER BY rank ASC;
+
+-- name: GetUserServerListFull :many
+SELECT *
+FROM user_server_lists
+WHERE pubkey = $1
+ORDER BY rank ASC;
+
+-- name: DeleteUserServerList :exec
+DELETE FROM user_server_lists
+WHERE pubkey = $1;
+
+-- name: CountUsersWithServer :one
+SELECT COUNT(DISTINCT pubkey) as count
+FROM user_server_lists
+WHERE server_url = $1;

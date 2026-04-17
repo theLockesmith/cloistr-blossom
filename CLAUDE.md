@@ -2,7 +2,7 @@
 
 **Nostr-native blob storage server (Go) - Blossom protocol implementation**
 
-**Version:** v1.1.0 | **Domain:** files.cloistr.xyz, blossom.cloistr.xyz
+**Version:** v1.2.0 | **Domain:** files.cloistr.xyz, blossom.cloistr.xyz
 
 ## Required Reading
 
@@ -40,7 +40,9 @@ git fetch upstream && git merge upstream/master  # Sync with upstream
 
 | Feature | Status |
 |---------|--------|
-| BUD-01/02/04/05/06/08 | Done |
+| BUD-01 through BUD-06, BUD-08-11 | Done |
+| BUD-07 Payments (Lightning/Cashu) | Code done, NOT connected to LND |
+| BUD-10 Blossom URI Schema | Done |
 | Video Transcoding (HLS/DASH) | Done |
 | GPU Transcoding (NVENC/QSV/VAAPI) | Done |
 | S3 Storage + PostgreSQL | Done |
@@ -110,7 +112,12 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 
 ## Roadmap
 
-*No items currently scheduled - all features complete.*
+| Item | Priority | Notes |
+|------|----------|-------|
+| Connect BUD-07 Payments | P1 | Options: hosted Lightning (Voltage/LNbits/Alby), Cashu-only, or self-hosted LND |
+| Server Capabilities Endpoint | P1 | `/.well-known/blossom` or `/info` - advertise supported features |
+| X-Expiration Header | P2 | Accept TTL on uploads, infrastructure exists |
+| Blob Search | P3 | Low priority - overlaps with Nostr relay functionality |
 
 ## Monitoring
 

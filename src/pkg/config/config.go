@@ -191,6 +191,57 @@ type FederationConfig struct {
 	RetryDelay string `yaml:"retry_delay"`
 }
 
+// PaymentConfig defines BUD-07 payment settings.
+type PaymentConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable payment requirements for uploads
+
+	// Pricing: satoshis per byte (e.g., 0.000001 = 1 sat per MB)
+	SatoshisPerByte float64 `yaml:"satoshis_per_byte"`
+
+	// Minimum payment amount in satoshis (to avoid dust)
+	MinPaymentSats int64 `yaml:"min_payment_sats"`
+
+	// Free tier: bytes allowed before payment required (0 = no free tier)
+	FreeBytesLimit int64 `yaml:"free_bytes_limit"`
+
+	// Payment request expiry in minutes (default: 30)
+	RequestExpiryMins int `yaml:"request_expiry_mins"`
+
+	// Lightning Network settings
+	Lightning LightningConfig `yaml:"lightning"`
+
+	// Cashu ecash settings
+	Cashu CashuConfig `yaml:"cashu"`
+}
+
+// LightningConfig defines Lightning Network payment settings.
+type LightningConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable Lightning payments
+
+	// LND connection settings
+	LNDHost  string `yaml:"lnd_host"`  // LND host (e.g., "localhost")
+	RESTPort int    `yaml:"rest_port"` // LND REST port (default: 8080)
+	Insecure bool   `yaml:"insecure"`  // Use HTTP instead of HTTPS (not recommended)
+
+	// Path to TLS certificate (optional, skips verification if not provided)
+	TLSCertPath string `yaml:"tls_cert_path"`
+
+	// Macaroon authentication (one of these is required)
+	MacaroonPath string `yaml:"macaroon_path"` // Path to macaroon file
+	MacaroonHex  string `yaml:"macaroon_hex"`  // Macaroon as hex string (for env vars)
+
+	// Default invoice memo/description
+	InvoiceMemo string `yaml:"invoice_memo"`
+}
+
+// CashuConfig defines Cashu ecash payment settings.
+type CashuConfig struct {
+	Enabled bool `yaml:"enabled"` // Enable Cashu payments
+
+	// Cashu mint URLs (multiple for redundancy)
+	MintURLs []string `yaml:"mint_urls"`
+}
+
 // TranscodingConfig defines video transcoding settings.
 type TranscodingConfig struct {
 	// Work directory for temporary transcoding files
@@ -282,6 +333,7 @@ type Config struct {
 	Transcoding   TranscodingConfig    `yaml:"transcoding"`
 	ChunkedUpload ChunkedUploadConfig  `yaml:"chunked_upload"`
 	Federation    FederationConfig     `yaml:"federation"`
+	Payment       PaymentConfig        `yaml:"payment"`
 	Platform      PlatformConfig       `yaml:"platform"`
 }
 
@@ -446,6 +498,23 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Federation.RetryDelay == "" {
 		c.Federation.RetryDelay = "1m"
+	}
+
+	// Default payment settings
+	if c.Payment.SatoshisPerByte == 0 {
+		c.Payment.SatoshisPerByte = 0.000001 // 1 sat per MB
+	}
+	if c.Payment.MinPaymentSats == 0 {
+		c.Payment.MinPaymentSats = 1 // Minimum 1 sat
+	}
+	if c.Payment.RequestExpiryMins == 0 {
+		c.Payment.RequestExpiryMins = 30 // 30 minute expiry
+	}
+	if c.Payment.Lightning.RESTPort == 0 {
+		c.Payment.Lightning.RESTPort = 8080
+	}
+	if c.Payment.Lightning.InvoiceMemo == "" {
+		c.Payment.Lightning.InvoiceMemo = "Blossom Upload"
 	}
 
 	// Default platform settings (standalone mode for backwards compatibility)

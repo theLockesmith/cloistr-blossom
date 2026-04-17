@@ -30,6 +30,7 @@ type Services interface {
 	AIModeration() AIModerationService
 	Federation() FederationService
 	Analytics() AnalyticsService
+	Payment() PaymentService
 	Cache() cache.Cache
 }
 

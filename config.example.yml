@@ -195,6 +195,45 @@ quota:
 #   retry_attempts: 3
 #   retry_delay: "5s"
 
+# Payment configuration (optional, BUD-07)
+# Enable paid uploads via Lightning Network or Cashu ecash.
+# payment:
+#   enabled: true
+#
+#   # Pricing: satoshis per byte
+#   # 0.000001 = 1 sat per megabyte (default)
+#   # 0.00001 = 10 sats per megabyte
+#   satoshis_per_byte: 0.000001
+#
+#   # Minimum payment amount (to avoid dust payments)
+#   min_payment_sats: 1
+#
+#   # Free tier: bytes allowed before payment required
+#   # Set to 0 to disable free tier
+#   # 104857600 = 100 MB free per user
+#   free_bytes_limit: 104857600
+#
+#   # Payment request expiry in minutes
+#   request_expiry_mins: 30
+#
+#   # Lightning Network (LND REST API) configuration
+#   lightning:
+#     enabled: true
+#     lnd_host: "localhost"
+#     rest_port: 8080                              # LND REST port (default: 8080)
+#     tls_cert_path: "/path/to/tls.cert"           # Optional, skips verify if not set
+#     macaroon_path: "/path/to/invoice.macaroon"   # Path to macaroon file
+#     macaroon_hex: ""                             # Or hex-encoded macaroon (for env vars)
+#     invoice_memo: "Blossom Upload"
+#     insecure: false                              # Use HTTP instead of HTTPS
+#
+#   # Cashu ecash configuration
+#   cashu:
+#     enabled: true
+#     mint_urls:
+#       - "https://mint.minibits.cash/Bitcoin"
+#       - "https://mint.coinos.io"
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 

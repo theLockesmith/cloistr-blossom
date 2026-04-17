@@ -7,7 +7,9 @@ import (
 
 	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cashu"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/encryption"
+	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/lightning"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
 	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
@@ -36,6 +38,7 @@ type services struct {
 	aiModeration  core.AIModerationService
 	federation    core.FederationService
 	analytics     core.AnalyticsService
+	payment       core.PaymentService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -276,6 +279,42 @@ func New(
 	}
 	log.Info("analytics service initialized")
 
+	// Initialize payment service (BUD-07)
+	var paymentService core.PaymentService
+	if conf.Payment.Enabled {
+		// Initialize Lightning client if configured
+		var lightningClient core.LightningClient
+		if conf.Payment.Lightning.Enabled {
+			lightningClient, err = lightning.NewClient(&conf.Payment.Lightning, log)
+			if err != nil {
+				log.Warn("failed to initialize Lightning client, Lightning payments disabled", zap.Error(err))
+			} else if lightningClient.IsConnected() {
+				log.Info("Lightning client initialized")
+			}
+		}
+
+		// Initialize Cashu client if configured
+		var cashuClient core.CashuClient
+		if conf.Payment.Cashu.Enabled {
+			cashuClient, err = cashu.NewClient(&conf.Payment.Cashu, log)
+			if err != nil {
+				log.Warn("failed to initialize Cashu client, Cashu payments disabled", zap.Error(err))
+			} else if cashuClient.IsConnected() {
+				log.Info("Cashu client initialized")
+			}
+		}
+
+		paymentService, err = NewPaymentService(&conf.Payment, queries, lightningClient, cashuClient, log)
+		if err != nil {
+			log.Fatal("failed to initialize payment service", zap.Error(err))
+		}
+		log.Info("payment service initialized",
+			zap.Float64("satoshis_per_byte", conf.Payment.SatoshisPerByte),
+			zap.Int64("free_bytes_limit", conf.Payment.FreeBytesLimit),
+			zap.Bool("lightning_enabled", conf.Payment.Lightning.Enabled),
+			zap.Bool("cashu_enabled", conf.Payment.Cashu.Enabled))
+	}
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -297,6 +336,7 @@ func New(
 		aiModeration:  aiModerationService,
 		federation:    federationService,
 		analytics:     analyticsService,
+		payment:       paymentService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -380,6 +420,10 @@ func (s *services) Federation() core.FederationService {
 
 func (s *services) Analytics() core.AnalyticsService {
 	return s.analytics
+}
+
+func (s *services) Payment() core.PaymentService {
+	return s.payment
 }
 
 func (s *services) Cache() cache.Cache {

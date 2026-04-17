@@ -110,6 +110,21 @@ type MimeType struct {
 	MimeType  string
 }
 
+type PaymentRequest struct {
+	ID               string
+	Pubkey           string
+	AmountSats       int64
+	BytesRequested   int64
+	LightningInvoice sql.NullString
+	CashuRequest     sql.NullString
+	PaymentHash      sql.NullString
+	Status           string
+	CreatedAt        int64
+	ExpiresAt        int64
+	PaidAt           sql.NullInt64
+	ProofData        sql.NullString
+}
+
 type RemovedBlob struct {
 	Hash      string
 	Reason    string
@@ -168,10 +183,21 @@ type UploadSession struct {
 }
 
 type User struct {
-	Pubkey     string
-	QuotaBytes int64
-	UsedBytes  int64
-	IsBanned   bool
-	CreatedAt  int64
-	UpdatedAt  int64
+	Pubkey         string
+	QuotaBytes     int64
+	UsedBytes      int64
+	IsBanned       bool
+	CreatedAt      int64
+	UpdatedAt      int64
+	FreeBytesUsed  int64
+	FreeBytesLimit int64
+}
+
+type UserServerList struct {
+	Pubkey    string
+	ServerUrl string
+	Rank      int32
+	EventID   string
+	CreatedAt int64
+	UpdatedAt int64
 }

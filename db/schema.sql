@@ -25,12 +25,14 @@ CREATE TABLE IF NOT EXISTS mime_types
 
 CREATE TABLE IF NOT EXISTS users
 (
-    pubkey      TEXT PRIMARY KEY,
-    quota_bytes BIGINT NOT NULL DEFAULT 1073741824,
-    used_bytes  BIGINT NOT NULL DEFAULT 0,
-    is_banned   BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at  BIGINT NOT NULL,
-    updated_at  BIGINT NOT NULL
+    pubkey           TEXT PRIMARY KEY,
+    quota_bytes      BIGINT NOT NULL DEFAULT 1073741824,
+    used_bytes       BIGINT NOT NULL DEFAULT 0,
+    is_banned        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at       BIGINT NOT NULL,
+    updated_at       BIGINT NOT NULL,
+    free_bytes_used  BIGINT NOT NULL DEFAULT 0,
+    free_bytes_limit BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS reports
@@ -185,4 +187,31 @@ CREATE TABLE IF NOT EXISTS federated_users (
     server_rank INTEGER NOT NULL DEFAULT 0,
     created_at  BIGINT NOT NULL,
     updated_at  BIGINT NOT NULL
+);
+
+-- BUD-03: User server lists from kind 10063 events
+CREATE TABLE IF NOT EXISTS user_server_lists (
+    pubkey      TEXT NOT NULL,
+    server_url  TEXT NOT NULL,
+    rank        INTEGER NOT NULL DEFAULT 0,
+    event_id    TEXT NOT NULL,
+    created_at  BIGINT NOT NULL,
+    updated_at  BIGINT NOT NULL,
+    PRIMARY KEY (pubkey, server_url)
+);
+
+-- Payment requests for BUD-07 support
+CREATE TABLE IF NOT EXISTS payment_requests (
+    id                TEXT PRIMARY KEY,
+    pubkey            TEXT NOT NULL,
+    amount_sats       BIGINT NOT NULL,
+    bytes_requested   BIGINT NOT NULL,
+    lightning_invoice TEXT,
+    cashu_request     TEXT,
+    payment_hash      TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    created_at        BIGINT NOT NULL,
+    expires_at        BIGINT NOT NULL,
+    paid_at           BIGINT,
+    proof_data        TEXT
 );

@@ -47,8 +47,18 @@ func SetupRoutes(
 			HeaderXSHA256,
 			HeaderXContentType,
 			HeaderXContentLength,
+			"X-Cashu",           // BUD-07: Cashu payment proof
+			"X-Lightning",       // BUD-07: Lightning payment proof
+			"X-Payment-Request", // BUD-07: Payment request ID
 		},
-		ExposeHeaders: []string{"Content-Length"},
+		ExposeHeaders: []string{
+			"Content-Length",
+			"X-Cashu",           // BUD-07: Cashu payment request
+			"X-Lightning",       // BUD-07: Lightning invoice
+			"X-Payment-Request", // BUD-07: Payment request ID
+			"X-Payment-Amount",  // BUD-07: Payment amount in sats
+			"X-Reason",          // BUD-07: Error reason
+		},
 	}))
 
 	r.GET("/.well-known/health", func(ctx *gin.Context) {
@@ -58,28 +68,34 @@ func SetupRoutes(
 	// Prometheus metrics endpoint
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// Payment middleware for upload operations (BUD-07)
+	var paymentMW gin.HandlerFunc
+	if services.Payment() != nil && services.Payment().IsEnabled() {
+		paymentMW = PaymentMiddleware(services.Payment(), log)
+		log.Info("payment middleware enabled for uploads")
+	}
+
 	r.HEAD(
 		"/upload",
 		nostrAuthMiddleware("upload", log),
 		uploadRequirements(services),
 	)
-	r.PUT(
-		"/upload",
-		nostrAuthMiddleware("upload", log),
-		uploadBlob(
-			services,
-			cdnBaseUrl,
-		),
-	)
 
-	r.PUT(
-		"/mirror",
-		nostrAuthMiddleware("upload", log),
-		mirrorBlob(
-			services,
-			cdnBaseUrl,
-		),
-	)
+	// Build upload handlers chain with optional payment middleware
+	uploadHandlers := []gin.HandlerFunc{nostrAuthMiddleware("upload", log)}
+	if paymentMW != nil {
+		uploadHandlers = append(uploadHandlers, paymentMW)
+	}
+	uploadHandlers = append(uploadHandlers, uploadBlob(services, cdnBaseUrl))
+	r.PUT("/upload", uploadHandlers...)
+
+	// Mirror endpoint with optional payment
+	mirrorHandlers := []gin.HandlerFunc{nostrAuthMiddleware("upload", log)}
+	if paymentMW != nil {
+		mirrorHandlers = append(mirrorHandlers, paymentMW)
+	}
+	mirrorHandlers = append(mirrorHandlers, mirrorBlob(services, cdnBaseUrl))
+	r.PUT("/mirror", mirrorHandlers...)
 
 	// BUD-05: Media optimization endpoint
 	r.HEAD(
@@ -87,11 +103,14 @@ func SetupRoutes(
 		nostrAuthMiddleware("media", log),
 		mediaRequirements(services),
 	)
-	r.PUT(
-		"/media",
-		nostrAuthMiddleware("media", log),
-		uploadMedia(services, cdnBaseUrl),
-	)
+
+	// Media upload with optional payment
+	mediaHandlers := []gin.HandlerFunc{nostrAuthMiddleware("media", log)}
+	if paymentMW != nil {
+		mediaHandlers = append(mediaHandlers, paymentMW)
+	}
+	mediaHandlers = append(mediaHandlers, uploadMedia(services, cdnBaseUrl))
+	r.PUT("/media", mediaHandlers...)
 
 	// Thumbnail generation endpoint
 	r.GET(
@@ -207,6 +226,9 @@ func SetupRoutes(
 		nostrAuthMiddleware("delete", log),
 		deleteBlob(services),
 	)
+
+	// BUD-03: User server list
+	r.GET("/servers/:pubkey", getUserServerList(services))
 
 	// server stats
 	r.GET("/stats", getStats(services))
