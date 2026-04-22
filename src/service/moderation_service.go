@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"go.uber.org/zap"
 )
 

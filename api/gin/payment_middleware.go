@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

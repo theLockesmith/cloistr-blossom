@@ -1,0 +1,14 @@
+# DKIM DNS TXT Record for cloistr.xyz
+# Selector: mail
+# Generated: 2026-04-21T18:05:43Z
+#
+# Add this TXT record to your DNS:
+
+Record Name: mail._domainkey.cloistr.xyz
+Record Type: TXT
+Record Value:
+
+v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5zSD+Sg0yDrS47g3KRGGHQU5/CqjFGX0PN5sVi5XCGc0WaDUmOKil5gbUotEZX43lYsGyhSrfB0hj1vseNV1gnqvDHqOuLUmh+5TWmawb0R0EUTiTPzgn3kEAfefTmXyvr8u3HuSLdcp3rsgKIk4FGuPb3JLwriAfC+ot37fEID1kVAIA1dJe695/88/rxhP7bd5v7NSYADDVReGWxN8KXqb6GJScQE21/cJx3ej96+AV/nnASnfUXtTSJu8er17BiMKc8A008n8X8CK14xltLgycdKKYhQxMkHek7XjnpybXxq+eZrtBWRnfh7EDxYmHlMyQzM3Z/iC6Jf7VBiBRwIDAQAB
+
+# Verification command:
+# dig TXT mail._domainkey.cloistr.xyz

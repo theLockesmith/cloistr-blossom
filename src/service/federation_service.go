@@ -19,10 +19,10 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 )
 
 const (

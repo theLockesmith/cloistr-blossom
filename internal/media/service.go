@@ -9,8 +9,8 @@ import (
 	"io"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 )
 
 // MediaService handles media processing and caching.

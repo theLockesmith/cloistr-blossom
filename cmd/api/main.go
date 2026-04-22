@@ -8,14 +8,14 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
-	ginApi "git.coldforge.xyz/coldforge/cloistr-blossom/api/gin"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/logging"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/service"
+	ginApi "git.aegis-hq.xyz/coldforge/cloistr-blossom/api/gin"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/logging"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/service"
 )
 
 func main() {

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 )
 
 // mockRateLimiter is a mock implementation of ratelimit.RateLimiter for testing

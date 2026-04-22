@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
 )
 
 func main() {

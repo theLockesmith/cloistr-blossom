@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/storage"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 )
 
 func TestCDNServiceDisabled(t *testing.T) {

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 const (

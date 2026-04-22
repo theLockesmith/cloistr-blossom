@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 func TestToInt64(t *testing.T) {

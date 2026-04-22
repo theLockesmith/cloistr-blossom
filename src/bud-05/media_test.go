@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/logging"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/service"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/logging"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/service"
 )
 
 // createTestImage generates a simple test PNG image.

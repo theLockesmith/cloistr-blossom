@@ -13,8 +13,8 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/gin-gonic/gin"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // uploadMedia handles PUT /media for BUD-05 media optimization.

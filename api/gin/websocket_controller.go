@@ -10,7 +10,7 @@ import (
 	"github.com/gobwas/ws/wsutil"
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time notifications.

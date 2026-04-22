@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // HashBlocklistProvider is a fast local provider that checks against known bad hashes.

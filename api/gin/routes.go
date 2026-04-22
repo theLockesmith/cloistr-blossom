@@ -8,10 +8,10 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/ratelimit"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 	"go.uber.org/zap"
 )
 

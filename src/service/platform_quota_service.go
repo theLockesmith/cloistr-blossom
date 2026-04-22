@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-common/platform"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-common/platform"
 )
 
 // platformQuotaService implements QuotaService using the unified platform database.

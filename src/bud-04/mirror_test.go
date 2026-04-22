@@ -9,12 +9,12 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/nbd-wtf/go-nostr"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/logging"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/service"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/logging"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/service"
 	"github.com/stretchr/testify/assert"
 )
 

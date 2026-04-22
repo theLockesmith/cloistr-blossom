@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 )
 
 // MetricsMiddleware records request metrics for Prometheus.

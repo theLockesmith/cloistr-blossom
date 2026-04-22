@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
 )
 
 func MirrorBlob(

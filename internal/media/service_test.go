@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

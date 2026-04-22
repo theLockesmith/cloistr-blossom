@@ -1,0 +1,14 @@
+# DKIM DNS TXT Record for coldforge.xyz
+# Selector: mail
+# Generated: 2026-04-21T17:58:14Z
+#
+# Add this TXT record to your DNS:
+
+Record Name: mail._domainkey.coldforge.xyz
+Record Type: TXT
+Record Value:
+
+v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgiIoftcIARZYSl+iW+D6oBRJgJup6cK3c1AHbXnbhgiwh7pe7iztxtPAGQDSaOSGe/SIQimGwt/9T5x7YV6sXbmMbqwhMNFDbFt8mlhwGJuFo2WlAZSBjdXw8s8+GeQFUvzJq7gJDHD4tC/B897ZhGYlO0EGSyfb9qt/CbyWD1ak5Um7QBy9Ize8ZRnDNwoHsn896u/wUIPLrWWF0zSk5LeR7AlyTIlKROKK0xFoMsOX3KvjPVgZyjgHkNkF9K3BwFyNQQc4B8/FDxQ6w60Bm2olS0mA4MDNLJX0drT63O/5QABmxFwhoqG9NLw8ZWEBca1IOOVldd7EKq0VITQ5DQIDAQAB
+
+# Verification command:
+# dig TXT mail._domainkey.coldforge.xyz

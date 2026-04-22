@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/db"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"go.uber.org/zap"
 )
 

@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
 )
 
 type Services interface {

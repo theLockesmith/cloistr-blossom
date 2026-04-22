@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // notificationService implements core.NotificationService using in-memory pub/sub.

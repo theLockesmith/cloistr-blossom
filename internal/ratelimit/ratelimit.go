@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
 )
 
 // RateLimiter provides rate limiting functionality.

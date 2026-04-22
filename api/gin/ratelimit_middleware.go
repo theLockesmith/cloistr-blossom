@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/metrics"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/internal/ratelimit"
-	"git.coldforge.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 )
 
 // RateLimitMiddleware creates a rate limiting middleware.
