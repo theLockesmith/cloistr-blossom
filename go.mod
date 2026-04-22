@@ -3,7 +3,7 @@ module git.aegis-hq.xyz/coldforge/cloistr-blossom
 go 1.25.0
 
 require (
-	git.aegis-hq.xyz/coldforge/cloistr-common v0.0.0-00010101000000-000000000000
+	git.aegis-hq.xyz/coldforge/cloistr-common v0.2.0
 	github.com/anacrolix/torrent v1.61.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
@@ -115,5 +115,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace git.aegis-hq.xyz/coldforge/cloistr-common => /home/forgemaster/Development/cloistr-common
