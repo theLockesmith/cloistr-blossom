@@ -6,6 +6,8 @@ stages:
 
 variables:
   GO_VERSION: "1.25"
+  GOPRIVATE: "git.aegis-hq.xyz"
+  GOINSECURE: "git.aegis-hq.xyz"
 
 # Cache Go modules between jobs
 .go-cache: &go-cache
