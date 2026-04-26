@@ -57,6 +57,7 @@ git fetch upstream && git merge upstream/master  # Sync with upstream
 | Federation (kind 1063/10063) | Done |
 | Deduplication | Done |
 | Analytics Dashboard | Done |
+| Server Capabilities (`/.well-known/blossom`) | Done |
 
 ## Project Structure
 
@@ -99,6 +100,7 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 | POST | `/:hash/transcode` | Start video transcoding |
 | GET | `/:hash/hls/master.m3u8` | HLS stream |
 | GET | `/:hash/dash/manifest.mpd` | DASH stream |
+| GET | `/.well-known/blossom` | Server capabilities |
 
 **Full API:** See [docs/reference.md](docs/reference.md) for all endpoints.
 
@@ -115,7 +117,6 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 | Item | Priority | Notes |
 |------|----------|-------|
 | Connect BUD-07 Payments | P1 | Options: hosted Lightning (Voltage/LNbits/Alby), Cashu-only, or self-hosted LND |
-| Server Capabilities Endpoint | P1 | `/.well-known/blossom` or `/info` - advertise supported features |
 | X-Expiration Header | P2 | Accept TTL on uploads, infrastructure exists |
 | Blob Search | P3 | Low priority - overlaps with Nostr relay functionality |
 

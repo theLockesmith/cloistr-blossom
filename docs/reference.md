@@ -128,6 +128,54 @@ curl -X PUT https://files.cloistr.xyz/mirror \
   -d '{"url": "blossom:abc123...jpg?xs=other-server.com"}'
 ```
 
+### Server Capabilities
+
+Server discovery and feature advertisement at `/.well-known/blossom`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/.well-known/blossom` | No | Get server capabilities |
+| GET | `/.well-known/health` | No | Health check |
+
+**Response:**
+```json
+{
+  "name": "Cloistr Blossom",
+  "version": "1.2.0",
+  "pubkey": "admin_pubkey_here",
+  "buds": ["BUD-01", "BUD-02", "BUD-03", "BUD-04", "BUD-05", "BUD-06", "BUD-07", "BUD-08", "BUD-09", "BUD-10", "BUD-11"],
+  "features": {
+    "encryption": true,
+    "cdn": true,
+    "media_optimization": true,
+    "transcoding": true,
+    "thumbnails": true,
+    "subtitles": true,
+    "chunked_upload": true,
+    "tus_upload": true,
+    "batch_operations": true,
+    "websocket_notify": true,
+    "federation": true,
+    "content_moderation": true,
+    "ipfs": true,
+    "torrent": true
+  },
+  "limits": {
+    "max_upload_size": 104857600,
+    "default_quota": 1073741824,
+    "max_quota": 10737418240,
+    "rate_limit_enabled": true
+  },
+  "payment": {
+    "required": false,
+    "free_tier_bytes": 10485760,
+    "satoshis_per_byte": 0.001,
+    "min_payment_sats": 10,
+    "methods": ["lightning", "cashu"]
+  }
+}
+```
+
 ### BUD-07 Payments
 
 Paid uploads via Lightning Network (BOLT-11) or Cashu (ecash).

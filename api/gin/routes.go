@@ -65,6 +65,9 @@ func SetupRoutes(
 		ctx.Status(http.StatusOK)
 	})
 
+	// Server capabilities endpoint for client discovery
+	r.GET("/.well-known/blossom", getServerCapabilities(services, conf, adminPubkey))
+
 	// Prometheus metrics endpoint
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
