@@ -20,6 +20,13 @@ For quick start and essential info, see [CLAUDE.md](../CLAUDE.md).
 | PUT | `/mirror` | Yes | Mirror a blob from URL |
 | GET | `/list/:pubkey` | No | List blobs by pubkey |
 
+**Upload headers (`PUT /upload`, `PUT /media`):**
+
+| Header | Description |
+|--------|-------------|
+| `X-Encryption` | Encryption mode: `none`, `server`, or `e2e` |
+| `X-Expiration` | Optional. Absolute Unix timestamp (seconds, NIP-40 style) at which the blob auto-expires. Must be in the future; a malformed value returns `400` before the blob is stored. On success the applied value is echoed back in the `X-Expiration` response header. Requires `expiration.enabled` for the blob to actually be deleted (the timestamp is recorded either way). |
+
 ### Media Processing (BUD-05)
 
 | Method | Path | Auth | Description |
@@ -348,6 +355,30 @@ Paid uploads via Lightning Network (BOLT-11) or Cashu (ecash).
 - `by_category` - Breakdown by category (image, video, audio, text, document, archive, other)
 - `encryption_pct` - Percentage of blobs encrypted
 
+### Blob Search (Admin)
+
+Server-wide blob search for moderation/ops. Admin session required (this is
+intentionally not a public endpoint — public content discovery is better served
+by Nostr relay queries).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/admin/api/blobs/search` | Admin | Search all blobs by criteria |
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `type` | string | MIME type prefix (e.g. `image/`, `video/mp4`) |
+| `pubkey` | string | Restrict to a single uploader (hex) |
+| `since` / `until` | int64 | Created-time range (Unix timestamps) |
+| `min_size` / `max_size` | int64 | Size bounds in bytes |
+| `limit` | int | Page size (default 50, max 200) |
+| `offset` | int | Pagination offset |
+| `sort` | string | `desc` for newest-first (default ascending) |
+
+Response: `{ "blobs": [...], "total": <int> }` (`total` is the full match count, ignoring pagination).
+
 ### List Endpoint Filters
 
 `/list/:pubkey` query parameters:
@@ -491,6 +522,12 @@ payment:
     enabled: true
     mint_urls:
       - "https://mint.minibits.cash/Bitcoin"
+
+expiration:
+  enabled: true          # Honor X-Expiration + run the cleanup worker
+  cleanup_interval: 1h   # How often to scan for expired blobs
+  batch_size: 1000       # Max blobs deleted per cleanup run
+  grace_period: 0s       # Delay after expiry before deletion
 ```
 
 ---

@@ -58,6 +58,8 @@ git fetch upstream && git merge upstream/master  # Sync with upstream
 | Deduplication | Done |
 | Analytics Dashboard | Done |
 | Server Capabilities (`/.well-known/blossom`) | Done |
+| X-Expiration Header + Auto-Cleanup Worker | Done |
+| Blob Search (admin) | Done |
 
 ## Project Structure
 
@@ -116,9 +118,7 @@ docker push oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Connect BUD-07 Payments | P1 | Options: hosted Lightning (Voltage/LNbits/Alby), Cashu-only, or self-hosted LND |
-| X-Expiration Header | P2 | Accept TTL on uploads, infrastructure exists |
-| Blob Search | P3 | Low priority - overlaps with Nostr relay functionality |
+| Connect BUD-07 Payments | P1 | Self-hosted LND running and stabilizing; go-live imminent. Set `payment.enabled` + LND REST creds when ready |
 
 ## Monitoring
 
