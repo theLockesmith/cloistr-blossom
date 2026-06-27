@@ -2,13 +2,14 @@ package gin
 
 import (
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -29,20 +30,20 @@ func generateTorrent(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		// Validate hash format (SHA-256 hex string)
 		if !hashPattern.MatchString(hash) {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid hash format"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid hash format").Abort(ctx)
 			return
 		}
 
 		// Check if blob exists
 		exists, err := services.Blob().Exists(ctx.Request.Context(), hash)
 		if err != nil || !exists {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "blob not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found").Abort(ctx)
 			return
 		}
 
@@ -56,17 +57,13 @@ func generateTorrent(
 		// Add trackers from query params (can be multiple, with limit)
 		if trackers := ctx.QueryArray("tracker"); len(trackers) > 0 {
 			if len(trackers) > maxTorrentTrackers {
-				ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-					Message: fmt.Sprintf("too many trackers (max %d)", maxTorrentTrackers),
-				})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("too many trackers (max %d)", maxTorrentTrackers)).Abort(ctx)
 				return
 			}
 			// Validate tracker URLs
 			for _, t := range trackers {
 				if _, err := url.Parse(t); err != nil {
-					ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-						Message: fmt.Sprintf("invalid tracker URL: %s", t),
-					})
+					clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid tracker URL: %s", t)).Abort(ctx)
 					return
 				}
 			}
@@ -76,17 +73,13 @@ func generateTorrent(
 		// Add web seeds - default to the blossom server URL
 		if webSeeds := ctx.QueryArray("webseed"); len(webSeeds) > 0 {
 			if len(webSeeds) > maxTorrentWebSeeds {
-				ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-					Message: fmt.Sprintf("too many web seeds (max %d)", maxTorrentWebSeeds),
-				})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("too many web seeds (max %d)", maxTorrentWebSeeds)).Abort(ctx)
 				return
 			}
 			// Validate web seed URLs
 			for _, ws := range webSeeds {
 				if _, err := url.Parse(ws); err != nil {
-					ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-						Message: fmt.Sprintf("invalid web seed URL: %s", ws),
-					})
+					clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid web seed URL: %s", ws)).Abort(ctx)
 					return
 				}
 			}
@@ -99,12 +92,10 @@ func generateTorrent(
 		info, torrentBytes, err := services.Torrent().GenerateTorrent(ctx.Request.Context(), hash, config)
 		if err != nil {
 			if err == core.ErrTorrentNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "blob not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to generate torrent: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to generate torrent: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -137,7 +128,7 @@ func getTorrent(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
@@ -147,12 +138,10 @@ func getTorrent(
 			info, err := services.Torrent().GetTorrentInfo(ctx.Request.Context(), hash)
 			if err != nil {
 				if err == core.ErrTorrentNotFound {
-					ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "torrent not found"})
+					clerrors.NotFound(clerrors.CodeResourceNotFound, "torrent not found").Abort(ctx)
 					return
 				}
-				ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-					Message: fmt.Sprintf("failed to get torrent info: %s", err.Error()),
-				})
+				clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get torrent info: %s", err.Error())).Abort(ctx)
 				return
 			}
 
@@ -173,12 +162,10 @@ func getTorrent(
 		torrentBytes, err := services.Torrent().GetTorrent(ctx.Request.Context(), hash)
 		if err != nil {
 			if err == core.ErrTorrentNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "torrent not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "torrent not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get torrent: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get torrent: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -194,15 +181,13 @@ func deleteTorrent(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		err := services.Torrent().DeleteTorrent(ctx.Request.Context(), hash)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to delete torrent: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to delete torrent: %s", err.Error())).Abort(ctx)
 			return
 		}
 

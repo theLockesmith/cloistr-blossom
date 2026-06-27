@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"github.com/gin-gonic/gin"
 	goNostr "github.com/nbd-wtf/go-nostr"
 	"go.uber.org/zap"
@@ -235,14 +236,14 @@ func AdminSessionMiddleware(authManager *AdminAuthManager) gin.HandlerFunc {
 		}
 
 		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, apiError{Message: "authentication required"})
+			clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(c)
 			return
 		}
 
 		session, err := authManager.ValidateSession(token)
 		if err != nil {
 			authManager.log.Debug("admin session validation failed", zap.Error(err))
-			c.AbortWithStatusJSON(http.StatusUnauthorized, apiError{Message: "invalid or expired session"})
+			clerrors.Unauthorized(clerrors.CodeAuthInvalid, "invalid or expired session").Abort(c)
 			return
 		}
 
@@ -269,25 +270,25 @@ func adminLogin(authManager *AdminAuthManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req AdminLoginRequest
 		if err := c.BindJSON(&req); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").Abort(c)
 			return
 		}
 
 		if req.AuthEvent == "" {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "auth_event is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "auth_event is required").Abort(c)
 			return
 		}
 
 		pubkey, err := authManager.VerifyNostrAdminAuth(req.AuthEvent)
 		if err != nil {
 			authManager.log.Debug("admin login failed", zap.Error(err))
-			c.AbortWithStatusJSON(http.StatusUnauthorized, apiError{Message: err.Error()})
+			clerrors.Unauthorized(clerrors.CodeAuthInvalid, err.Error()).Abort(c)
 			return
 		}
 
 		token, err := authManager.CreateSession(pubkey)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: "failed to create session"})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to create session").Abort(c)
 			return
 		}
 
@@ -299,9 +300,9 @@ func adminLogin(authManager *AdminAuthManager) gin.HandlerFunc {
 			token,
 			86400, // 24 hours
 			"/admin",
-			"",    // domain
-			true,  // secure (HTTPS only)
-			true,  // httpOnly
+			"",   // domain
+			true, // secure (HTTPS only)
+			true, // httpOnly
 		)
 
 		c.JSON(http.StatusOK, AdminLoginResponse{

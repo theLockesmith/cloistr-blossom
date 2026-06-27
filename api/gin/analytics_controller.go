@@ -1,11 +1,12 @@
 package gin
 
 import (
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -54,7 +55,7 @@ func getAnalyticsOverview(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		overview, err := services.Analytics().GetOverview(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -69,7 +70,7 @@ func getStorageAnalytics(services core.Services) gin.HandlerFunc {
 
 		analytics, err := services.Analytics().GetStorageAnalytics(ctx.Request.Context(), query)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -84,7 +85,7 @@ func getActivityAnalytics(services core.Services) gin.HandlerFunc {
 
 		analytics, err := services.Analytics().GetActivityAnalytics(ctx.Request.Context(), query)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -99,7 +100,7 @@ func getUserAnalytics(services core.Services) gin.HandlerFunc {
 
 		analytics, err := services.Analytics().GetUserAnalytics(ctx.Request.Context(), query)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -112,7 +113,7 @@ func getContentAnalytics(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		analytics, err := services.Analytics().GetContentAnalytics(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -125,7 +126,7 @@ func getRealtimeMetrics(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		metrics, err := services.Analytics().GetRealtimeMetrics(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 

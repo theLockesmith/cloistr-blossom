@@ -37,8 +37,9 @@ type ServerCapabilities struct {
 // FeatureCapabilities describes optional server features.
 type FeatureCapabilities struct {
 	// Storage features
-	Encryption bool `json:"encryption"` // Server-side encryption at rest
-	CDN        bool `json:"cdn"`        // CDN delivery available
+	Encryption     bool `json:"encryption"`      // Server-side encryption at rest
+	CDN            bool `json:"cdn"`             // CDN delivery available
+	BlobExpiration bool `json:"blob_expiration"` // X-Expiration upload header honored + auto-cleanup
 
 	// Media features
 	MediaOptimization bool     `json:"media_optimization"` // BUD-05 media processing
@@ -48,11 +49,11 @@ type FeatureCapabilities struct {
 	SupportedFormats  []string `json:"supported_formats,omitempty"`
 
 	// Protocol features
-	ChunkedUpload    bool `json:"chunked_upload"`    // Chunked/resumable uploads
-	TusUpload        bool `json:"tus_upload"`        // TUS protocol support
-	BatchOperations  bool `json:"batch_operations"`  // Batch upload/download
-	WebSocketNotify  bool `json:"websocket_notify"`  // Real-time notifications
-	Federation       bool `json:"federation"`        // Server federation
+	ChunkedUpload     bool `json:"chunked_upload"`     // Chunked/resumable uploads
+	TusUpload         bool `json:"tus_upload"`         // TUS protocol support
+	BatchOperations   bool `json:"batch_operations"`   // Batch upload/download
+	WebSocketNotify   bool `json:"websocket_notify"`   // Real-time notifications
+	Federation        bool `json:"federation"`         // Server federation
 	ContentModeration bool `json:"content_moderation"` // AI content moderation
 
 	// Distribution features
@@ -62,19 +63,19 @@ type FeatureCapabilities struct {
 
 // LimitCapabilities describes server limits.
 type LimitCapabilities struct {
-	MaxUploadSize    int64 `json:"max_upload_size"`              // Max single upload in bytes
-	DefaultQuota     int64 `json:"default_quota,omitempty"`      // Default storage quota
-	MaxQuota         int64 `json:"max_quota,omitempty"`          // Maximum storage quota
-	RateLimitEnabled bool  `json:"rate_limit_enabled"`           // Rate limiting active
+	MaxUploadSize    int64 `json:"max_upload_size"`         // Max single upload in bytes
+	DefaultQuota     int64 `json:"default_quota,omitempty"` // Default storage quota
+	MaxQuota         int64 `json:"max_quota,omitempty"`     // Maximum storage quota
+	RateLimitEnabled bool  `json:"rate_limit_enabled"`      // Rate limiting active
 }
 
 // PaymentCapabilities describes payment options.
 type PaymentCapabilities struct {
-	Required       bool    `json:"required"`                   // Payments required for uploads
-	FreeTierBytes  int64   `json:"free_tier_bytes,omitempty"`  // Free tier allowance
-	SatoshisPerByte float64 `json:"satoshis_per_byte"`          // Pricing
-	MinPaymentSats int64   `json:"min_payment_sats"`           // Minimum payment
-	Methods        []string `json:"methods"`                    // Accepted payment methods
+	Required        bool     `json:"required"`                  // Payments required for uploads
+	FreeTierBytes   int64    `json:"free_tier_bytes,omitempty"` // Free tier allowance
+	SatoshisPerByte float64  `json:"satoshis_per_byte"`         // Pricing
+	MinPaymentSats  int64    `json:"min_payment_sats"`          // Minimum payment
+	Methods         []string `json:"methods"`                   // Accepted payment methods
 }
 
 // getServerCapabilities returns the server capabilities endpoint handler.
@@ -118,6 +119,7 @@ func buildCapabilities(services core.Services, conf *config.Config, adminPubkey 
 	caps.Features = FeatureCapabilities{
 		Encryption:        conf.Encryption.Enabled,
 		CDN:               conf.CDN.Enabled,
+		BlobExpiration:    conf.Expiration.Enabled,
 		MediaOptimization: true, // Always available
 		Transcoding:       conf.Transcoding.WorkDir != "",
 		Thumbnails:        true,

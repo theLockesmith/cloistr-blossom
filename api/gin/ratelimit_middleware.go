@@ -1,7 +1,7 @@
 package gin
 
 import (
-	"net/http"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"strconv"
 	"strings"
 	"time"
@@ -107,9 +107,7 @@ func RateLimitMiddleware(
 
 			metrics.RateLimitedTotal.WithLabelValues(requestType).Inc()
 
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, apiError{
-				Message: "rate limit exceeded, please try again later",
-			})
+			clerrors.TooManyRequests(clerrors.CodeRateLimitExceeded, "rate limit exceeded, please try again later", retryAfter).Abort(c)
 			return
 		}
 
@@ -184,9 +182,7 @@ func BandwidthLimitMiddleware(
 
 					metrics.RateLimitedTotal.WithLabelValues("bandwidth_upload").Inc()
 
-					c.AbortWithStatusJSON(http.StatusTooManyRequests, apiError{
-						Message: "bandwidth limit exceeded, please try again later",
-					})
+					clerrors.TooManyRequests(clerrors.CodeRateLimitExceeded, "bandwidth limit exceeded, please try again later", retryAfter).Abort(c)
 					return
 				}
 			}

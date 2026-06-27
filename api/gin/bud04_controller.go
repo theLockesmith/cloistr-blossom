@@ -1,13 +1,14 @@
 package gin
 
 import (
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"net/url"
 
-	"github.com/gin-gonic/gin"
 	bud04 "git.aegis-hq.xyz/coldforge/cloistr-blossom/src/bud-04"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/blossom"
+	"github.com/gin-gonic/gin"
 )
 
 func mirrorBlob(
@@ -22,42 +23,24 @@ func mirrorBlob(
 		if pubkey != "" {
 			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
 			if err == nil && isBlocked {
-				ctx.AbortWithStatusJSON(
-					http.StatusForbidden,
-					apiError{Message: "your account has been blocked due to terms of service violation"},
-				)
+				clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
 				return
 			}
 		}
 
 		if pubkey == "" {
-			ctx.AbortWithStatusJSON(
-				http.StatusInternalServerError,
-				apiError{
-					Message: "pubkey missing from context",
-				},
-			)
+			clerrors.InternalError(clerrors.CodeInternalError, "pubkey missing from context").Abort(ctx)
 			return
 		}
 
 		if authSha256 == "" {
-			ctx.AbortWithStatusJSON(
-				http.StatusInternalServerError,
-				apiError{
-					Message: "blob hash missing from context",
-				},
-			)
+			clerrors.InternalError(clerrors.CodeInternalError, "blob hash missing from context").Abort(ctx)
 			return
 		}
 
 		mirrorInput := &mirrorInput{}
 		if err := ctx.ShouldBindJSON(mirrorInput); err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: "invalid request body",
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").Abort(ctx)
 			return
 		}
 
@@ -68,55 +51,30 @@ func mirrorBlob(
 			var err error
 			blossomURI, err = blossom.Parse(mirrorInput.Url)
 			if err != nil {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{
-						Message: "invalid blossom URI: " + err.Error(),
-					},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidFormat, "invalid blossom URI: "+err.Error()).Abort(ctx)
 				return
 			}
 			// Validate that auth hash matches URI hash
 			if authSha256 != "" && authSha256 != blossomURI.Hash {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{
-						Message: "auth hash does not match blossom URI hash",
-					},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidInput, "auth hash does not match blossom URI hash").Abort(ctx)
 				return
 			}
 			// Use first server hint as URL
 			httpURLs := blossomURI.ToHTTPURLs()
 			if len(httpURLs) == 0 {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{
-						Message: "blossom URI has no server hints",
-					},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidInput, "blossom URI has no server hints").Abort(ctx)
 				return
 			}
 			blobUrl, err = url.Parse(httpURLs[0])
 			if err != nil {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{
-						Message: "invalid server URL from blossom URI",
-					},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidFormat, "invalid server URL from blossom URI").Abort(ctx)
 				return
 			}
 		} else {
 			var err error
 			blobUrl, err = url.Parse(mirrorInput.Url)
 			if err != nil {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{
-						Message: "invalid blob URL",
-					},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidFormat, "invalid blob URL").Abort(ctx)
 				return
 			}
 		}
@@ -145,12 +103,7 @@ func mirrorBlob(
 			encryptionMode,
 		)
 		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: err.Error(),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			return
 		}
 

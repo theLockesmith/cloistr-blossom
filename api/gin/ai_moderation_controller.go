@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 type AIModerationController struct {
@@ -21,13 +22,13 @@ func NewAIModerationController(aiMod core.AIModerationService) *AIModerationCont
 // GET /admin/ai-moderation/stats
 func (c *AIModerationController) GetStats(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	stats, err := c.aiMod.GetStats(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -38,7 +39,7 @@ func (c *AIModerationController) GetStats(ctx *gin.Context) {
 // GET /admin/ai-moderation/quarantine
 func (c *AIModerationController) ListQuarantined(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
@@ -63,7 +64,7 @@ func (c *AIModerationController) ListQuarantined(ctx *gin.Context) {
 
 	blobs, err := c.aiMod.ListQuarantinedBlobs(ctx.Request.Context(), status, limit, offset)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -79,19 +80,19 @@ func (c *AIModerationController) ListQuarantined(ctx *gin.Context) {
 // GET /admin/ai-moderation/quarantine/:hash
 func (c *AIModerationController) GetQuarantinedBlob(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	hash := ctx.Param("hash")
 	if hash == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "hash required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "hash required").Abort(ctx)
 		return
 	}
 
 	blob, err := c.aiMod.GetQuarantinedBlob(ctx.Request.Context(), hash)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -102,13 +103,13 @@ func (c *AIModerationController) GetQuarantinedBlob(ctx *gin.Context) {
 // POST /admin/ai-moderation/quarantine/:hash/review
 func (c *AIModerationController) ReviewQuarantinedBlob(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	hash := ctx.Param("hash")
 	if hash == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "hash required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "hash required").Abort(ctx)
 		return
 	}
 
@@ -116,7 +117,7 @@ func (c *AIModerationController) ReviewQuarantinedBlob(ctx *gin.Context) {
 		Approved bool `json:"approved"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request").Abort(ctx)
 		return
 	}
 
@@ -127,7 +128,7 @@ func (c *AIModerationController) ReviewQuarantinedBlob(ctx *gin.Context) {
 	}
 
 	if err := c.aiMod.ReviewQuarantinedBlob(ctx.Request.Context(), hash, req.Approved, reviewerPubkey); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -147,7 +148,7 @@ func (c *AIModerationController) ReviewQuarantinedBlob(ctx *gin.Context) {
 // GET /admin/ai-moderation/providers
 func (c *AIModerationController) GetProviders(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
@@ -156,10 +157,10 @@ func (c *AIModerationController) GetProviders(ctx *gin.Context) {
 
 	for _, p := range providers {
 		providerInfo = append(providerInfo, gin.H{
-			"name":        p.Name(),
-			"mime_types":  p.SupportedMimeTypes(),
-			"categories":  p.SupportedCategories(),
-			"available":   p.IsAvailable(ctx.Request.Context()),
+			"name":       p.Name(),
+			"mime_types": p.SupportedMimeTypes(),
+			"categories": p.SupportedCategories(),
+			"available":  p.IsAvailable(ctx.Request.Context()),
 		})
 	}
 
@@ -173,13 +174,13 @@ func (c *AIModerationController) GetProviders(ctx *gin.Context) {
 // POST /admin/ai-moderation/scan/:hash
 func (c *AIModerationController) ScanBlob(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	hash := ctx.Param("hash")
 	if hash == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "hash required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "hash required").Abort(ctx)
 		return
 	}
 
@@ -192,7 +193,7 @@ func (c *AIModerationController) ScanBlob(ctx *gin.Context) {
 
 	queueID, err := c.aiMod.ScanContentAsync(ctx.Request.Context(), req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -207,24 +208,24 @@ func (c *AIModerationController) ScanBlob(ctx *gin.Context) {
 // GET /admin/ai-moderation/scan/:hash
 func (c *AIModerationController) GetScanResult(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	hash := ctx.Param("hash")
 	if hash == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "hash required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "hash required").Abort(ctx)
 		return
 	}
 
 	result, err := c.aiMod.GetScanResult(ctx.Request.Context(), hash)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, err.Error()).Abort(ctx)
 		return
 	}
 
 	if result == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "no scan result found"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "no scan result found").Abort(ctx)
 		return
 	}
 
@@ -235,13 +236,13 @@ func (c *AIModerationController) GetScanResult(ctx *gin.Context) {
 // GET /admin/ai-moderation/queue
 func (c *AIModerationController) GetQueueStatus(ctx *gin.Context) {
 	if c.aiMod == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "AI moderation not enabled"})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "AI moderation not enabled").Abort(ctx)
 		return
 	}
 
 	size, err := c.aiMod.GetQueueSize(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 

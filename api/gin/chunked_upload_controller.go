@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 // ChunkedUploadHandler holds the chunked upload service reference.
@@ -30,7 +31,7 @@ func (h *ChunkedUploadHandler) createChunkedSession() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		pubkey, ok := ctx.Get("pubkey")
 		if !ok {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 			return
 		}
 
@@ -44,7 +45,7 @@ func (h *ChunkedUploadHandler) createChunkedSession() gin.HandlerFunc {
 		}
 
 		if err := ctx.ShouldBindJSON(&req); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request: "+err.Error()).Abort(ctx)
 			return
 		}
 
@@ -58,7 +59,7 @@ func (h *ChunkedUploadHandler) createChunkedSession() gin.HandlerFunc {
 			TTL:            req.TTL,
 		})
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -74,20 +75,20 @@ func (h *ChunkedUploadHandler) uploadChunk() gin.HandlerFunc {
 		chunkNumStr := ctx.Param("chunk_num")
 
 		if sessionID == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "session_id required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "session_id required").Abort(ctx)
 			return
 		}
 
 		chunkNum, err := strconv.Atoi(chunkNumStr)
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid chunk_num"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid chunk_num").Abort(ctx)
 			return
 		}
 
 		// Read chunk data
 		data, err := io.ReadAll(ctx.Request.Body)
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "failed to read request body").Abort(ctx)
 			return
 		}
 
@@ -95,19 +96,19 @@ func (h *ChunkedUploadHandler) uploadChunk() gin.HandlerFunc {
 		if err != nil {
 			switch err {
 			case core.ErrSessionNotFound:
-				ctx.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "session not found").Abort(ctx)
 			case core.ErrSessionExpired:
 				ctx.JSON(http.StatusGone, gin.H{"error": "session expired"})
 			case core.ErrSessionAborted:
 				ctx.JSON(http.StatusGone, gin.H{"error": "session aborted"})
 			case core.ErrSessionComplete:
-				ctx.JSON(http.StatusConflict, gin.H{"error": "session already complete"})
+				clerrors.Conflict(clerrors.CodeResourceExists, "session already complete").Abort(ctx)
 			case core.ErrChunkAlreadyUploaded:
-				ctx.JSON(http.StatusConflict, gin.H{"error": "chunk already uploaded"})
+				clerrors.Conflict(clerrors.CodeResourceExists, "chunk already uploaded").Abort(ctx)
 			case core.ErrChunkOutOfRange:
-				ctx.JSON(http.StatusBadRequest, gin.H{"error": "chunk number out of range"})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, "chunk number out of range").Abort(ctx)
 			default:
-				ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			}
 			return
 		}
@@ -123,7 +124,7 @@ func (h *ChunkedUploadHandler) completeUpload() gin.HandlerFunc {
 		sessionID := ctx.Param("session_id")
 
 		if sessionID == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "session_id required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "session_id required").Abort(ctx)
 			return
 		}
 
@@ -137,19 +138,19 @@ func (h *ChunkedUploadHandler) completeUpload() gin.HandlerFunc {
 		if err != nil {
 			switch err {
 			case core.ErrSessionNotFound:
-				ctx.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "session not found").Abort(ctx)
 			case core.ErrSessionExpired:
 				ctx.JSON(http.StatusGone, gin.H{"error": "session expired"})
 			case core.ErrSessionAborted:
 				ctx.JSON(http.StatusGone, gin.H{"error": "session aborted"})
 			case core.ErrSessionComplete:
-				ctx.JSON(http.StatusConflict, gin.H{"error": "session already complete"})
+				clerrors.Conflict(clerrors.CodeResourceExists, "session already complete").Abort(ctx)
 			case core.ErrUploadIncomplete:
 				ctx.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error()})
 			case core.ErrHashMismatch:
 				ctx.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error()})
 			default:
-				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			}
 			return
 		}
@@ -165,17 +166,17 @@ func (h *ChunkedUploadHandler) abortUpload() gin.HandlerFunc {
 		sessionID := ctx.Param("session_id")
 
 		if sessionID == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "session_id required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "session_id required").Abort(ctx)
 			return
 		}
 
 		err := h.service.AbortUpload(ctx, sessionID)
 		if err != nil {
 			if err == core.ErrSessionNotFound {
-				ctx.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "session not found").Abort(ctx)
 				return
 			}
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -190,17 +191,17 @@ func (h *ChunkedUploadHandler) getSession() gin.HandlerFunc {
 		sessionID := ctx.Param("session_id")
 
 		if sessionID == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "session_id required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "session_id required").Abort(ctx)
 			return
 		}
 
 		session, err := h.service.GetSession(ctx, sessionID)
 		if err != nil {
 			if err == core.ErrSessionNotFound {
-				ctx.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "session not found").Abort(ctx)
 				return
 			}
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 

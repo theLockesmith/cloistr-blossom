@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
+	"github.com/gin-gonic/gin"
 )
 
 // startTranscode handles POST /:hash/transcode to start video transcoding.
@@ -16,37 +17,33 @@ func startTranscode(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		// Check if blob exists
 		exists, err := services.Blob().Exists(ctx.Request.Context(), hash)
 		if err != nil || !exists {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "blob not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found").Abort(ctx)
 			return
 		}
 
 		// Get blob to check mime type
 		blob, err := services.Blob().GetFromHash(ctx.Request.Context(), hash)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "blob not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found").Abort(ctx)
 			return
 		}
 
 		// Check if it's a video
 		if !services.Video().IsSupported(blob.Type) {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: fmt.Sprintf("unsupported video format: %s", blob.Type),
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("unsupported video format: %s", blob.Type)).Abort(ctx)
 			return
 		}
 
 		// Check if FFmpeg is available
 		if !services.Video().IsFFmpegAvailable() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "video transcoding is not available (FFmpeg not installed)",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "video transcoding is not available (FFmpeg not installed)", 0).Abort(ctx)
 			return
 		}
 
@@ -63,9 +60,7 @@ func startTranscode(
 				})
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to start transcoding: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to start transcoding: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -84,19 +79,17 @@ func getTranscodeStatus(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		job, err := services.Video().GetTranscodeStatus(ctx.Request.Context(), hash)
 		if err != nil {
 			if err == core.ErrTranscodeNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "no transcoding job found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "no transcoding job found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get status: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get status: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -118,7 +111,7 @@ func getHLSMasterPlaylist(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
@@ -128,19 +121,13 @@ func getHLSMasterPlaylist(
 				// Check if transcoding is in progress
 				job, jobErr := services.Video().GetTranscodeStatus(ctx.Request.Context(), hash)
 				if jobErr == nil && job.Status == core.TranscodeStatusProcessing {
-					ctx.AbortWithStatusJSON(http.StatusAccepted, apiError{
-						Message: fmt.Sprintf("transcoding in progress: %d%%", job.Progress),
-					})
+					ctx.JSON(http.StatusAccepted, gin.H{"message": fmt.Sprintf("transcoding in progress: %d%%", job.Progress)})
 					return
 				}
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-					Message: "video not transcoded. POST to /:hash/transcode to start transcoding",
-				})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "video not transcoded. POST to /:hash/transcode to start transcoding").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get manifest: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get manifest: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -163,21 +150,19 @@ func getHLSVariantPlaylist(
 		quality := ctx.Param("quality")
 
 		if hash == "" || quality == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash and quality are required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash and quality are required").Abort(ctx)
 			return
 		}
 
 		manifest, err := services.Video().GetHLSManifest(ctx.Request.Context(), hash)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "video not transcoded"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "video not transcoded").Abort(ctx)
 			return
 		}
 
 		variantPlaylist, exists := manifest.Variants[quality]
 		if !exists {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-				Message: fmt.Sprintf("quality %s not found", quality),
-			})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, fmt.Sprintf("quality %s not found", quality)).Abort(ctx)
 			return
 		}
 
@@ -200,15 +185,13 @@ func getHLSSegment(
 		segment := ctx.Param("segment")
 
 		if hash == "" || quality == "" || segment == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash, quality, and segment are required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash, quality, and segment are required").Abort(ctx)
 			return
 		}
 
 		data, err := services.Video().GetSegment(ctx.Request.Context(), hash, quality, segment)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "segment not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "segment not found").Abort(ctx)
 			return
 		}
 
@@ -283,7 +266,7 @@ func getDASHManifest(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
@@ -293,19 +276,13 @@ func getDASHManifest(
 				// Check if transcoding is in progress
 				job, jobErr := services.Video().GetTranscodeStatus(ctx.Request.Context(), hash)
 				if jobErr == nil && job.Status == core.TranscodeStatusProcessing {
-					ctx.AbortWithStatusJSON(http.StatusAccepted, apiError{
-						Message: fmt.Sprintf("transcoding in progress: %d%%", job.Progress),
-					})
+					ctx.JSON(http.StatusAccepted, gin.H{"message": fmt.Sprintf("transcoding in progress: %d%%", job.Progress)})
 					return
 				}
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-					Message: "video not transcoded. POST to /:hash/transcode to start transcoding",
-				})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "video not transcoded. POST to /:hash/transcode to start transcoding").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get DASH manifest: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get DASH manifest: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -327,15 +304,13 @@ func getDASHSegment(
 		segment := ctx.Param("segment")
 
 		if hash == "" || segment == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash and segment are required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash and segment are required").Abort(ctx)
 			return
 		}
 
 		data, err := services.Video().GetDASHSegment(ctx.Request.Context(), hash, segment)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "segment not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "segment not found").Abort(ctx)
 			return
 		}
 

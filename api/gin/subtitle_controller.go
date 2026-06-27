@@ -5,8 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
+	"github.com/gin-gonic/gin"
 )
 
 // addSubtitle handles PUT /:hash/subtitles/:lang to add a subtitle track.
@@ -18,25 +19,19 @@ func addSubtitle(
 		lang := ctx.Param("lang")
 
 		if hash == "" || lang == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash and language are required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash and language are required").Abort(ctx)
 			return
 		}
 
 		// Read subtitle content
 		content, err := io.ReadAll(ctx.Request.Body)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: fmt.Sprintf("failed to read body: %s", err.Error()),
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read body: %s", err.Error())).Abort(ctx)
 			return
 		}
 
 		if len(content) == 0 {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "subtitle content is required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "subtitle content is required").Abort(ctx)
 			return
 		}
 
@@ -57,14 +52,10 @@ func addSubtitle(
 
 		if err := services.Video().AddSubtitle(ctx.Request.Context(), hash, subtitle, content); err != nil {
 			if err == core.ErrInvalidSubtitleFormat {
-				ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-					Message: "invalid subtitle format (must be WebVTT)",
-				})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid subtitle format (must be WebVTT)").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to add subtitle: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to add subtitle: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -87,23 +78,17 @@ func getSubtitle(
 		lang := ctx.Param("lang")
 
 		if hash == "" || lang == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash and language are required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash and language are required").Abort(ctx)
 			return
 		}
 
 		content, err := services.Video().GetSubtitle(ctx.Request.Context(), hash, lang)
 		if err != nil {
 			if err == core.ErrSubtitleNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-					Message: "subtitle not found",
-				})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "subtitle not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get subtitle: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get subtitle: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -121,17 +106,13 @@ func listSubtitles(
 		hash := ctx.Param("hash")
 
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash is required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		tracks, err := services.Video().ListSubtitles(ctx.Request.Context(), hash)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to list subtitles: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to list subtitles: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -150,16 +131,12 @@ func deleteSubtitle(
 		lang := ctx.Param("lang")
 
 		if hash == "" || lang == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "hash and language are required",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash and language are required").Abort(ctx)
 			return
 		}
 
 		if err := services.Video().DeleteSubtitle(ctx.Request.Context(), hash, lang); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to delete subtitle: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to delete subtitle: %s", err.Error())).Abort(ctx)
 			return
 		}
 

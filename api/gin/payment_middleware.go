@@ -2,6 +2,7 @@ package gin
 
 import (
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
@@ -72,9 +73,7 @@ func PaymentMiddleware(paymentService core.PaymentService, log *zap.Logger) gin.
 					zap.Error(err))
 
 				c.Header("X-Reason", err.Error())
-				c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-					Message: fmt.Sprintf("invalid payment proof: %s", err.Error()),
-				})
+				clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid payment proof: %s", err.Error())).Abort(c)
 				return
 			}
 
@@ -91,9 +90,7 @@ func PaymentMiddleware(paymentService core.PaymentService, log *zap.Logger) gin.
 		canFree, err := paymentService.CanUploadFree(c.Request.Context(), pubkey, contentLength)
 		if err != nil {
 			log.Error("failed to check free upload eligibility", zap.Error(err))
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "payment check failed",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "payment check failed").Abort(c)
 			return
 		}
 
@@ -110,9 +107,7 @@ func PaymentMiddleware(paymentService core.PaymentService, log *zap.Logger) gin.
 		paymentReq, err := paymentService.CreatePaymentRequest(c.Request.Context(), pubkey, contentLength)
 		if err != nil {
 			log.Error("failed to create payment request", zap.Error(err))
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to create payment request",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to create payment request").Abort(c)
 			return
 		}
 
@@ -141,9 +136,7 @@ func PaymentMiddleware(paymentService core.PaymentService, log *zap.Logger) gin.
 			zap.String("request_id", paymentReq.ID))
 
 		metrics.PaymentRequiredTotal.Inc()
-		c.AbortWithStatusJSON(http.StatusPaymentRequired, apiError{
-			Message: fmt.Sprintf("payment required: %d sats", paymentReq.AmountSats),
-		})
+		clerrors.New("PAYMENT_REQUIRED", fmt.Sprintf("payment required: %d sats", paymentReq.AmountSats), http.StatusPaymentRequired).Abort(c)
 	}
 }
 

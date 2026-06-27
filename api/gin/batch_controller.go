@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 type BatchController struct {
@@ -24,20 +25,20 @@ func NewBatchController(batch core.BatchService) *BatchController {
 func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	pubkey, exists := ctx.Get("pubkey")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 		return
 	}
 
 	// Parse multipart form
 	form, err := ctx.MultipartForm()
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to parse form: %v", err)})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to parse form: %v", err)).Abort(ctx)
 		return
 	}
 
 	files := form.File["files"]
 	if len(files) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "no files provided"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "no files provided").Abort(ctx)
 		return
 	}
 
@@ -60,7 +61,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to open file %s: %v", fileHeader.Filename, err)})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to open file %s: %v", fileHeader.Filename, err)).Abort(ctx)
 			return
 		}
 		defer file.Close()
@@ -68,7 +69,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 		// Read file data
 		data, err := io.ReadAll(file)
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to read file %s: %v", fileHeader.Filename, err)})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read file %s: %v", fileHeader.Filename, err)).Abort(ctx)
 			return
 		}
 
@@ -91,7 +92,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	// Process upload
 	response, err := c.batch.Upload(ctx.Request.Context(), req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -103,18 +104,18 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 func (c *BatchController) BatchDownload(ctx *gin.Context) {
 	var req core.BatchDownloadRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request: %v", err)})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid request: %v", err)).Abort(ctx)
 		return
 	}
 
 	if len(req.Hashes) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "no hashes provided"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "no hashes provided").Abort(ctx)
 		return
 	}
 
 	reader, response, err := c.batch.Download(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 	defer reader.Close()
@@ -138,24 +139,24 @@ func (c *BatchController) BatchDownload(ctx *gin.Context) {
 func (c *BatchController) BatchDelete(ctx *gin.Context) {
 	pubkey, exists := ctx.Get("pubkey")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 		return
 	}
 
 	var req core.BatchDeleteRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request: %v", err)})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid request: %v", err)).Abort(ctx)
 		return
 	}
 
 	if len(req.Hashes) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "no hashes provided"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "no hashes provided").Abort(ctx)
 		return
 	}
 
 	response, err := c.batch.Delete(ctx.Request.Context(), pubkey.(string), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -167,18 +168,18 @@ func (c *BatchController) BatchDelete(ctx *gin.Context) {
 func (c *BatchController) BatchStatus(ctx *gin.Context) {
 	var req core.BatchStatusRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request: %v", err)})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("invalid request: %v", err)).Abort(ctx)
 		return
 	}
 
 	if len(req.Hashes) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "no hashes provided"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "no hashes provided").Abort(ctx)
 		return
 	}
 
 	response, err := c.batch.Status(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -190,13 +191,13 @@ func (c *BatchController) BatchStatus(ctx *gin.Context) {
 func (c *BatchController) GetBatchJob(ctx *gin.Context) {
 	jobID := ctx.Param("job_id")
 	if jobID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "job_id required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "job_id required").Abort(ctx)
 		return
 	}
 
 	job, err := c.batch.GetJob(ctx.Request.Context(), jobID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		clerrors.NotFound(clerrors.CodeResourceNotFound, err.Error()).Abort(ctx)
 		return
 	}
 
@@ -208,12 +209,12 @@ func (c *BatchController) GetBatchJob(ctx *gin.Context) {
 func (c *BatchController) CancelBatchJob(ctx *gin.Context) {
 	jobID := ctx.Param("job_id")
 	if jobID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "job_id required"})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, "job_id required").Abort(ctx)
 		return
 	}
 
 	if err := c.batch.CancelJob(ctx.Request.Context(), jobID); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 		return
 	}
 

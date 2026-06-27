@@ -2,6 +2,7 @@ package gin
 
 import (
 	"encoding/hex"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
@@ -25,33 +26,25 @@ func getUserServerList(services core.Services) gin.HandlerFunc {
 
 		// Validate pubkey format (64 hex chars)
 		if !isValidHexPubkey(pubkey) {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid pubkey format",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidPubkey, "invalid pubkey format").Abort(ctx)
 			return
 		}
 
 		// Check if federation service is available
 		federation := services.Federation()
 		if federation == nil || !federation.IsEnabled() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "server list discovery not available",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "server list discovery not available", 0).Abort(ctx)
 			return
 		}
 
 		servers, err := federation.GetUserServerList(ctx.Request.Context(), pubkey)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to get server list",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to get server list").Abort(ctx)
 			return
 		}
 
 		if len(servers) == 0 {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-				Message: "no server list found for pubkey",
-			})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "no server list found for pubkey").Abort(ctx)
 			return
 		}
 

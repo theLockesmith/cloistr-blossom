@@ -6,15 +6,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gabriel-vasile/mimetype"
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/gin-gonic/gin"
 )
 
 // uploadMedia handles PUT /media for BUD-05 media optimization.
@@ -30,10 +31,7 @@ func uploadMedia(
 			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
 			if err == nil && isBlocked {
 				metrics.BlockedUploadsTotal.Inc()
-				ctx.AbortWithStatusJSON(
-					http.StatusForbidden,
-					apiError{Message: "your account has been blocked due to terms of service violation"},
-				)
+				clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
 				return
 			}
 		}
@@ -42,18 +40,18 @@ func uploadMedia(
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		defer ctx.Request.Body.Close()
 		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{Message: fmt.Sprintf("failed to read request body: %s", err.Error())},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read request body: %s", err.Error())).Abort(ctx)
 			return
 		}
 
 		if len(bodyBytes) == 0 {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{Message: "request body is empty"},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "request body is empty").Abort(ctx)
+			return
+		}
+
+		// Validate optional X-Expiration header before processing/storing.
+		expiresAt, hasExpiration, ok := parseUploadExpiration(ctx)
+		if !ok {
 			return
 		}
 
@@ -71,10 +69,7 @@ func uploadMedia(
 
 		// Check if media type is supported
 		if !services.Media().IsSupported(contentType) {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{Message: fmt.Sprintf("unsupported media type: %s", contentType)},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidFormat, fmt.Sprintf("unsupported media type: %s", contentType)).Abort(ctx)
 			return
 		}
 
@@ -90,10 +85,7 @@ func uploadMedia(
 		)
 		if err != nil {
 			metrics.ErrorsTotal.WithLabelValues("media_processing").Inc()
-			ctx.AbortWithStatusJSON(
-				http.StatusInternalServerError,
-				apiError{Message: fmt.Sprintf("failed to process media: %s", err.Error())},
-			)
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to process media: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -101,23 +93,16 @@ func uploadMedia(
 		if pubkey != "" {
 			if err := services.Quota().CheckQuota(ctx.Request.Context(), pubkey, int64(len(result.Data))); err != nil {
 				if errors.Is(err, core.ErrQuotaExceeded) {
-					ctx.AbortWithStatusJSON(
-						http.StatusPaymentRequired,
-						apiError{Message: "storage quota exceeded"},
-					)
+					// Preserve 402 Payment Required: clients use this to trigger
+					// the BUD-07 payment/upgrade flow.
+					clerrors.New(clerrors.CodeQuotaExceeded, "storage quota exceeded", http.StatusPaymentRequired).Abort(ctx)
 					return
 				}
 				if errors.Is(err, core.ErrUserBanned) {
-					ctx.AbortWithStatusJSON(
-						http.StatusForbidden,
-						apiError{Message: "user is banned"},
-					)
+					clerrors.Forbidden(clerrors.CodeAccessDenied, "user is banned").Abort(ctx)
 					return
 				}
-				ctx.AbortWithStatusJSON(
-					http.StatusInternalServerError,
-					apiError{Message: "failed to check quota"},
-				)
+				clerrors.InternalError(clerrors.CodeInternalError, "failed to check quota").Abort(ctx)
 				return
 			}
 		}
@@ -128,10 +113,7 @@ func uploadMedia(
 
 		// Check if x tag matches (if provided in auth)
 		if xTag := ctx.GetString("x"); xTag != "" && xTag != originalHashStr {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{Message: "x tag does not match uploaded content hash"},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "x tag does not match uploaded content hash").Abort(ctx)
 			return
 		}
 
@@ -153,12 +135,12 @@ func uploadMedia(
 		)
 		if err != nil {
 			metrics.ErrorsTotal.WithLabelValues("media_save").Inc()
-			ctx.AbortWithStatusJSON(
-				http.StatusInternalServerError,
-				apiError{Message: fmt.Sprintf("failed to save processed media: %s", err.Error())},
-			)
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to save processed media: %s", err.Error())).Abort(ctx)
 			return
 		}
+
+		// Honor the requested expiration (best-effort; blob is already stored).
+		applyUploadExpiration(ctx, services, result.Hash, expiresAt, hasExpiration)
 
 		// Update quota usage
 		if pubkey != "" {
@@ -204,10 +186,7 @@ func getThumbnail(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{Message: "hash is required"},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
@@ -228,10 +207,7 @@ func getThumbnail(
 		// Generate thumbnail
 		result, err := services.Media().GetThumbnail(ctx.Request.Context(), hash, width, height)
 		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusNotFound,
-				apiError{Message: "blob not found or not an image"},
-			)
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found or not an image").Abort(ctx)
 			return
 		}
 

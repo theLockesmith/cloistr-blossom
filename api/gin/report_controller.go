@@ -2,6 +2,7 @@ package gin
 
 import (
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -45,23 +46,19 @@ func submitReport(services core.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ReportRequest
 		if err := c.BindJSON(&req); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").WriteResponse(c.Writer)
 			return
 		}
 
 		// Validate reason
 		if !validReasons[req.Reason] {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid reason: must be one of csam, illegal, copyright, abuse, other",
-			})
+			clerrors.BadRequest(clerrors.CodeValidationFailed, "invalid reason: must be one of csam, illegal, copyright, abuse, other").Abort(c)
 			return
 		}
 
 		// Validate blob hash format
 		if !sha256Regex.MatchString(req.BlobHash) {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid blob_hash: must be a valid SHA-256 hash",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidFormat, "invalid blob_hash: must be a valid SHA-256 hash").Abort(c)
 			return
 		}
 
@@ -80,9 +77,7 @@ func submitReport(services core.Services) gin.HandlerFunc {
 			req.Details,
 		)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to create report",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to create report").Abort(c)
 			return
 		}
 
@@ -104,17 +99,17 @@ type BUD09ReportResponse struct {
 
 // NIP-56 report types mapped to our reasons
 var nip56ToReason = map[string]string{
-	"nudity":      "abuse",
-	"malware":     "illegal",
-	"profanity":   "abuse",
-	"illegal":     "illegal",
-	"spam":        "abuse",
+	"nudity":        "abuse",
+	"malware":       "illegal",
+	"profanity":     "abuse",
+	"illegal":       "illegal",
+	"spam":          "abuse",
 	"impersonation": "abuse",
-	"other":       "other",
+	"other":         "other",
 	// Additional Blossom-specific mappings
-	"csam":        "csam",
-	"copyright":   "copyright",
-	"abuse":       "abuse",
+	"csam":      "csam",
+	"copyright": "copyright",
+	"abuse":     "abuse",
 }
 
 // submitReportBUD09 handles PUT /report (BUD-09 compliant)
@@ -124,33 +119,27 @@ func submitReportBUD09(services core.Services, log *zap.Logger) gin.HandlerFunc 
 		// Read request body
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "failed to read request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "failed to read request body").WriteResponse(c.Writer)
 			return
 		}
 
 		// Parse as Nostr event
 		ev := &goNostr.Event{}
 		if err := ev.UnmarshalJSON(body); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid request body: must be a valid Nostr event JSON",
-			})
+			clerrors.BadRequest(clerrors.CodeInvalidFormat, "invalid request body: must be a valid Nostr event JSON").Abort(c)
 			return
 		}
 
 		// Verify signature
 		ok, err := ev.CheckSignature()
 		if !ok || err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid event signature",
-			})
+			clerrors.BadRequest(clerrors.CodeSignatureInvalid, "invalid event signature").Abort(c)
 			return
 		}
 
 		// Must be kind 1984 (NIP-56 report)
 		if ev.Kind != 1984 {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "invalid event kind: must be 1984 (NIP-56 report)",
-			})
+			clerrors.BadRequest(clerrors.CodeValidationFailed, "invalid event kind: must be 1984 (NIP-56 report)").Abort(c)
 			return
 		}
 
@@ -185,9 +174,7 @@ func submitReportBUD09(services core.Services, log *zap.Logger) gin.HandlerFunc 
 		}
 
 		if len(blobReports) == 0 {
-			c.AbortWithStatusJSON(http.StatusBadRequest, apiError{
-				Message: "no valid blob hashes found in x tags",
-			})
+			clerrors.BadRequest(clerrors.CodeMissingField, "no valid blob hashes found in x tags").Abort(c)
 			return
 		}
 
@@ -214,9 +201,7 @@ func submitReportBUD09(services core.Services, log *zap.Logger) gin.HandlerFunc 
 		}
 
 		if len(reportIDs) == 0 {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to create any reports",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to create any reports").Abort(c)
 			return
 		}
 
@@ -249,9 +234,7 @@ func getTransparency(services core.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		stats, err := services.Moderation().GetTransparencyStats(c.Request.Context())
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to get transparency stats",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to get transparency stats").Abort(c)
 			return
 		}
 
@@ -278,9 +261,7 @@ func getTransparencyPage(services core.Services) gin.HandlerFunc {
 
 		stats, err := services.Moderation().GetTransparencyStats(c.Request.Context())
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: "failed to get transparency stats",
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, "failed to get transparency stats").Abort(c)
 			return
 		}
 

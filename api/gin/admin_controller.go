@@ -1,11 +1,12 @@
 package gin
 
 import (
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -14,7 +15,7 @@ type AdminStats struct {
 	BytesStored   int64  `json:"bytes_stored"`
 	BlobCount     int64  `json:"blob_count"`
 	UserCount     int64  `json:"user_count"`
-	StorageUsed   string `json:"storage_used"`    // Human readable
+	StorageUsed   string `json:"storage_used"` // Human readable
 	QuotasEnabled bool   `json:"quotas_enabled"`
 }
 
@@ -73,12 +74,12 @@ func adminAuthMiddleware(adminPubkey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		pubkey, exists := ctx.Get("pk")
 		if !exists {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, apiError{Message: "unauthorized"})
+			clerrors.Unauthorized(clerrors.CodeAuthRequired, "unauthorized").Abort(ctx)
 			return
 		}
 
 		if pubkey.(string) != adminPubkey {
-			ctx.AbortWithStatusJSON(http.StatusForbidden, apiError{Message: "admin access required"})
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "admin access required").Abort(ctx)
 			return
 		}
 
@@ -94,7 +95,7 @@ func getAdminStats(services core.Services) gin.HandlerFunc {
 
 		serverStats, err := stats.Get(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -125,7 +126,7 @@ func listAdminUsers(services core.Services) gin.HandlerFunc {
 
 		users, err := services.Quota().ListUsers(ctx.Request.Context(), limit, offset)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -158,10 +159,10 @@ func getAdminUser(services core.Services) gin.HandlerFunc {
 		user, err := services.Quota().GetUser(ctx.Request.Context(), pubkey)
 		if err != nil {
 			if err == core.ErrUserNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "user not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "user not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -189,12 +190,12 @@ func setUserQuota(services core.Services) gin.HandlerFunc {
 
 		var req SetQuotaRequest
 		if err := ctx.BindJSON(&req); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").Abort(ctx)
 			return
 		}
 
 		if err := services.Quota().SetQuota(ctx.Request.Context(), pubkey, req.QuotaBytes); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -208,7 +209,7 @@ func banUser(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().BanUser(ctx.Request.Context(), pubkey); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -222,7 +223,7 @@ func unbanUser(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().UnbanUser(ctx.Request.Context(), pubkey); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -236,7 +237,7 @@ func recalculateUserUsage(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().RecalculateUsage(ctx.Request.Context(), pubkey); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -361,7 +362,13 @@ func adminDashboardHTML(stats AdminStats) string {
             </div>
             <div class="stat-card">
                 <h3>Quotas</h3>
-                <div class="value">` + func() string { if stats.QuotasEnabled { return "Enabled" } else { return "Disabled" } }() + `</div>
+                <div class="value">` + func() string {
+		if stats.QuotasEnabled {
+			return "Enabled"
+		} else {
+			return "Disabled"
+		}
+	}() + `</div>
             </div>
         </div>
 
@@ -485,7 +492,7 @@ func listReports(services core.Services) gin.HandlerFunc {
 		}
 
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -516,17 +523,17 @@ func getReport(services core.Services) gin.HandlerFunc {
 		idStr := ctx.Param("id")
 		id, err := strconv.ParseInt(idStr, 10, 32)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid report ID"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid report ID").Abort(ctx)
 			return
 		}
 
 		report, err := services.Moderation().GetReport(ctx.Request.Context(), int32(id))
 		if err != nil {
 			if err == core.ErrReportNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "report not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "report not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -552,13 +559,13 @@ func actionReport(services core.Services) gin.HandlerFunc {
 		idStr := ctx.Param("id")
 		id, err := strconv.ParseInt(idStr, 10, 32)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid report ID"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid report ID").Abort(ctx)
 			return
 		}
 
 		var req ReportActionRequest
 		if err := ctx.BindJSON(&req); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").Abort(ctx)
 			return
 		}
 
@@ -585,18 +592,18 @@ func actionReport(services core.Services) gin.HandlerFunc {
 				core.ReportActionNone,
 				adminPubkey,
 			); err != nil {
-				ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+				clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 				return
 			}
 			ctx.JSON(http.StatusOK, gin.H{"message": "report dismissed"})
 			return
 		default:
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid action"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid action").Abort(ctx)
 			return
 		}
 
 		if err := services.Moderation().ActionReport(ctx.Request.Context(), int32(id), action, adminPubkey); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -609,7 +616,7 @@ func getPendingReportCount(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		count, err := services.Moderation().GetPendingReportCount(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -629,7 +636,7 @@ func listBlocklist(services core.Services) gin.HandlerFunc {
 
 		entries, err := services.Moderation().ListBlocklist(ctx.Request.Context(), int(limit), int(offset))
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -652,7 +659,7 @@ func addToBlocklist(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req BlocklistAddRequest
 		if err := ctx.BindJSON(&req); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "invalid request body"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid request body").Abort(ctx)
 			return
 		}
 
@@ -666,7 +673,7 @@ func addToBlocklist(services core.Services) gin.HandlerFunc {
 
 		entry, err := services.Moderation().AddToBlocklist(ctx.Request.Context(), req.Pubkey, req.Reason, adminPubkey)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -685,7 +692,7 @@ func removeFromBlocklist(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Moderation().RemoveFromBlocklist(ctx.Request.Context(), pubkey); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -732,6 +739,9 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 	protectedAPI.POST("/users/:pubkey/ban", banUser(services))
 	protectedAPI.POST("/users/:pubkey/unban", unbanUser(services))
 	protectedAPI.POST("/users/:pubkey/recalculate", recalculateUserUsage(services))
+
+	// Server-wide blob search (moderation/ops)
+	protectedAPI.GET("/blobs/search", searchBlobs(services))
 
 	// Report management
 	protectedAPI.GET("/reports", listReports(services))

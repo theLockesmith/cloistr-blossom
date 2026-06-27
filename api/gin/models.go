@@ -8,11 +8,6 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/blossom"
 )
 
-// generic api error
-type apiError struct {
-	Message string `json:"message"`
-}
-
 // blobs
 type blobDescriptor struct {
 	Url               string             `json:"url"`

@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabriel-vasile/mimetype"
-	"github.com/gin-gonic/gin"
-	bud01 "git.aegis-hq.xyz/coldforge/cloistr-blossom/src/bud-01"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/media"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	bud01 "git.aegis-hq.xyz/coldforge/cloistr-blossom/src/bud-01"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/gin-gonic/gin"
 )
 
 // variantCacheKey generates a cache key for a processed image variant.
@@ -151,23 +152,13 @@ func getBlob(
 					// Return 404 with fallback URLs in header
 					ctx.Header("X-Fallback-URLs", strings.Join(fallbackURLs, ", "))
 					metrics.DownloadsTotal.WithLabelValues("fallback").Inc()
-					ctx.AbortWithStatusJSON(
-						http.StatusNotFound,
-						apiError{
-							Message: "blob not found locally, check X-Fallback-URLs header for alternative sources",
-						},
-					)
+					clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found locally, check X-Fallback-URLs header for alternative sources").Abort(ctx)
 					return
 				}
 			}
 
 			metrics.DownloadsTotal.WithLabelValues("error").Inc()
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: err.Error(),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			return
 		}
 

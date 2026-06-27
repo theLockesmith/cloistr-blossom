@@ -138,20 +138,20 @@ func TestRateLimitMiddleware_ExceedsLimit(t *testing.T) {
 
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 
-	var response apiError
+	var response gin.H
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Contains(t, response.Message, "rate limit exceeded")
+	assert.Contains(t, response["message"], "rate limit exceeded")
 }
 
 // TestRateLimitMiddleware_Headers tests that rate limit headers are correctly set
 func TestRateLimitMiddleware_Headers(t *testing.T) {
 	tests := []struct {
-		name              string
-		allowed           bool
-		remaining         int
-		limit             int
-		expectRetryAfter  bool
+		name             string
+		allowed          bool
+		remaining        int
+		limit            int
+		expectRetryAfter bool
 	}{
 		{
 			name:             "within limit",
@@ -351,11 +351,11 @@ func TestRateLimitMiddleware_Disabled(t *testing.T) {
 // TestRateLimitMiddleware_RequestClassification tests different request type classifications
 func TestRateLimitMiddleware_RequestClassification(t *testing.T) {
 	tests := []struct {
-		name           string
-		method         string
-		path           string
-		expectedType   string
-		expectedLimit  int
+		name          string
+		method        string
+		path          string
+		expectedType  string
+		expectedLimit int
 	}{
 		{
 			name:          "download blob",
@@ -460,10 +460,10 @@ func TestBandwidthLimitMiddleware_UploadExceedsLimit(t *testing.T) {
 
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 
-	var response apiError
+	var response gin.H
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Contains(t, response.Message, "bandwidth limit exceeded")
+	assert.Contains(t, response["message"], "bandwidth limit exceeded")
 }
 
 // TestBandwidthLimitMiddleware_Headers tests bandwidth limit headers
@@ -786,10 +786,10 @@ func TestClassifyRequest(t *testing.T) {
 // TestParseDuration tests the parseDuration function
 func TestParseDuration(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        string
-		defaultVal   time.Duration
-		expected     time.Duration
+		name       string
+		input      string
+		defaultVal time.Duration
+		expected   time.Duration
 	}{
 		{
 			name:       "valid 1 minute",

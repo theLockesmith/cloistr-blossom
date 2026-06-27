@@ -2,15 +2,16 @@ package gin
 
 import (
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"io"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
-	bud02 "git.aegis-hq.xyz/coldforge/cloistr-blossom/src/bud-02"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	bud02 "git.aegis-hq.xyz/coldforge/cloistr-blossom/src/bud-02"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"github.com/gin-gonic/gin"
 )
 
 func uploadBlob(
@@ -24,10 +25,7 @@ func uploadBlob(
 			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
 			if err == nil && isBlocked {
 				metrics.BlockedUploadsTotal.Inc()
-				ctx.AbortWithStatusJSON(
-					http.StatusForbidden,
-					apiError{Message: "your account has been blocked due to terms of service violation"},
-				)
+				clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
 				return
 			}
 		}
@@ -40,12 +38,7 @@ func uploadBlob(
 			}
 		}(ctx.Request.Body)
 		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: fmt.Sprintf("failed to read request body: %s", err.Error()),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read request body: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -62,12 +55,16 @@ func uploadBlob(
 			case "none":
 				encryptionMode = core.EncryptionModeNone
 			default:
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{Message: "invalid encryption mode: valid values are none, server, e2e"},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidInput, "invalid encryption mode: valid values are none, server, e2e").Abort(ctx)
 				return
 			}
+		}
+
+		// Validate optional X-Expiration header before storing anything so a
+		// malformed value never leaves an orphaned blob behind.
+		expiresAt, hasExpiration, ok := parseUploadExpiration(ctx)
+		if !ok {
+			return
 		}
 
 		// AI content moderation scanning
@@ -88,10 +85,7 @@ func uploadBlob(
 					switch result.RecommendedAction {
 					case core.ScanActionBlock:
 						metrics.BlockedUploadsTotal.Inc()
-						ctx.AbortWithStatusJSON(
-							http.StatusForbidden,
-							apiError{Message: "content blocked by automated moderation"},
-						)
+						clerrors.Forbidden(clerrors.CodeAccessDenied, "content blocked by automated moderation").Abort(ctx)
 						return
 					case core.ScanActionQuarantine:
 						// Quarantine the content for review
@@ -124,18 +118,16 @@ func uploadBlob(
 		)
 		if err != nil {
 			metrics.UploadsTotal.WithLabelValues("error", string(encryptionMode)).Inc()
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: fmt.Sprintf("%s", err.Error()),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeUploadFailed, err.Error()).Abort(ctx)
 			return
 		}
 
 		// Record successful upload metrics
 		metrics.UploadsTotal.WithLabelValues("success", string(blobDescriptor.EncryptionMode)).Inc()
 		metrics.UploadBytes.Add(float64(len(bodyBytes)))
+
+		// Honor the requested expiration (best-effort; blob is already stored).
+		applyUploadExpiration(ctx, services, blobDescriptor.Sha256, expiresAt, hasExpiration)
 
 		// Publish to federation if enabled (async, non-blocking)
 		if federation := services.Federation(); federation != nil && federation.IsEnabled() {
@@ -166,10 +158,7 @@ func listBlobs(
 				filter,
 			)
 			if err != nil {
-				ctx.AbortWithStatusJSON(
-					http.StatusBadRequest,
-					apiError{Message: err.Error()},
-				)
+				clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 				return
 			}
 
@@ -188,12 +177,7 @@ func listBlobs(
 			pubkey,
 		)
 		if err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: err.Error(),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -278,12 +262,7 @@ func deleteBlob(
 			ctx.Param("hash"),
 			ctx.GetString("x"),
 		); err != nil {
-			ctx.AbortWithStatusJSON(
-				http.StatusBadRequest,
-				apiError{
-					Message: err.Error(),
-				},
-			)
+			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
 			return
 		}
 

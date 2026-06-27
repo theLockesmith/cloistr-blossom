@@ -2,11 +2,12 @@ package gin
 
 import (
 	"fmt"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"github.com/gin-gonic/gin"
 )
 
 // pinBlob handles POST /:hash/pin to pin a blob to IPFS.
@@ -16,22 +17,20 @@ func pinBlob(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		// Check if IPFS is configured
 		if !services.IPFS().IsConfigured() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "IPFS pinning is not configured",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "IPFS pinning is not configured", 0).Abort(ctx)
 			return
 		}
 
 		// Check if blob exists
 		exists, err := services.Blob().Exists(ctx.Request.Context(), hash)
 		if err != nil || !exists {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "blob not found"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "blob not found").Abort(ctx)
 			return
 		}
 
@@ -42,14 +41,10 @@ func pinBlob(
 		pin, err := services.IPFS().PinBlob(ctx.Request.Context(), hash, name)
 		if err != nil {
 			if err == core.ErrIPFSNotConfigured {
-				ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-					Message: "IPFS pinning is not configured",
-				})
+				clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "IPFS pinning is not configured", 0).Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to pin blob: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to pin blob: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -70,29 +65,23 @@ func unpinBlob(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		// Check if IPFS is configured
 		if !services.IPFS().IsConfigured() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "IPFS pinning is not configured",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "IPFS pinning is not configured", 0).Abort(ctx)
 			return
 		}
 
 		err := services.IPFS().UnpinBlob(ctx.Request.Context(), hash)
 		if err != nil {
 			if err == core.ErrIPFSPinNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-					Message: "pin not found",
-				})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "pin not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to unpin blob: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to unpin blob: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -109,29 +98,23 @@ func getPinStatus(
 	return func(ctx *gin.Context) {
 		hash := ctx.Param("hash")
 		if hash == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "hash is required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash is required").Abort(ctx)
 			return
 		}
 
 		// Check if IPFS is configured
 		if !services.IPFS().IsConfigured() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "IPFS pinning is not configured",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "IPFS pinning is not configured", 0).Abort(ctx)
 			return
 		}
 
 		pin, err := services.IPFS().GetPinStatus(ctx.Request.Context(), hash)
 		if err != nil {
 			if err == core.ErrIPFSPinNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{
-					Message: "pin not found",
-				})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "pin not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to get pin status: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to get pin status: %s", err.Error())).Abort(ctx)
 			return
 		}
 
@@ -155,9 +138,7 @@ func listPins(
 	return func(ctx *gin.Context) {
 		// Check if IPFS is configured
 		if !services.IPFS().IsConfigured() {
-			ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, apiError{
-				Message: "IPFS pinning is not configured",
-			})
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "IPFS pinning is not configured", 0).Abort(ctx)
 			return
 		}
 
@@ -172,9 +153,7 @@ func listPins(
 
 		pins, err := services.IPFS().ListPins(ctx.Request.Context(), statusFilter, limit)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{
-				Message: fmt.Sprintf("failed to list pins: %s", err.Error()),
-			})
+			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to list pins: %s", err.Error())).Abort(ctx)
 			return
 		}
 

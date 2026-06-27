@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time notifications.
@@ -38,7 +39,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 		}
 
 		if pubkey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "pubkey required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "pubkey required").Abort(ctx)
 			return
 		}
 

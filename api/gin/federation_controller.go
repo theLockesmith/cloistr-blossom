@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
+	"github.com/gin-gonic/gin"
 )
 
 // FederationStatsResponse represents federation statistics.
@@ -86,7 +87,7 @@ func getFederationStatus(services core.Services) gin.HandlerFunc {
 
 		stats, err := federation.Stats(ctx.Request.Context())
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -133,7 +134,7 @@ func listFederatedBlobs(services core.Services) gin.HandlerFunc {
 
 		blobs, err := federation.ListFederatedBlobs(ctx.Request.Context(), core.FederatedBlobStatus(status), limit, offset)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -161,7 +162,7 @@ func getFederatedBlob(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		federation := services.Federation()
 		if federation == nil || !federation.IsEnabled() {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "federation disabled"})
+			clerrors.NotFound(clerrors.CodeResourceNotFound, "federation disabled").Abort(ctx)
 			return
 		}
 
@@ -169,10 +170,10 @@ func getFederatedBlob(services core.Services) gin.HandlerFunc {
 		blob, err := federation.GetFederatedBlob(ctx.Request.Context(), hash)
 		if err != nil {
 			if err == core.ErrFederatedBlobNotFound {
-				ctx.AbortWithStatusJSON(http.StatusNotFound, apiError{Message: "federated blob not found"})
+				clerrors.NotFound(clerrors.CodeResourceNotFound, "federated blob not found").Abort(ctx)
 				return
 			}
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -195,13 +196,13 @@ func mirrorFederatedBlob(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		federation := services.Federation()
 		if federation == nil || !federation.IsEnabled() {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "federation disabled"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "federation disabled").Abort(ctx)
 			return
 		}
 
 		hash := ctx.Param("hash")
 		if err := federation.MirrorBlobAsync(ctx.Request.Context(), hash); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -214,13 +215,13 @@ func publishBlobToFederation(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		federation := services.Federation()
 		if federation == nil || !federation.IsEnabled() {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "federation disabled"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "federation disabled").Abort(ctx)
 			return
 		}
 
 		hash := ctx.Param("hash")
 		if err := federation.RepublishBlob(ctx.Request.Context(), hash); err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -246,7 +247,7 @@ func listKnownServers(services core.Services) gin.HandlerFunc {
 
 		servers, err := federation.GetKnownServers(ctx.Request.Context(), limit, offset)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -273,19 +274,19 @@ func checkServerHealth(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		federation := services.Federation()
 		if federation == nil || !federation.IsEnabled() {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "federation disabled"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "federation disabled").Abort(ctx)
 			return
 		}
 
 		serverURL := ctx.Query("url")
 		if serverURL == "" {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, apiError{Message: "url parameter required"})
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "url parameter required").Abort(ctx)
 			return
 		}
 
 		healthy, err := federation.CheckServerHealth(ctx.Request.Context(), serverURL)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -312,7 +313,7 @@ func listFederationEvents(services core.Services) gin.HandlerFunc {
 
 		events, err := federation.GetEventHistory(ctx.Request.Context(), direction, limit, offset)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
@@ -356,7 +357,7 @@ func listFederatedUsers(services core.Services) gin.HandlerFunc {
 
 		users, err := federation.GetFederatedUsers(ctx.Request.Context(), limit, offset)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, apiError{Message: err.Error()})
+			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
 
