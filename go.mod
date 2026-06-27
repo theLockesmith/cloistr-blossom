@@ -3,7 +3,7 @@ module git.aegis-hq.xyz/coldforge/cloistr-blossom
 go 1.25.0
 
 require (
-	git.aegis-hq.xyz/coldforge/cloistr-common v0.2.0
+	git.aegis-hq.xyz/coldforge/cloistr-common v0.2.1
 	github.com/anacrolix/torrent v1.61.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
