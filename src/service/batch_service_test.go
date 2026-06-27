@@ -108,6 +108,10 @@ func (m *mockBlobStorage) GetFromPubkeyWithFilter(ctx context.Context, pubkey st
 	}, nil
 }
 
+func (m *mockBlobStorage) SearchBlobs(ctx context.Context, filter *core.BlobFilter) (*core.BlobListResult, error) {
+	return &core.BlobListResult{Blobs: nil, Total: 0}, nil
+}
+
 func (m *mockBlobStorage) DeleteFromHash(ctx context.Context, sha256 string) error {
 	delete(m.blobs, sha256)
 	delete(m.references, sha256)
@@ -1358,8 +1362,8 @@ func TestBatchDownload_FileExtensions(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		mimeType      string
-		expectedExt   string
+		mimeType    string
+		expectedExt string
 	}{
 		{"image/jpeg", ".jpg"},
 		{"image/png", ".png"},

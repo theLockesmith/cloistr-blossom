@@ -17,6 +17,15 @@ type BlobFilter struct {
 	Since int64
 	// Until filters blobs created before this Unix timestamp
 	Until int64
+	// MinSize filters blobs at least this many bytes (0 = no minimum).
+	// Only used by server-wide search.
+	MinSize int64
+	// MaxSize filters blobs at most this many bytes (0 = no maximum).
+	// Only used by server-wide search.
+	MaxSize int64
+	// Pubkey, when set, restricts a server-wide search to a single uploader.
+	// Ignored by GetFromPubkeyWithFilter (which already scopes by pubkey).
+	Pubkey string
 	// Limit is the maximum number of results to return (0 = no limit)
 	Limit int
 	// Offset is the number of results to skip for pagination
@@ -90,6 +99,9 @@ type BlobStorage interface {
 	GetFromPubkey(ctx context.Context, pubkey string) ([]*Blob, error)
 	// GetFromPubkeyWithFilter returns blobs for a pubkey with filtering and pagination.
 	GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *BlobFilter) (*BlobListResult, error)
+	// SearchBlobs searches all blobs on the server with filtering and pagination.
+	// Intended for administrative/moderation use, not public enumeration.
+	SearchBlobs(ctx context.Context, filter *BlobFilter) (*BlobListResult, error)
 	DeleteFromHash(ctx context.Context, sha256 string) error
 	// IsEncryptionEnabled returns true if server-side encryption is available.
 	IsEncryptionEnabled() bool

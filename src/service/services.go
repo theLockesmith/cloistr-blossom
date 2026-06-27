@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
@@ -222,8 +223,9 @@ func New(
 	log.Info("notification service initialized")
 
 	// Initialize expiration service
-	expirationService := NewExpirationService(queries, storageBackend, core.DefaultExpirationConfig(), log)
-	log.Info("expiration service initialized")
+	expirationService := NewExpirationService(queries, storageBackend, expirationConfigFromYAML(conf), log)
+	log.Info("expiration service initialized",
+		zap.Bool("cleanup_enabled", conf.Expiration.Enabled))
 
 	// Initialize replication service (nil if not configured)
 	var replicationService core.ReplicationService
@@ -431,7 +433,30 @@ func (s *services) Cache() cache.Cache {
 }
 
 func (s *services) Init(ctx context.Context) error {
+	// Start the blob expiration cleanup worker. It is a no-op when
+	// expiration.enabled is false (see StartCleanupWorker).
+	s.expiration.StartCleanupWorker(ctx)
 	return nil
+}
+
+// expirationConfigFromYAML maps the YAML expiration config onto the core
+// ExpirationConfig, parsing duration strings and falling back to defaults on
+// any parse error so a malformed value can never crash startup.
+func expirationConfigFromYAML(conf *config.Config) core.ExpirationConfig {
+	cfg := core.DefaultExpirationConfig()
+	cfg.Enabled = conf.Expiration.Enabled
+
+	if conf.Expiration.BatchSize > 0 {
+		cfg.BatchSize = conf.Expiration.BatchSize
+	}
+	if d, err := time.ParseDuration(conf.Expiration.CleanupInterval); err == nil && d > 0 {
+		cfg.CleanupInterval = d
+	}
+	if d, err := time.ParseDuration(conf.Expiration.GracePeriod); err == nil && d >= 0 {
+		cfg.GracePeriod = d
+	}
+
+	return cfg
 }
 
 // maskDatabaseURL masks the password in a database URL for safe logging.

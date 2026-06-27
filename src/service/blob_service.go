@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -311,6 +312,117 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 		if total == 0 {
 			total = rowTotal
 		}
+		blobs = append(blobs, r.dbBlobIntoBlobDescriptor(dbBlob))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate blobs: %w", err)
+	}
+
+	return &core.BlobListResult{
+		Blobs: blobs,
+		Total: total,
+	}, nil
+}
+
+// SearchBlobs searches across all blobs on the server with optional filtering
+// (MIME type prefix, created time range, size range, uploader) and pagination.
+// It mirrors GetFromPubkeyWithFilter but is not scoped to a single pubkey, so it
+// is intended for administrative/moderation use rather than public enumeration.
+func (r *blobService) SearchBlobs(ctx context.Context, filter *core.BlobFilter) (*core.BlobListResult, error) {
+	// When a pubkey is supplied, join blob_references so dedup'd uploads are
+	// attributed to the requesting uploader; otherwise scan the canonical
+	// blobs table directly.
+	baseQuery := `SELECT b.pubkey, b.hash, b.type, b.size, b.created, b.encryption_mode, b.encrypted_dek, b.encryption_nonce, b.original_size,
+		COUNT(*) OVER() as total_count
+		FROM blobs b`
+	args := []interface{}{}
+	argIndex := 1
+	conditions := []string{}
+
+	if filter != nil && filter.Pubkey != "" {
+		baseQuery += " INNER JOIN blob_references br ON b.hash = br.hash"
+		conditions = append(conditions, fmt.Sprintf("br.pubkey = $%d", argIndex))
+		args = append(args, filter.Pubkey)
+		argIndex++
+	}
+
+	if filter != nil && filter.TypePrefix != "" {
+		conditions = append(conditions, fmt.Sprintf("b.type LIKE $%d", argIndex))
+		args = append(args, filter.TypePrefix+"%")
+		argIndex++
+	}
+	if filter != nil && filter.Since > 0 {
+		conditions = append(conditions, fmt.Sprintf("b.created >= $%d", argIndex))
+		args = append(args, filter.Since)
+		argIndex++
+	}
+	if filter != nil && filter.Until > 0 {
+		conditions = append(conditions, fmt.Sprintf("b.created <= $%d", argIndex))
+		args = append(args, filter.Until)
+		argIndex++
+	}
+	if filter != nil && filter.MinSize > 0 {
+		conditions = append(conditions, fmt.Sprintf("b.size >= $%d", argIndex))
+		args = append(args, filter.MinSize)
+		argIndex++
+	}
+	if filter != nil && filter.MaxSize > 0 {
+		conditions = append(conditions, fmt.Sprintf("b.size <= $%d", argIndex))
+		args = append(args, filter.MaxSize)
+		argIndex++
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	if filter != nil && filter.SortDesc {
+		baseQuery += " ORDER BY b.created DESC"
+	} else {
+		baseQuery += " ORDER BY b.created ASC"
+	}
+
+	if filter != nil && filter.Limit > 0 {
+		baseQuery += fmt.Sprintf(" LIMIT $%d", argIndex)
+		args = append(args, filter.Limit)
+		argIndex++
+
+		if filter.Offset > 0 {
+			baseQuery += fmt.Sprintf(" OFFSET $%d", argIndex)
+			args = append(args, filter.Offset)
+		}
+	}
+
+	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search blobs: %w", err)
+	}
+	defer rows.Close()
+
+	// Initialize to an empty (non-nil) slice so an empty result serializes as
+	// "blobs":[] rather than "blobs":null.
+	blobs := make([]*core.Blob, 0)
+	var total int64
+	for rows.Next() {
+		var dbBlob db.Blob
+		var rowTotal int64
+		if err := rows.Scan(
+			&dbBlob.Pubkey,
+			&dbBlob.Hash,
+			&dbBlob.Type,
+			&dbBlob.Size,
+			&dbBlob.Created,
+			&dbBlob.EncryptionMode,
+			&dbBlob.EncryptedDek,
+			&dbBlob.EncryptionNonce,
+			&dbBlob.OriginalSize,
+			&rowTotal,
+		); err != nil {
+			return nil, fmt.Errorf("scan blob: %w", err)
+		}
+		// COUNT(*) OVER() is identical on every row.
+		total = rowTotal
 		blobs = append(blobs, r.dbBlobIntoBlobDescriptor(dbBlob))
 	}
 

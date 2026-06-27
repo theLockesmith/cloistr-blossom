@@ -195,6 +195,23 @@ quota:
 #   retry_attempts: 3
 #   retry_delay: "5s"
 
+# Blob expiration (optional)
+# When enabled, the server honors the X-Expiration upload header (an absolute
+# Unix timestamp, in seconds, NIP-40 style) and runs a background worker that
+# deletes blobs once they expire. Clients set the expiry per-upload; the header
+# is also advertised via /.well-known/blossom (features.blob_expiration).
+# expiration:
+#   enabled: true
+#
+#   # How often the cleanup worker scans for expired blobs (default: 1h)
+#   cleanup_interval: "1h"
+#
+#   # Maximum number of blobs deleted per cleanup run (default: 1000)
+#   batch_size: 1000
+#
+#   # Grace period to wait after expiry before actually deleting (default: 0s)
+#   grace_period: "0s"
+
 # Payment configuration (optional, BUD-07)
 # Enable paid uploads via Lightning Network or Cashu ecash.
 # payment:

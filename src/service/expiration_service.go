@@ -88,34 +88,45 @@ func (s *expirationService) GetExpiredBlobs(ctx context.Context, limit int) ([]c
 
 // CleanupExpired deletes expired blobs and returns the count.
 func (s *expirationService) CleanupExpired(ctx context.Context) (int, error) {
-	now := time.Now().Unix()
-	if s.config.GracePeriod > 0 {
-		now -= int64(s.config.GracePeriod.Seconds())
+	// Bound each run to BatchSize so a large backlog of expired blobs is drained
+	// across multiple cleanup ticks rather than in one unbounded transaction.
+	limit := s.config.BatchSize
+	if limit <= 0 {
+		limit = 1000
 	}
 
-	// Delete from database and get hashes
-	deletedHashes, err := s.queries.DeleteExpiredBlobs(ctx, sql.NullInt64{Int64: now, Valid: true})
+	// GetExpiredBlobs already applies the configured grace period.
+	expired, err := s.GetExpiredBlobs(ctx, limit)
 	if err != nil {
 		return 0, err
 	}
-
-	if len(deletedHashes) == 0 {
+	if len(expired) == 0 {
 		return 0, nil
 	}
 
-	// Delete from storage backend
-	for _, hash := range deletedHashes {
-		if err := s.storage.Delete(ctx, hash); err != nil {
-			s.log.Warn("failed to delete expired blob from storage",
-				zap.String("hash", hash),
+	deleted := 0
+	for _, blob := range expired {
+		// Remove the database record first so an expired blob never re-surfaces
+		// even if the storage delete fails (it is retried next run otherwise).
+		if err := s.queries.DeleteBlobFromHash(ctx, blob.Hash); err != nil {
+			s.log.Warn("failed to delete expired blob record",
+				zap.String("hash", blob.Hash),
 				zap.Error(err))
-			// Continue with other deletions
+			continue
 		}
+
+		if err := s.storage.Delete(ctx, blob.Hash); err != nil {
+			s.log.Warn("failed to delete expired blob from storage",
+				zap.String("hash", blob.Hash),
+				zap.Error(err))
+			// Continue: the DB record is already gone.
+		}
+		deleted++
 	}
 
-	s.log.Info("expired blobs cleaned up", zap.Int("count", len(deletedHashes)))
+	s.log.Info("expired blobs cleaned up", zap.Int("count", deleted))
 
-	return len(deletedHashes), nil
+	return deleted, nil
 }
 
 // CountExpired returns the number of expired blobs pending deletion.

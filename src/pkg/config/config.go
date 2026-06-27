@@ -155,6 +155,16 @@ type ChunkedUploadConfig struct {
 	TempDir           string `yaml:"temp_dir"`            // Directory for temporary chunks
 }
 
+// ExpirationConfig defines blob auto-expiration settings. When enabled, the
+// server honors the X-Expiration upload header (an absolute Unix timestamp) and
+// runs a background worker that deletes expired blobs.
+type ExpirationConfig struct {
+	Enabled         bool   `yaml:"enabled"`          // Enable the background cleanup worker
+	CleanupInterval string `yaml:"cleanup_interval"` // How often to run cleanup (default: 1h)
+	BatchSize       int    `yaml:"batch_size"`       // Max blobs deleted per cleanup run (default: 1000)
+	GracePeriod     string `yaml:"grace_period"`     // Delay after expiry before deletion (default: 0s)
+}
+
 // FederationConfig defines Nostr-based federation settings.
 type FederationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable federation
@@ -322,19 +332,20 @@ type Config struct {
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
 	// New configuration sections
-	Storage       StorageConfig        `yaml:"storage"`
-	Database      DatabaseConfig       `yaml:"database"`
-	Quota         QuotaConfig          `yaml:"quota"`
-	Cache         CacheConfig          `yaml:"cache"`
-	Encryption    EncryptionConfig     `yaml:"encryption"`
-	CDN           CDNConfig            `yaml:"cdn"`
-	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
-	IPFS          IPFSConfig           `yaml:"ipfs"`
-	Transcoding   TranscodingConfig    `yaml:"transcoding"`
-	ChunkedUpload ChunkedUploadConfig  `yaml:"chunked_upload"`
-	Federation    FederationConfig     `yaml:"federation"`
-	Payment       PaymentConfig        `yaml:"payment"`
-	Platform      PlatformConfig       `yaml:"platform"`
+	Storage       StorageConfig       `yaml:"storage"`
+	Database      DatabaseConfig      `yaml:"database"`
+	Quota         QuotaConfig         `yaml:"quota"`
+	Cache         CacheConfig         `yaml:"cache"`
+	Encryption    EncryptionConfig    `yaml:"encryption"`
+	CDN           CDNConfig           `yaml:"cdn"`
+	RateLimiting  RateLimitingConfig  `yaml:"rate_limiting"`
+	IPFS          IPFSConfig          `yaml:"ipfs"`
+	Transcoding   TranscodingConfig   `yaml:"transcoding"`
+	ChunkedUpload ChunkedUploadConfig `yaml:"chunked_upload"`
+	Federation    FederationConfig    `yaml:"federation"`
+	Payment       PaymentConfig       `yaml:"payment"`
+	Platform      PlatformConfig      `yaml:"platform"`
+	Expiration    ExpirationConfig    `yaml:"expiration"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -478,6 +489,17 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ChunkedUpload.TempDir == "" {
 		c.ChunkedUpload.TempDir = "/tmp/blossom-chunks"
+	}
+
+	// Default expiration settings
+	if c.Expiration.CleanupInterval == "" {
+		c.Expiration.CleanupInterval = "1h"
+	}
+	if c.Expiration.BatchSize == 0 {
+		c.Expiration.BatchSize = 1000
+	}
+	if c.Expiration.GracePeriod == "" {
+		c.Expiration.GracePeriod = "0s"
 	}
 
 	// Default federation settings
