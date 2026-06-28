@@ -83,6 +83,12 @@ src/
 cp config.example.yml config.yml && go run ./cmd/api  # Run locally
 go test ./...                                          # Run tests
 
+# CI parity — RUN BEFORE PUSHING. A go.work workspace (~/Development/go.work)
+# resolves cloistr-common from your local tree, masking unreleased-API build
+# failures that only appear in CI. This reproduces CI (GOWORK=off):
+./scripts/ci-verify.sh            # build + vet; add --test for the full suite
+git config core.hooksPath .githooks   # once per clone: auto-run on git push
+
 # Docker
 docker build -t coldforge-blossom .
 docker tag coldforge-blossom oci.coldforge.xyz/coldforge/coldforge-blossom:v1.x.x

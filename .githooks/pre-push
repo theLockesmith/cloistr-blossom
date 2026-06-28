@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Pre-push guard: run the CI-equivalent build (GOWORK=off) before pushing so a
+# go.work workspace can't mask an unreleased-dependency build failure that would
+# only surface in CI. See scripts/ci-verify.sh for the rationale.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+# Bypass for a one-off (use sparingly):  git push --no-verify
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+if [ -x "$repo_root/scripts/ci-verify.sh" ]; then
+  "$repo_root/scripts/ci-verify.sh"
+else
+  echo "pre-push: scripts/ci-verify.sh missing or not executable; skipping CI-parity check" >&2
+fi
