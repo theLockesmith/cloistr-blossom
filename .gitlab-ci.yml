@@ -8,6 +8,11 @@ stages:
   - docker
   - sync
 
+include:
+  - project: 'coldforge/ci-templates'
+    ref: main
+    file: '/templates/kaniko-build.yml'
+
 variables:
   GO_VERSION: "1.25"
   GOPRIVATE: "git.aegis-hq.xyz"
@@ -62,22 +67,8 @@ build:
 
 # Docker build - build and push container image
 docker:
+  extends: .kaniko-build
   stage: docker
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-  script:
-    - /kaniko/executor
-      --context ${CI_PROJECT_DIR}
-      --dockerfile ${CI_PROJECT_DIR}/Dockerfile
-      --destination ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
-      --destination ${CI_REGISTRY_IMAGE}:latest
-  rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_BRANCH == "main"
 
 # Sync with upstream (manual trigger)
 sync-upstream:
