@@ -191,6 +191,92 @@ var (
 			Help:      "Total bytes consumed from free tier allowance",
 		},
 	)
+
+	// Expiration worker metrics
+
+	// ExpirationSweepsTotal counts cleanup worker runs by outcome.
+	// result is one of: "ok", "error", "skipped_locked" (another replica held
+	// the advisory lock).
+	ExpirationSweepsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "expiration_sweeps_total",
+			Help:      "Total expiration cleanup worker runs by outcome",
+		},
+		[]string{"result"},
+	)
+
+	// ExpiredBlobsDeletedTotal counts blobs deleted by the expiration worker.
+	ExpiredBlobsDeletedTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "expired_blobs_deleted_total",
+			Help:      "Total blobs deleted by the expiration cleanup worker",
+		},
+	)
+
+	// PendingExpiredBlobs tracks the number of expired-but-not-yet-deleted blobs.
+	PendingExpiredBlobs = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "pending_expired_blobs",
+			Help:      "Number of expired blobs awaiting deletion",
+		},
+	)
+
+	// ExpirationLastRunTimestamp is the Unix time of the last completed sweep.
+	ExpirationLastRunTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "expiration_last_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last completed expiration sweep",
+		},
+	)
+
+	// Garbage-collection / reconciliation metrics
+
+	// OrphanedBlobs tracks blobs whose reference bookkeeping has drifted.
+	// kind is one of: "zero_ref" (ref_count <= 0) or "ownerless" (no
+	// blob_references row). Updated whenever a reconcile report runs.
+	OrphanedBlobs = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "orphaned_blobs",
+			Help:      "Blobs with drifted reference bookkeeping by kind",
+		},
+		[]string{"kind"},
+	)
+
+	// GCReconciledTotal counts blobs deleted by reconcile runs (worker + manual).
+	GCReconciledTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "gc_reconciled_total",
+			Help:      "Total orphaned blobs deleted by reconcile runs",
+		},
+	)
+
+	// GCSweepsTotal counts GC reconcile runs (background worker and manual
+	// operator reconciles both route through the locked path) by outcome.
+	// result is one of: "ok", "error", "skipped_locked" (another sweep held the
+	// advisory lock).
+	GCSweepsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "gc_sweeps_total",
+			Help:      "Total GC reconcile runs (worker and manual) by outcome",
+		},
+		[]string{"result"},
+	)
+
+	// GCLastRunTimestamp is the Unix time of the last completed GC sweep.
+	GCLastRunTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "gc_last_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last completed GC reconcile sweep",
+		},
+	)
 )
 
 // Init initializes all CounterVec metrics with default label values.
@@ -243,4 +329,18 @@ func Init() {
 	PaymentRequestsTotal.WithLabelValues("cashu").Add(0)
 	PaymentsVerifiedTotal.WithLabelValues("lightning").Add(0)
 	PaymentsVerifiedTotal.WithLabelValues("cashu").Add(0)
+
+	// Initialize expiration sweep counters
+	ExpirationSweepsTotal.WithLabelValues("ok").Add(0)
+	ExpirationSweepsTotal.WithLabelValues("error").Add(0)
+	ExpirationSweepsTotal.WithLabelValues("skipped_locked").Add(0)
+
+	// Initialize orphaned-blob gauges
+	OrphanedBlobs.WithLabelValues("zero_ref").Set(0)
+	OrphanedBlobs.WithLabelValues("ownerless").Set(0)
+
+	// Initialize GC sweep counters
+	GCSweepsTotal.WithLabelValues("ok").Add(0)
+	GCSweepsTotal.WithLabelValues("error").Add(0)
+	GCSweepsTotal.WithLabelValues("skipped_locked").Add(0)
 }

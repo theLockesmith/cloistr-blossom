@@ -122,6 +122,36 @@ func (q *Queries) DeleteExpiredBlobs(ctx context.Context, expiresAt sql.NullInt6
 	return items, nil
 }
 
+const getBlobOwners = `-- name: GetBlobOwners :many
+SELECT pubkey
+FROM blob_references
+WHERE hash = $1
+`
+
+// All pubkeys that reference a given blob (deduplication-aware ownership).
+func (q *Queries) GetBlobOwners(ctx context.Context, hash string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getBlobOwners, hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var pubkey string
+		if err := rows.Scan(&pubkey); err != nil {
+			return nil, err
+		}
+		items = append(items, pubkey)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExpirationPolicies = `-- name: GetExpirationPolicies :many
 SELECT id, name, mime_prefix, ttl_seconds, max_size, pubkey, priority, enabled, created_at, updated_at
 FROM expiration_policies

@@ -743,6 +743,11 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 	// Server-wide blob search (moderation/ops)
 	protectedAPI.GET("/blobs/search", searchBlobs(services))
 
+	// Garbage-collection / reconciliation (ops). Report is read-only;
+	// reconcile is dry-run unless called with ?confirm=true.
+	protectedAPI.GET("/gc/report", gcReport(services))
+	protectedAPI.POST("/gc/reconcile", gcReconcile(services))
+
 	// Report management
 	protectedAPI.GET("/reports", listReports(services))
 	protectedAPI.GET("/reports/pending/count", getPendingReportCount(services))

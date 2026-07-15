@@ -25,6 +25,7 @@ type Services interface {
 	ChunkedUpload() ChunkedUploadService
 	Notifications() NotificationService
 	Expiration() ExpirationService
+	GC() GCService
 	Replication() ReplicationService
 	Batch() BatchService
 	AIModeration() AIModerationService

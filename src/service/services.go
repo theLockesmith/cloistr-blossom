@@ -34,6 +34,7 @@ type services struct {
 	chunkedUpload core.ChunkedUploadService
 	notifications core.NotificationService
 	expiration    core.ExpirationService
+	gc            core.GCService
 	replication   core.ReplicationService
 	batch         core.BatchService
 	aiModeration  core.AIModerationService
@@ -223,9 +224,14 @@ func New(
 	log.Info("notification service initialized")
 
 	// Initialize expiration service
-	expirationService := NewExpirationService(queries, storageBackend, expirationConfigFromYAML(conf), log)
+	expirationService := NewExpirationService(database, queries, storageBackend, quotaService, expirationConfigFromYAML(conf), log)
 	log.Info("expiration service initialized",
 		zap.Bool("cleanup_enabled", conf.Expiration.Enabled))
+
+	// Initialize garbage-collection / reconciliation service
+	gcService := NewGCService(database, queries, storageBackend, gcConfigFromYAML(conf), log)
+	log.Info("gc reconciliation service initialized",
+		zap.Bool("worker_enabled", conf.GC.Enabled))
 
 	// Initialize replication service (nil if not configured)
 	var replicationService core.ReplicationService
@@ -333,6 +339,7 @@ func New(
 		chunkedUpload: chunkedUploadService,
 		notifications: notificationService,
 		expiration:    expirationService,
+		gc:            gcService,
 		replication:   replicationService,
 		batch:         batchService,
 		aiModeration:  aiModerationService,
@@ -404,6 +411,10 @@ func (s *services) Expiration() core.ExpirationService {
 	return s.expiration
 }
 
+func (s *services) GC() core.GCService {
+	return s.gc
+}
+
 func (s *services) Replication() core.ReplicationService {
 	return s.replication
 }
@@ -436,6 +447,8 @@ func (s *services) Init(ctx context.Context) error {
 	// Start the blob expiration cleanup worker. It is a no-op when
 	// expiration.enabled is false (see StartCleanupWorker).
 	s.expiration.StartCleanupWorker(ctx)
+	// Start the GC reconcile worker. No-op when gc.enabled is false.
+	s.gc.StartWorker(ctx)
 	return nil
 }
 
@@ -454,6 +467,23 @@ func expirationConfigFromYAML(conf *config.Config) core.ExpirationConfig {
 	}
 	if d, err := time.ParseDuration(conf.Expiration.GracePeriod); err == nil && d >= 0 {
 		cfg.GracePeriod = d
+	}
+
+	return cfg
+}
+
+// gcConfigFromYAML maps the YAML gc config onto the core GCConfig, parsing the
+// interval string and falling back to defaults on any parse error so a
+// malformed value can never crash startup.
+func gcConfigFromYAML(conf *config.Config) core.GCConfig {
+	cfg := core.DefaultGCConfig()
+	cfg.Enabled = conf.GC.Enabled
+
+	if conf.GC.BatchSize > 0 {
+		cfg.BatchSize = conf.GC.BatchSize
+	}
+	if d, err := time.ParseDuration(conf.GC.Interval); err == nil && d > 0 {
+		cfg.Interval = d
 	}
 
 	return cfg
