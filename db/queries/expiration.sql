@@ -15,6 +15,12 @@ WHERE expires_at IS NOT NULL
   AND expires_at <= $1
 LIMIT $2;
 
+-- name: GetBlobOwners :many
+-- All pubkeys that reference a given blob (deduplication-aware ownership).
+SELECT pubkey
+FROM blob_references
+WHERE hash = $1;
+
 -- name: DeleteExpiredBlobs :many
 DELETE FROM blobs
 WHERE expires_at IS NOT NULL

@@ -212,6 +212,25 @@ quota:
 #   # Grace period to wait after expiry before actually deleting (default: 0s)
 #   grace_period: "0s"
 
+# Garbage collection (optional)
+# When enabled, a background worker periodically reconciles storage by deleting
+# "ownerless" blobs — blobs left with no blob_references row (e.g. a crash
+# between the ref-count decrement and the row delete, or a legacy expiry path).
+# The delete is guarded: a blob that regains an owner before the sweep runs is
+# skipped, never destroyed. At most one sweep runs at a time across all replicas
+# (a Postgres advisory lock; no leader election needed). Deletion is DESTRUCTIVE,
+# so the worker is OFF by default and must be explicitly enabled per deployment.
+# The GET /admin/api/gc/report (read-only) and POST /admin/api/gc/reconcile
+# (dry-run unless ?confirm=true) endpoints remain available as manual supplements.
+# gc:
+#   enabled: true
+#
+#   # How often the reconcile worker runs (default: 1h)
+#   interval: "1h"
+#
+#   # Maximum number of ownerless blobs deleted per run (default: 1000)
+#   batch_size: 1000
+
 # Payment configuration (optional, BUD-07)
 # Enable paid uploads via Lightning Network or Cashu ecash.
 # payment:

@@ -165,6 +165,16 @@ type ExpirationConfig struct {
 	GracePeriod     string `yaml:"grace_period"`     // Delay after expiry before deletion (default: 0s)
 }
 
+// GCConfig defines the automated garbage-collection worker settings. When
+// enabled, a background worker periodically deletes ownerless blobs (blobs with
+// no blob_references row). Disabled by default so destructive reconciliation is
+// opt-in per deployment.
+type GCConfig struct {
+	Enabled   bool   `yaml:"enabled"`    // Enable the background reconcile worker
+	Interval  string `yaml:"interval"`   // How often to reconcile (default: 1h)
+	BatchSize int    `yaml:"batch_size"` // Max ownerless blobs deleted per run (default: 1000)
+}
+
 // FederationConfig defines Nostr-based federation settings.
 type FederationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable federation
@@ -346,6 +356,7 @@ type Config struct {
 	Payment       PaymentConfig       `yaml:"payment"`
 	Platform      PlatformConfig      `yaml:"platform"`
 	Expiration    ExpirationConfig    `yaml:"expiration"`
+	GC            GCConfig            `yaml:"gc"`
 }
 
 func NewConfig(path string) (*Config, error) {
@@ -500,6 +511,14 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Expiration.GracePeriod == "" {
 		c.Expiration.GracePeriod = "0s"
+	}
+
+	// Default GC worker settings (worker stays disabled unless explicitly enabled)
+	if c.GC.Interval == "" {
+		c.GC.Interval = "1h"
+	}
+	if c.GC.BatchSize == 0 {
+		c.GC.BatchSize = 1000
 	}
 
 	// Default federation settings
