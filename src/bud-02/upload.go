@@ -35,13 +35,29 @@ func UploadBlob(
 		return nil, err
 	}
 
+	// Detect MIME type from magic bytes — never trusts client-supplied Content-Type.
 	mimeType := mimetype.Detect(blobBytes)
-	if err := mimes.IsAllowed(ctx, mimeType.String()); err != nil {
-		return nil, fmt.Errorf("mime type %s not allowed", mimeType.String())
-	}
 
-	if err := settings.ValidateFileSizeMaxBytes(ctx, len(blobBytes)); err != nil {
-		return nil, fmt.Errorf("file size: %w", err)
+	// Tier-aware enforcement when upload_limits.enabled is true.
+	// When disabled, fall back to the existing global checks so behaviour is
+	// identical to the pre-enforcement baseline for self-hosters.
+	if ul := services.UploadLimits(); ul.IsEnabled() {
+		if err := ul.ValidateMimeType(ctx, pubkey, mimeType.String()); err != nil {
+			return nil, fmt.Errorf("mime type %s not allowed for your tier", mimeType.String())
+		}
+		if err := ul.ValidateFileSize(ctx, pubkey, len(blobBytes)); err != nil {
+			return nil, fmt.Errorf("file size: %w", err)
+		}
+		if err := ul.TrackAndCheckDailyUploads(ctx, pubkey); err != nil {
+			return nil, fmt.Errorf("daily upload limit: %w", err)
+		}
+	} else {
+		if err := mimes.IsAllowed(ctx, mimeType.String()); err != nil {
+			return nil, fmt.Errorf("mime type %s not allowed", mimeType.String())
+		}
+		if err := settings.ValidateFileSizeMaxBytes(ctx, len(blobBytes)); err != nil {
+			return nil, fmt.Errorf("file size: %w", err)
+		}
 	}
 
 	// Check quota before upload

@@ -30,6 +30,19 @@ func uploadBlob(
 			}
 		}
 
+		// Pre-flight size check: reject based on Content-Length BEFORE buffering
+		// the body so oversize uploads don't consume server memory. We use the
+		// global max_upload_size_bytes as the ceiling here; per-tier caps are
+		// applied after the body is read in UploadBlob.
+		if maxSize := services.Settings().GetMaxUploadSizeBytes(); maxSize > 0 {
+			if cl := ctx.Request.ContentLength; cl > 0 && cl > int64(maxSize) {
+				clerrors.BadRequest(clerrors.CodeInvalidInput,
+					fmt.Sprintf("content-length %d exceeds the maximum upload size of %d bytes", cl, maxSize),
+				).Abort(ctx)
+				return
+			}
+		}
+
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		defer func(body io.ReadCloser) {
 			err := body.Close()

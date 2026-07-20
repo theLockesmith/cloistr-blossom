@@ -11,6 +11,7 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cashu"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/encryption"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/lightning"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
@@ -41,6 +42,7 @@ type services struct {
 	federation    core.FederationService
 	analytics     core.AnalyticsService
 	payment       core.PaymentService
+	uploadLimits  core.UploadLimitsService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -83,9 +85,11 @@ func New(
 		log.Fatal(err.Error())
 	}
 
-	// Initialize ACR and Quota services based on platform mode
+	// Initialize ACR and Quota services based on platform mode.
+	// platformClient is saved here so it can be reused by uploadLimitsService.
 	var acrService core.ACRStorage
 	var quotaService core.QuotaService
+	var platformClient *platform.Client // nil in standalone mode
 
 	if conf.IsPlatformMode() {
 		// Platform mode: use unified platform database
@@ -93,7 +97,7 @@ func New(
 			zap.String("database_url", maskDatabaseURL(conf.Platform.DatabaseURL)),
 			zap.String("service_id", conf.Platform.ServiceID))
 
-		platformClient, err := platform.NewClient(platform.Config{
+		platformClient, err = platform.NewClient(platform.Config{
 			Mode:        platform.ModePlatform,
 			DatabaseURL: conf.Platform.DatabaseURL,
 			ServiceID:   conf.Platform.ServiceID,
@@ -162,6 +166,28 @@ func New(
 	// Default to in-memory cache if none provided
 	if appCache == nil {
 		appCache = cache.NewMemoryCache(100 * 1024 * 1024) // 100MB
+	}
+
+	// Upload limits service: tier-aware enforcement of mime, size, and daily caps.
+	// Uses the platform client for tier resolution in platform mode (nil → standalone → TierNamed).
+	// The rate limiter is backed by the same cache as the rest of the service.
+	uploadLimitsRateLimiter := ratelimit.NewRateLimiter(appCache)
+	uploadLimitsService, err := NewUploadLimitsService(
+		&conf.UploadLimits,
+		platformClient,
+		uploadLimitsRateLimiter,
+		log,
+	)
+	if err != nil {
+		log.Fatal("failed to initialize upload limits service", zap.Error(err))
+	}
+	if conf.UploadLimits.Enabled {
+		log.Info("upload limits enforcement enabled",
+			zap.Int64("anonymous_max_bytes", conf.UploadLimits.Anonymous.MaxFileBytes),
+			zap.Int("anonymous_uploads_per_day", conf.UploadLimits.Anonymous.UploadsPerDay),
+			zap.Int64("named_max_bytes", conf.UploadLimits.Named.MaxFileBytes),
+			zap.Int("named_uploads_per_day", conf.UploadLimits.Named.UploadsPerDay),
+		)
 	}
 
 	mediaService, err := NewMediaService(storageBackend, appCache, DefaultMediaConfig(), log)
@@ -346,6 +372,7 @@ func New(
 		federation:    federationService,
 		analytics:     analyticsService,
 		payment:       paymentService,
+		uploadLimits:  uploadLimitsService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -441,6 +468,10 @@ func (s *services) Payment() core.PaymentService {
 
 func (s *services) Cache() cache.Cache {
 	return s.cache
+}
+
+func (s *services) UploadLimits() core.UploadLimitsService {
+	return s.uploadLimits
 }
 
 func (s *services) Init(ctx context.Context) error {
