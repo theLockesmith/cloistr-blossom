@@ -270,6 +270,58 @@ quota:
 #       - "https://mint.minibits.cash/Bitcoin"
 #       - "https://mint.coinos.io"
 
+# Tier-aware upload enforcement (optional, Cloistr platform mode)
+#
+# Capability is NEVER paywalled — tiers scale limits, not access.
+# Defaults to disabled so self-hosters run unrestricted out of the box.
+# When enabled, the detected MIME type (magic-byte based, never the client's
+# Content-Type header) and file size are validated against the user's tier.
+#
+# Tier resolution:
+#   - platform mode : calls get_user_tier() in the shared PostgreSQL database
+#   - standalone    : every user is treated as "named" regardless
+#
+# Zero values within a tier config mean "no additional restriction":
+#   - max_file_bytes: 0    → falls back to global max_upload_size_bytes
+#   - allowed_type_prefixes: [] → unrestricted (global allowed_mime_types applies)
+#   - uploads_per_day: 0   → no per-day cap
+#
+# upload_limits:
+#   enabled: true
+#
+#   # Anonymous: NIP-07 / extension login or auto-assigned address only.
+#   # 100 MB storage floor; restricting uploads/day closes the sybil-key abuse hole.
+#   anonymous:
+#     max_file_bytes: 104857600        # 100 MB
+#     allowed_type_prefixes:
+#       - "image/"
+#       - "video/"
+#       - "audio/"
+#       - "application/pdf"
+#     uploads_per_day: 10
+#
+#   # Named: has claimed a real (non-auto-assigned) address.
+#   named:
+#     max_file_bytes: 1073741824       # 1 GiB
+#     allowed_type_prefixes:
+#       - "image/"
+#       - "video/"
+#       - "audio/"
+#       - "application/pdf"
+#     uploads_per_day: 100
+#
+#   # Paid: holds a non-expired quota grant or active subscription.
+#   # No per-day cap; larger file ceiling. Adjust max_file_bytes as needed.
+#   paid:
+#     max_file_bytes: 5368709120       # 5 GiB
+#     allowed_type_prefixes:
+#       - "image/"
+#       - "video/"
+#       - "audio/"
+#       - "application/pdf"
+#       - "application/"
+#     uploads_per_day: 0              # 0 = no daily cap
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 

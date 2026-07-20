@@ -33,6 +33,7 @@ type Services interface {
 	Analytics() AnalyticsService
 	Payment() PaymentService
 	Cache() cache.Cache
+	UploadLimits() UploadLimitsService
 }
 
 // CDNService handles content delivery network integration for blob serving.

@@ -165,6 +165,38 @@ type ExpirationConfig struct {
 	GracePeriod     string `yaml:"grace_period"`     // Delay after expiry before deletion (default: 0s)
 }
 
+// UploadTierLimitsConfig defines per-tier upload restrictions.
+// Zero values mean "no additional restriction for this tier":
+//   - MaxFileBytes == 0: no per-tier file-size cap (global max_upload_size_bytes applies)
+//   - AllowedTypePrefixes == nil/empty: no per-tier allowlist (global allowed_mime_types applies)
+//   - UploadsPerDay == 0: no per-day cap
+type UploadTierLimitsConfig struct {
+	// MaxFileBytes is the maximum file size for this tier (bytes). 0 = use global limit.
+	MaxFileBytes int64 `yaml:"max_file_bytes"`
+	// AllowedTypePrefixes is a list of detected-mime prefixes permitted for this tier.
+	// Matching is HasPrefix: "image/" matches image/jpeg, image/png, etc.
+	// Empty list = unrestricted (inherits global allowed_mime_types).
+	AllowedTypePrefixes []string `yaml:"allowed_type_prefixes"`
+	// UploadsPerDay is the maximum number of uploads allowed per calendar day (UTC).
+	// 0 = no per-day cap.
+	UploadsPerDay int `yaml:"uploads_per_day"`
+}
+
+// UploadLimitsConfig defines tier-aware upload enforcement settings.
+// Capability is never paywalled; tiers scale limits, not access.
+// Set enabled: false (the default) for unrestricted self-hosted operation.
+type UploadLimitsConfig struct {
+	// Enabled must be true for any limits to apply.
+	// When false, behavior is identical to today — no new restrictions.
+	Enabled bool `yaml:"enabled"`
+	// Anonymous users: NIP-07/extension login or auto-assigned address only.
+	Anonymous UploadTierLimitsConfig `yaml:"anonymous"`
+	// Named users: claimed a real (non-auto-assigned) address.
+	Named UploadTierLimitsConfig `yaml:"named"`
+	// Paid users: hold a non-expired quota grant or active subscription.
+	Paid UploadTierLimitsConfig `yaml:"paid"`
+}
+
 // GCConfig defines the automated garbage-collection worker settings. When
 // enabled, a background worker periodically deletes ownerless blobs (blobs with
 // no blob_references row). Disabled by default so destructive reconciliation is
@@ -357,6 +389,7 @@ type Config struct {
 	Platform      PlatformConfig      `yaml:"platform"`
 	Expiration    ExpirationConfig    `yaml:"expiration"`
 	GC            GCConfig            `yaml:"gc"`
+	UploadLimits  UploadLimitsConfig  `yaml:"upload_limits"`
 }
 
 func NewConfig(path string) (*Config, error) {
