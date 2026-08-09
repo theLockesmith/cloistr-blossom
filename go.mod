@@ -27,7 +27,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/rubenv/sql-migrate v1.6.1
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.1
+	go.uber.org/zap v1.28.0
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
 )
