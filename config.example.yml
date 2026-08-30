@@ -322,6 +322,102 @@ quota:
 #       - "application/"
 #     uploads_per_day: 0              # 0 = no daily cap
 
+# Remote media mirror (optional)
+#
+# THE PROBLEM. Custom emoji (NIP-30) and other remote media are URLs to images
+# on hosts we do not control. Rendering them directly discloses the viewer's IP
+# address -- and the moment they viewed -- to whoever published the emoji set.
+# The alternative most clients take is not rendering them, which makes an emoji
+# picker that shows `:blobcatpeek:` as text and cannot be used to pick emoji.
+#
+# THE ANSWER, which every major email client converged on: fetch server-side,
+# store, and serve from our own domain. The user sees images with no banner and
+# no decision; the remote host sees this server's address and never learns who
+# viewed what.
+#
+# Mirrored objects become ordinary content-addressed blobs, so they deduplicate
+# across every user who has that emoji and are retrievable at GET /<sha256>.
+#
+# DISABLED BY DEFAULT: this makes outbound HTTP requests on behalf of callers,
+# which is not a behaviour to acquire silently on an upgrade.
+# media_mirror:
+#   enabled: true
+#
+#   # HMAC key for mirror links. REQUIRED when enabled -- the server refuses to
+#   # start without it, because a mirror that serves any URL it is handed is an
+#   # open proxy for the whole internet. At least 32 bytes.
+#   # Generate with: openssl rand -hex 32
+#   #
+#   # NEVER ship this key to a browser. Our apps are static SPAs, so anything
+#   # they hold is readable in devtools; they obtain signed links from
+#   # POST /media/mirror/sign instead, which is behind Nostr auth.
+#   signing_key: ${MEDIA_MIRROR_SIGNING_KEY}
+#
+#   # How long a minted link stays valid. "0" (the default) means never: the
+#   # content is immutable, so a link that stops working only breaks
+#   # already-rendered pages. Rotate signing_key to revoke.
+#   signature_ttl: "0s"
+#
+#   # Per-object caps. Emoji are small; a 40MB "emoji" should be refused, not
+#   # cached.
+#   max_object_bytes: 1048576   # 1 MiB
+#
+#   # Decompression-bomb guards. A few hundred bytes of PNG can declare
+#   # 60000x60000 and cost ~14GB to decode, so dimensions are read from the
+#   # image header and checked before anything is decoded.
+#   max_pixels: 4194304         # 4 Mpx (e.g. 2048x2048)
+#   max_dimension: 1024
+#
+#   # Types that may be mirrored, matched against the type detected from the
+#   # BYTES -- never the Content-Type the remote host claims.
+#   allowed_mime_types:
+#     - image/png
+#     - image/jpeg
+#     - image/gif
+#     - image/webp
+#
+#   fetch_timeout: "10s"
+#   max_redirects: 3
+#   max_sign_batch: 256
+#
+#   # Bounded cache. Potato-grade rule: assume a self-hoster on a Raspberry Pi.
+#   # When the total exceeds cache_max_bytes, least-recently-accessed entries
+#   # are evicted down to cache_low_water_percent of the cap (draining to
+#   # exactly the cap would evict once per request forever).
+#   cache_max_bytes: 1073741824      # 1 GiB
+#   cache_low_water_percent: 90
+#   evict_interval: "10m"
+#
+#   # Negative caching, so a dead host is not re-fetched on every page view.
+#   # "unreachable" is transient and retried sooner; "refused" depends on our
+#   # policy and the content, so it is remembered longer -- but not forever, or
+#   # a policy change would never take effect.
+#   negative_ttl: "15m"
+#   refused_ttl: "24h"
+#
+#   # SSRF protection. Destinations are checked AFTER DNS resolution, at dial
+#   # time, on every redirect hop -- which is what closes DNS rebinding and
+#   # redirect-to-metadata. Private, loopback, link-local, CGNAT and NAT64
+#   # ranges are refused by default.
+#   #
+#   # allow_private_addresses DISABLES that. It exists for a self-hoster
+#   # mirroring from their own LAN and is dangerous on a public deployment:
+#   # anyone holding a signed link could point the server at 169.254.169.254 or
+#   # an internal service.
+#   allow_private_addresses: false
+#
+#   # Extra ranges to refuse, e.g. a provider metadata endpoint on a
+#   # public-looking address. A malformed entry fails startup rather than being
+#   # ignored -- a deny rule that is silently dropped is a hole that looks like
+#   # a fence.
+#   extra_denied_cidrs: []
+#
+#   # Pubkey that owns mirrored blobs. Mirrored content belongs to the server,
+#   # not to whoever first caused it to be fetched: attributing it to a user
+#   # would both charge their quota and record that they viewed it. Defaults to
+#   # a synthetic marker key that no one holds the private key for.
+#   # owner_pubkey: ""
+
 # Log level, adjust accordingly.
 log_level: "TRACE"
 

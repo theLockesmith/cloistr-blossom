@@ -215,3 +215,17 @@ CREATE TABLE IF NOT EXISTS payment_requests (
     paid_at           BIGINT,
     proof_data        TEXT
 );
+
+-- Remote media mirror. One row per remote URL; deliberately no viewer identity
+-- anywhere in it (see db/migrations/17_add_media_mirror.sql for why).
+CREATE TABLE IF NOT EXISTS mirrored_media (
+    url_hash     TEXT PRIMARY KEY,
+    source_url   TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    reason       TEXT,
+    sha256       TEXT,
+    size         BIGINT NOT NULL DEFAULT 0,
+    mime         TEXT,
+    fetched_at   BIGINT NOT NULL,
+    accessed_at  BIGINT NOT NULL
+);

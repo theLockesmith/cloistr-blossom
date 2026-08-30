@@ -277,6 +277,49 @@ var (
 			Help:      "Unix timestamp of the last completed GC reconcile sweep",
 		},
 	)
+
+	// MirrorRequests counts media-mirror requests by outcome.
+	//
+	// Note what is NOT a label here: no URL, no host, no pubkey, no IP. A
+	// Prometheus label is a permanent, scrapeable, per-series record, so
+	// labelling this by URL would rebuild the viewing log the mirror exists to
+	// avoid -- and would blow up cardinality besides. Outcome only.
+	MirrorRequests = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "media_mirror_requests_total",
+			Help:      "Media mirror requests by outcome (hit, miss, refused, unreachable, ...)",
+		},
+		[]string{"result"},
+	)
+
+	// MirrorBytes tracks bytes newly mirrored from remote hosts.
+	MirrorBytes = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "media_mirror_fetched_bytes_total",
+			Help:      "Total bytes fetched from remote hosts by the media mirror",
+		},
+	)
+
+	// MirrorEvictions counts objects dropped by the LRU eviction worker.
+	MirrorEvictions = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "media_mirror_evictions_total",
+			Help:      "Objects evicted from the media mirror cache",
+		},
+	)
+
+	// MirrorCacheBytes is the current total size of the media mirror cache.
+	MirrorCacheBytes = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "media_mirror_cache_bytes",
+			Help:      "Current size in bytes of the media mirror cache",
+		},
+	)
+
 )
 
 // Init initializes all CounterVec metrics with default label values.
@@ -343,4 +386,13 @@ func Init() {
 	GCSweepsTotal.WithLabelValues("ok").Add(0)
 	GCSweepsTotal.WithLabelValues("error").Add(0)
 	GCSweepsTotal.WithLabelValues("skipped_locked").Add(0)
+
+	// Initialize media mirror counters
+	MirrorRequests.WithLabelValues("hit").Add(0)
+	MirrorRequests.WithLabelValues("miss").Add(0)
+	MirrorRequests.WithLabelValues("refused").Add(0)
+	MirrorRequests.WithLabelValues("unreachable").Add(0)
+	MirrorRequests.WithLabelValues("refused_cached").Add(0)
+	MirrorRequests.WithLabelValues("unreachable_cached").Add(0)
+	MirrorCacheBytes.Set(0)
 }

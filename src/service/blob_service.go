@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -502,22 +503,42 @@ func (r *blobService) SaveWithDedup(
 	// Check if blob already exists
 	existingBlob, err := r.queries.GetBlobFromHash(ctx, sha256)
 	if err == nil {
-		// Blob exists - check if user already has a reference
-		hasRef, _ := r.HasReference(ctx, pubkey, sha256)
+		// Blob exists - check if user already has a reference.
+		//
+		// The error is no longer discarded. It used to be, and that turned a
+		// broken query into a confusing failure two steps downstream: on
+		// SQLite the reserved-word alias in HasBlobReference made this return
+		// (false, syntax error), the false sent every re-save into the insert
+		// below, and the insert's ON CONFLICT DO NOTHING then surfaced as
+		// "create reference: sql: no rows in result set" -- a message that
+		// says nothing about the actual cause.
+		hasRef, refErr := r.HasReference(ctx, pubkey, sha256)
+		if refErr != nil {
+			r.log.Error("failed to check blob reference", zap.Error(refErr))
+			return nil, false, fmt.Errorf("check reference: %w", refErr)
+		}
 		if hasRef {
 			// User already has this blob - return existing
 			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
 		}
 
-		// Create reference for this user
+		// Create reference for this user.
 		_, err = r.queries.CreateBlobReference(ctx, db.CreateBlobReferenceParams{
 			Pubkey:  pubkey,
 			Hash:    sha256,
 			Created: created,
 		})
-		if err != nil {
+		// sql.ErrNoRows here is SUCCESS, not failure. The insert is
+		// ON CONFLICT DO NOTHING ... RETURNING, so zero rows means the
+		// reference already existed -- which is precisely the state this call
+		// is trying to reach. Treating it as an error made a concurrent
+		// double-save fail for having done exactly what was asked.
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			r.log.Error("failed to create blob reference", zap.Error(err))
 			return nil, false, fmt.Errorf("create reference: %w", err)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
 		}
 
 		// Increment reference count
@@ -545,7 +566,9 @@ func (r *blobService) SaveWithDedup(
 		Hash:    sha256,
 		Created: created,
 	})
-	if err != nil {
+	// As above, no rows means the reference was already there, which is the
+	// desired end state rather than a problem worth logging.
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		r.log.Warn("failed to create blob reference for original uploader", zap.Error(err))
 		// Don't fail - blob is saved, reference is a bonus
 	}

@@ -43,6 +43,7 @@ type services struct {
 	analytics     core.AnalyticsService
 	payment       core.PaymentService
 	uploadLimits  core.UploadLimitsService
+	mediaMirror   core.MediaMirrorService
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -349,6 +350,26 @@ func New(
 			zap.Bool("cashu_enabled", conf.Payment.Cashu.Enabled))
 	}
 
+	// Media mirror. A construction failure here is fatal on purpose: the only
+	// ways it fails are a missing/short signing key and a malformed deny CIDR,
+	// and both would leave the mirror running as an open proxy or with a hole
+	// where an operator thought they had a fence. Better to refuse to boot
+	// than to serve in that state.
+	mediaMirrorService, err := NewMediaMirrorService(
+		queries,
+		blobService,
+		mediaMirrorConfigFromYAML(conf),
+		log,
+	)
+	if err != nil {
+		log.Fatal("failed to initialize media mirror service", zap.Error(err))
+	}
+	if conf.MediaMirror.Enabled {
+		log.Info("media mirror enabled",
+			zap.Int64("max_object_bytes", conf.MediaMirror.MaxObjectBytes),
+			zap.Int64("cache_max_bytes", conf.MediaMirror.CacheMaxBytes))
+	}
+
 	return &services{
 		blobs:         blobService,
 		acrs:          acrService,
@@ -373,6 +394,7 @@ func New(
 		analytics:     analyticsService,
 		payment:       paymentService,
 		uploadLimits:  uploadLimitsService,
+		mediaMirror:   mediaMirrorService,
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -474,12 +496,21 @@ func (s *services) UploadLimits() core.UploadLimitsService {
 	return s.uploadLimits
 }
 
+func (s *services) MediaMirror() core.MediaMirrorService {
+	return s.mediaMirror
+}
+
 func (s *services) Init(ctx context.Context) error {
 	// Start the blob expiration cleanup worker. It is a no-op when
 	// expiration.enabled is false (see StartCleanupWorker).
 	s.expiration.StartCleanupWorker(ctx)
 	// Start the GC reconcile worker. No-op when gc.enabled is false.
 	s.gc.StartWorker(ctx)
+	// Start the media mirror eviction worker. No-op when the mirror is
+	// disabled. Unlike GC this never deletes user content -- it only releases
+	// the mirror's own claim on cached remote media -- so it arms whenever the
+	// mirror is on rather than needing its own opt-in.
+	s.mediaMirror.StartWorker(ctx)
 	return nil
 }
 
@@ -515,6 +546,76 @@ func gcConfigFromYAML(conf *config.Config) core.GCConfig {
 	}
 	if d, err := time.ParseDuration(conf.GC.Interval); err == nil && d > 0 {
 		cfg.Interval = d
+	}
+
+	return cfg
+}
+
+// mediaMirrorConfigFromYAML maps the YAML media_mirror section onto the core
+// config, parsing duration strings and falling back to defaults on a parse
+// error.
+//
+// Note which fields do NOT fall back silently: the signing key is passed
+// through untouched, so an absent or short key surfaces as a startup failure in
+// NewMediaMirrorService rather than being quietly replaced with something
+// workable. A mirror that starts with a default signing key would be an open
+// proxy with a key an attacker could read out of this repository.
+func mediaMirrorConfigFromYAML(conf *config.Config) core.MediaMirrorConfig {
+	cfg := core.DefaultMediaMirrorConfig()
+	m := conf.MediaMirror
+
+	cfg.Enabled = m.Enabled
+	cfg.SigningKey = m.SigningKey
+	cfg.AllowPrivateAddresses = m.AllowPrivateAddresses
+
+	if len(m.ExtraDeniedCIDRs) > 0 {
+		cfg.ExtraDeniedCIDRs = m.ExtraDeniedCIDRs
+	}
+	if len(m.AllowedMimeTypes) > 0 {
+		cfg.AllowedMimeTypes = m.AllowedMimeTypes
+	}
+	if m.OwnerPubkey != "" {
+		cfg.OwnerPubkey = m.OwnerPubkey
+	}
+	if m.MaxObjectBytes > 0 {
+		cfg.MaxObjectBytes = m.MaxObjectBytes
+	}
+	if m.MaxPixels > 0 {
+		cfg.MaxPixels = m.MaxPixels
+	}
+	if m.MaxDimension > 0 {
+		cfg.MaxDimension = m.MaxDimension
+	}
+	if m.MaxRedirects > 0 {
+		cfg.MaxRedirects = m.MaxRedirects
+	}
+	if m.MaxSignBatch > 0 {
+		cfg.MaxSignBatch = m.MaxSignBatch
+	}
+	if m.CacheMaxBytes > 0 {
+		cfg.CacheMaxBytes = m.CacheMaxBytes
+	}
+	if m.CacheLowWaterPercent > 0 && m.CacheLowWaterPercent <= 100 {
+		cfg.CacheLowWaterPercent = m.CacheLowWaterPercent
+	}
+
+	// SignatureTTL is the one duration where an explicit "0" is meaningful
+	// ("links never expire"), so it is parsed without the > 0 guard the others
+	// use -- otherwise the documented default could not be written down.
+	if d, err := time.ParseDuration(m.SignatureTTL); err == nil && d >= 0 {
+		cfg.SignatureTTL = d
+	}
+	if d, err := time.ParseDuration(m.FetchTimeout); err == nil && d > 0 {
+		cfg.FetchTimeout = d
+	}
+	if d, err := time.ParseDuration(m.EvictInterval); err == nil && d > 0 {
+		cfg.EvictInterval = d
+	}
+	if d, err := time.ParseDuration(m.NegativeTTL); err == nil && d >= 0 {
+		cfg.NegativeTTL = d
+	}
+	if d, err := time.ParseDuration(m.RefusedTTL); err == nil && d >= 0 {
+		cfg.RefusedTTL = d
 	}
 
 	return cfg

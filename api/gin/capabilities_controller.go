@@ -59,6 +59,14 @@ type FeatureCapabilities struct {
 	// Distribution features
 	IPFS    bool `json:"ipfs"`    // IPFS pinning
 	Torrent bool `json:"torrent"` // Torrent/BEP-19 support
+
+	// MediaMirror reports that this server will mirror remote media so
+	// clients need not contact third-party hosts. Advertised so a client can
+	// decide at runtime whether to render custom emoji at all: without a
+	// mirror, rendering them leaks the viewer's IP to whoever published the
+	// emoji set, so a client that cannot detect this has to choose between
+	// leaking always and never showing images.
+	MediaMirror bool `json:"media_mirror"`
 }
 
 // LimitCapabilities describes server limits.
@@ -133,6 +141,7 @@ func buildCapabilities(services core.Services, conf *config.Config, adminPubkey 
 		ContentModeration: services != nil && services.AIModeration() != nil,
 		IPFS:              conf.IPFS.Enabled,
 		Torrent:           true, // Torrent generation always available
+		MediaMirror:       services != nil && services.MediaMirror() != nil && services.MediaMirror().IsEnabled(),
 	}
 
 	// Limits

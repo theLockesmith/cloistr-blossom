@@ -138,7 +138,7 @@ const hasBlobReference = `-- name: HasBlobReference :one
 SELECT EXISTS(
     SELECT 1 FROM blob_references
     WHERE pubkey = $1 AND hash = $2
-) as exists
+) as has_reference
 `
 
 type HasBlobReferenceParams struct {
@@ -148,7 +148,7 @@ type HasBlobReferenceParams struct {
 
 func (q *Queries) HasBlobReference(ctx context.Context, arg HasBlobReferenceParams) (bool, error) {
 	row := q.db.QueryRowContext(ctx, hasBlobReference, arg.Pubkey, arg.Hash)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
+	var has_reference bool
+	err := row.Scan(&has_reference)
+	return has_reference, err
 }

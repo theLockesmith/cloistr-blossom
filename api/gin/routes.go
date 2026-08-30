@@ -12,6 +12,7 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/service"
 	"go.uber.org/zap"
 )
 
@@ -25,7 +26,25 @@ func SetupRoutes(
 ) *gin.Engine {
 	r := gin.New()
 
-	r.Use(ginzap.Ginzap(log, time.RFC3339, true))
+	// Access logging, with the media mirror's fetch route excluded.
+	//
+	// THIS EXCLUSION IS PART OF THE FEATURE, not a tuning choice. ginzap logs
+	// path, QUERY, and client IP for every request. The mirror carries the
+	// remote image URL in its query string, so leaving it in the access log
+	// would write a line reading "this IP fetched this emoji at this time" for
+	// every image view -- rebuilding, in our own logs, precisely the tracking
+	// that mirroring exists to prevent. Moving the surveillance in-house is
+	// worse than the leak, because then we are the ones doing it.
+	//
+	// The mirror is not unmonitored as a result: the service logs failures
+	// with a reason and no identifiers, and the media_mirror_* Prometheus
+	// metrics carry outcome counts. What is given up is per-request
+	// attribution, which is exactly the thing we do not want to have.
+	r.Use(ginzap.GinzapWithConfig(log, &ginzap.Config{
+		TimeFormat: time.RFC3339,
+		UTC:        true,
+		SkipPaths:  []string{service.MirrorRoutePath},
+	}))
 	r.Use(ginzap.RecoveryWithZap(log, true))
 	r.Use(MetricsMiddleware())
 
@@ -99,6 +118,31 @@ func SetupRoutes(
 	}
 	mirrorHandlers = append(mirrorHandlers, mirrorBlob(services, cdnBaseUrl))
 	r.PUT("/mirror", mirrorHandlers...)
+
+	// Remote media mirror.
+	//
+	// Two routes with deliberately different auth postures:
+	//
+	//   POST /media/mirror/sign -- AUTHENTICATED. Mints signed links. Behind
+	//     auth so only our users can enqueue remote URLs, which is what keeps
+	//     this from being an open proxy. Our apps are static SPAs and cannot
+	//     hold the signing key themselves, which is why this endpoint exists
+	//     rather than the apps signing locally.
+	//
+	//   GET /media/mirror -- UNAUTHENTICATED. Serves the mirrored bytes. This
+	//     is the request a browser makes for every <img src>; requiring auth
+	//     would attach an identity to every image view. The signature already
+	//     bounds who can create these links, and the signature is identical
+	//     for every user, so it identifies content and never a person.
+	if services.MediaMirror() != nil && services.MediaMirror().IsEnabled() {
+		r.POST(
+			service.MirrorRoutePath+"/sign",
+			nostrAuthMiddleware("mirror", log),
+			signMirrorURLs(services, log),
+		)
+		r.GET(service.MirrorRoutePath, getMirroredMedia(services, log))
+		log.Info("media mirror routes registered")
+	}
 
 	// BUD-05: Media optimization endpoint
 	r.HEAD(

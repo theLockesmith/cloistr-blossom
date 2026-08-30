@@ -110,6 +110,18 @@ type MimeType struct {
 	MimeType  string
 }
 
+type MirroredMedium struct {
+	UrlHash    string
+	SourceUrl  string
+	Status     string
+	Reason     sql.NullString
+	Sha256     sql.NullString
+	Size       int64
+	Mime       sql.NullString
+	FetchedAt  int64
+	AccessedAt int64
+}
+
 type PaymentRequest struct {
 	ID               string
 	Pubkey           string
