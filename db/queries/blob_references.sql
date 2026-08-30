@@ -33,4 +33,10 @@ WHERE hash = $1;
 SELECT EXISTS(
     SELECT 1 FROM blob_references
     WHERE pubkey = $1 AND hash = $2
-) as exists;
+) as has_reference;
+-- The alias is NOT "exists": that is a reserved word in SQLite, where the
+-- query then fails with `near "exists": syntax error`. Because the caller
+-- discarded this error, every SQLite deployment silently reported "no
+-- reference" for blobs it did have, and the dedup path fell through to an
+-- insert that conflicted. Postgres accepts either alias, so the bug was
+-- invisible in production and only bit self-hosters.

@@ -201,6 +201,50 @@ type UploadLimitsConfig struct {
 // enabled, a background worker periodically deletes ownerless blobs (blobs with
 // no blob_references row). Disabled by default so destructive reconciliation is
 // opt-in per deployment.
+// MediaMirrorConfig configures the remote-media mirror (custom emoji and other
+// third-party images). Durations are strings here and parsed in the service
+// layer, matching the rest of this file.
+//
+// The mirror exists so clients never contact third-party image hosts directly.
+// It is OFF by default: it makes outbound requests on behalf of callers, which
+// is not a behaviour to acquire silently on an upgrade.
+type MediaMirrorConfig struct {
+	Enabled bool `yaml:"enabled"`
+
+	// SigningKey is the HMAC key for mirror links (>= 32 bytes). REQUIRED when
+	// enabled -- the server refuses to start without it, because an unsigned
+	// mirror is an open proxy. Never ship this to a browser.
+	SigningKey string `yaml:"signing_key"`
+
+	// SignatureTTL is how long a minted link stays valid ("0" = never expires).
+	SignatureTTL string `yaml:"signature_ttl"`
+
+	MaxObjectBytes   int64    `yaml:"max_object_bytes"`
+	MaxPixels        int64    `yaml:"max_pixels"`
+	MaxDimension     int      `yaml:"max_dimension"`
+	AllowedMimeTypes []string `yaml:"allowed_mime_types"`
+
+	FetchTimeout string `yaml:"fetch_timeout"`
+	MaxRedirects int    `yaml:"max_redirects"`
+	MaxSignBatch int    `yaml:"max_sign_batch"`
+
+	CacheMaxBytes        int64  `yaml:"cache_max_bytes"`
+	CacheLowWaterPercent int    `yaml:"cache_low_water_percent"`
+	EvictInterval        string `yaml:"evict_interval"`
+
+	NegativeTTL string `yaml:"negative_ttl"`
+	RefusedTTL  string `yaml:"refused_ttl"`
+
+	// AllowPrivateAddresses disables SSRF protection. Dangerous in public
+	// deployments; only for a self-hoster mirroring from their own LAN.
+	AllowPrivateAddresses bool     `yaml:"allow_private_addresses"`
+	ExtraDeniedCIDRs      []string `yaml:"extra_denied_cidrs"`
+
+	// OwnerPubkey owns mirrored blobs. Defaults to a synthetic marker key.
+	OwnerPubkey string `yaml:"owner_pubkey"`
+}
+
+
 type GCConfig struct {
 	Enabled   bool   `yaml:"enabled"`    // Enable the background reconcile worker
 	Interval  string `yaml:"interval"`   // How often to reconcile (default: 1h)
@@ -390,6 +434,7 @@ type Config struct {
 	Expiration    ExpirationConfig    `yaml:"expiration"`
 	GC            GCConfig            `yaml:"gc"`
 	UploadLimits  UploadLimitsConfig  `yaml:"upload_limits"`
+	MediaMirror   MediaMirrorConfig   `yaml:"media_mirror"`
 }
 
 func NewConfig(path string) (*Config, error) {

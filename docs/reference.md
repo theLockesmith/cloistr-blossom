@@ -35,6 +35,133 @@ For quick start and essential info, see [CLAUDE.md](../CLAUDE.md).
 | HEAD | `/media` | Yes | Get media upload requirements |
 | GET | `/:hash/thumb` | No | Get thumbnail (w, h query params) |
 
+### Remote Media Mirror
+
+Mirrors third-party images (custom emoji, NIP-30) so clients never contact the
+hosts that serve them.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/media/mirror/sign` | Yes (`t=mirror`) | Mint signed mirror links for a batch of remote URLs |
+| GET | `/media/mirror?u=&e=&s=` | No | Serve the mirrored image |
+
+Enabled by `media_mirror.enabled`; advertised as `features.media_mirror` in
+`/.well-known/blossom`. Both routes 501 when disabled.
+
+#### Why two endpoints with different auth
+
+The signing key cannot live in a browser — our apps are static SPAs, so anything
+they hold is readable in devtools, and a readable signing key is an open proxy.
+So minting is authenticated and serving is not:
+
+- **Signing is authenticated** so only our users can enqueue remote URLs.
+- **Serving is anonymous** because it is the request a browser makes for every
+  `<img src>`. Requiring auth there would attach an identity to every image
+  view, which is the exact tracking the mirror exists to remove.
+
+The signature covers the URL and an expiry and **nothing else**, so it is
+identical for every user. It identifies content, never a person. Everyone who
+mirrors `:blobcatpeek:` gets the same link, it caches once for all of them, and
+the link discloses nothing about who requested it. The consequence, stated
+plainly: signed links are shareable bearer tokens for one URL. That is an
+accepted trade — the exposure is one already-mirrored image, and the alternative
+costs the user's privacy. Revoke by rotating `signing_key`.
+
+#### Client flow
+
+```
+POST /media/mirror/sign
+Authorization: Nostr <base64 kind-24242 event, t=mirror>
+{"urls": ["https://host.example/blobcatpeek.png", "..."]}
+
+200 OK
+{
+  "signed":   [{"source": "https://host.example/blobcatpeek.png",
+                "url": "/media/mirror?u=<base64url>&s=<sig>",
+                "expires_at": 0}],
+  "rejected": [{"source": "file:///etc/passwd", "reason": "invalid_url"}]
+}
+```
+
+Then render `<img src="https://blossom.cloistr.xyz{url}">`.
+
+A bad URL rejects that URL, not the batch: an emoji set published by a stranger
+routinely contains one broken entry, and failing the whole request over it would
+leave the user with no images — the problem this feature exists to solve.
+
+#### Failure responses
+
+Three classes, deliberately distinguishable. An unfetched image, a refused
+image, and an unreachable host must not render identically, or the next person
+debugging it learns nothing.
+
+| Status | Code | Meaning | Client should |
+|--------|------|---------|---------------|
+| 415 | `MIRROR_REFUSED` | We fetched and said no (too large, wrong type, too many pixels, blocked address) | Show a "not available" placeholder. **Permanent** — do not retry |
+| 502 | `MIRROR_UNREACHABLE` | The remote host did not answer (DNS, timeout, HTTP error) | **Transient** — retry after `Retry-After` |
+| 403 | `MIRROR_UNSIGNED` | Link is not ours, or expired | Re-sign; do not retry the same link |
+| 501 | `MIRROR_DISABLED` | Mirroring is off on this server | Fall back to not rendering custom emoji |
+
+The body carries a machine-readable `reason` (`too_large`, `type_not_allowed`,
+`too_many_pixels`, `not_an_image`, `blocked_address`, `http_status`,
+`transport`, …). The failure *detail* is logged server-side only: it can contain
+the remote host's response, and returning it would let anyone with a signed link
+use the mirror as a network probe.
+
+Success responses carry `X-Blossom-Sha256` (the blob hash — a client can go
+straight to `GET /<hash>` from then on) and `X-Mirror-Status: hit|miss`.
+
+#### What it refuses, and why
+
+- **SSRF.** Destinations are validated at **dial time**, after DNS resolution,
+  on every redirect hop. Checking the URL before fetching does not work: DNS
+  rebinding answers differently for the check and the fetch, and a public URL
+  can redirect to `169.254.169.254`. Private, loopback, link-local, CGNAT,
+  broadcast, multicast, IPv4-mapped and NAT64 ranges are refused. `HTTP_PROXY`
+  is ignored — a proxy would terminate every connection at the proxy, so only
+  the proxy's address would ever be checked.
+- **Open-proxy use.** Unsigned requests are refused before any outbound fetch.
+- **Oversized objects.** A declared `Content-Length` over the cap hangs up
+  early; the read is limited regardless, because the header can lie.
+- **Decompression bombs.** Dimensions are read from the image header
+  (`DecodeConfig`, which never allocates a pixel buffer) and checked before any
+  decode.
+- **Type confusion.** The MIME type comes from the bytes, never the remote
+  `Content-Type`. A host serving HTML labelled `image/png` is refused — that is
+  how a media proxy becomes an XSS vector. Responses also carry `nosniff`, a
+  `sandbox` CSP, and `no-referrer`.
+
+#### What it does not record
+
+There is no per-user request log, by construction:
+
+- The `mirrored_media` table has no pubkey, IP, or per-request column. It is one
+  row per remote URL.
+- The fetch route is **excluded from the access log**. `ginzap` logs path,
+  query, and client IP, and the mirror carries the remote URL in its query — so
+  logging it would write "this IP fetched this emoji at this time" for every
+  image view, rebuilding the tracking in-house. That is worse than the leak,
+  because then we would be the ones doing it.
+- `accessed_at` (which drives LRU) is rounded to the hour, making it a
+  popularity signal rather than a viewing record.
+- Prometheus labels carry outcomes only — no URL, host, or pubkey.
+
+Failures are still diagnosable: the service logs status, reason, and detail with
+no identifiers, and `media_mirror_*` metrics carry outcome counts.
+
+#### Relationship to BUD-04
+
+BUD-04 (`PUT /mirror`) is a different thing and does not cover this case. It
+mirrors a blob whose **sha256 the client already knows** — the hash comes from
+the `x` tag of the authorization event and the server verifies the downloaded
+bytes against it (409 on mismatch). A client rendering a NIP-30 emoji has a URL
+and no idea what its hash is, so there is nothing to put in the `x` tag.
+
+This is therefore a separate endpoint, not a reinterpretation of BUD-04. What it
+does reuse is the substance: mirrored bytes are stored as ordinary
+content-addressed blobs, deduplicated against existing uploads, and retrievable
+at `GET /<sha256>` like anything else.
+
 ### Video Streaming (HLS & DASH)
 
 | Method | Path | Auth | Description |

@@ -34,6 +34,7 @@ type Services interface {
 	Payment() PaymentService
 	Cache() cache.Cache
 	UploadLimits() UploadLimitsService
+	MediaMirror() MediaMirrorService
 }
 
 // CDNService handles content delivery network integration for blob serving.
