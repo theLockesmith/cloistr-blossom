@@ -46,7 +46,29 @@ hosts that serve them.
 | GET | `/media/mirror?u=&e=&s=` | No | Serve the mirrored image |
 
 Enabled by `media_mirror.enabled`; advertised as `features.media_mirror` in
-`/.well-known/blossom`. Both routes 501 when disabled.
+`/.well-known/blossom`.
+
+#### Feature detection, and what a client must treat as "unavailable"
+
+**Both routes always exist and answer `501 MIRROR_DISABLED` when the feature is
+off.** They are registered unconditionally. A route that answers "this server
+has the feature and it is switched off" is diagnosable; an absent route is not.
+
+That said, **a client MUST treat `404` exactly as it treats `501`.** This is not
+optional, because 404 is what you legitimately get from:
+
+- a server built before this feature existed,
+- a deploy window where the client is ahead of the server,
+- any other Blossom implementation, which has no obligation to have this at all.
+
+A client that handles 501 but not 404 will show error states in precisely the
+situations where graceful degradation matters most. Both statuses mean the same
+thing to a client: *this server will not mirror for me; fall back to not
+rendering remote images.*
+
+The **preferred** signal is neither: read `features.media_mirror` from
+`/.well-known/blossom` once at startup and skip the mirror entirely when it is
+false. The status codes are the backstop for when that check is stale.
 
 #### Why two endpoints with different auth
 

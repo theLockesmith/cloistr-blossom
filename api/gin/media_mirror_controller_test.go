@@ -271,3 +271,117 @@ func TestSignEndpointRejectsEmptyBatch(t *testing.T) {
 		t.Errorf("status = %d, want 400", w.Code)
 	}
 }
+
+// The regression test for the production 404.
+//
+// The mirror shipped with its routes registered only when enabled, so a server
+// running the new build with the feature switched off returned 404. That is
+// indistinguishable from a typo in the path, a missing ingress rule, or a
+// server too old to have the feature — and it was in fact read as a failed
+// deploy while the correct build was running perfectly.
+//
+// A disabled feature must answer 501 from a route that EXISTS. This test
+// asserts registration, not just handler behaviour, which is why it drives
+// registerMediaMirrorRoutes rather than mounting the handlers by hand.
+func TestMirrorRoutesExistWhenDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	registerMediaMirrorRoutes(r, stubServices{mirror: &stubMirror{enabled: false}}, zap.NewNop())
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"serve route", http.MethodGet, "/media/mirror?u=x&s=y", ""},
+		{"sign route", http.MethodPost, "/media/mirror/sign", `{"urls":["https://a.example/1.png"]}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			var req *http.Request
+			if tc.body != "" {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			}
+			r.ServeHTTP(w, req)
+
+			if w.Code == http.StatusNotFound {
+				t.Fatalf("%s %s returned 404 while disabled — the route was not registered. "+
+					"A client cannot tell this from a wrong path or an undeployed server.", tc.method, tc.path)
+			}
+			if w.Code != http.StatusNotImplemented {
+				t.Errorf("status = %d, want 501", w.Code)
+			}
+			if !strings.Contains(w.Body.String(), CodeMirrorDisabled) {
+				t.Errorf("body %q lacks %s", w.Body.String(), CodeMirrorDisabled)
+			}
+		})
+	}
+}
+
+// The disabled answer must not sit behind authentication. An unauthenticated
+// caller hitting the sign route on a disabled server must learn that the
+// feature is off (501), not that they need to log in (401) — otherwise the
+// actual state is hidden behind a login they cannot complete, which is the
+// same "cannot tell what is wrong" failure in a different costume.
+func TestMirrorDisabledAnswersBeforeAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	registerMediaMirrorRoutes(r, stubServices{mirror: &stubMirror{enabled: false}}, zap.NewNop())
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/media/mirror/sign", strings.NewReader(`{"urls":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	// Deliberately no Authorization header.
+	r.ServeHTTP(w, req)
+
+	if w.Code == http.StatusUnauthorized {
+		t.Fatal("disabled mirror returned 401; the enabled-check must run before the auth middleware")
+	}
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("status = %d, want 501", w.Code)
+	}
+}
+
+// With the mirror enabled, the sign route must still be authenticated — the
+// fix above must not have opened it up.
+func TestMirrorSignStillRequiresAuthWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	registerMediaMirrorRoutes(r, stubServices{mirror: &stubMirror{enabled: true}}, zap.NewNop())
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/media/mirror/sign", strings.NewReader(`{"urls":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 — an unauthenticated caller must not be able to mint links", w.Code)
+	}
+}
+
+// The serve route must stay anonymous when enabled: it is the request a browser
+// makes for every <img src>, and requiring auth there would attach an identity
+// to every image view.
+func TestMirrorServeStaysAnonymousWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	registerMediaMirrorRoutes(r, stubServices{
+		mirror: &stubMirror{enabled: true, media: &core.MirroredMedia{Sha256: "h", Mime: "image/png", Data: []byte{1}}},
+	}, zap.NewNop())
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/media/mirror?u=x&s=y", nil))
+
+	if w.Code == http.StatusUnauthorized {
+		t.Fatal("serve route demanded auth; that would identify the viewer of every image")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+}
