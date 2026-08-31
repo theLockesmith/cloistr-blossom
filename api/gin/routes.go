@@ -134,15 +134,7 @@ func SetupRoutes(
 	//     would attach an identity to every image view. The signature already
 	//     bounds who can create these links, and the signature is identical
 	//     for every user, so it identifies content and never a person.
-	if services.MediaMirror() != nil && services.MediaMirror().IsEnabled() {
-		r.POST(
-			service.MirrorRoutePath+"/sign",
-			nostrAuthMiddleware("mirror", log),
-			signMirrorURLs(services, log),
-		)
-		r.GET(service.MirrorRoutePath, getMirroredMedia(services, log))
-		log.Info("media mirror routes registered")
-	}
+	registerMediaMirrorRoutes(r, services, log)
 
 	// BUD-05: Media optimization endpoint
 	r.HEAD(
