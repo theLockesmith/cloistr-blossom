@@ -7,6 +7,12 @@ stages:
 include:
   - project: 'coldforge/ci-templates'
     ref: main
+    file: '/templates/cloistr-rules.yml'
+  - project: 'coldforge/ci-templates'
+    ref: main
+    file: '/templates/go-test.yml'
+  - project: 'coldforge/ci-templates'
+    ref: main
     file: '/templates/kaniko-build.yml'
 
 variables:
@@ -39,6 +45,9 @@ test:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_COMMIT_BRANCH == "main"
+
+lint:
+  extends: [.go-lint, .cloistr-rules]
 
 # Build stage - build binary
 build:
