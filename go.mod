@@ -19,7 +19,7 @@ require (
 	github.com/ipfs/boxo v0.42.2
 	github.com/ipfs/go-cid v0.6.2
 	github.com/lib/pq v1.12.3
-	github.com/mattn/go-sqlite3 v1.14.51
+	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/nbd-wtf/go-nostr v0.52.3
 	github.com/prometheus/client_golang v1.24.1
