@@ -352,7 +352,7 @@ func (s *federationService) handleFileMetadataEvent(ctx context.Context, event *
 		case "m":
 			mimeType = tag[1]
 		case "size":
-			fmt.Sscanf(tag[1], "%d", &size)
+			_, _ = fmt.Sscanf(tag[1], "%d", &size)
 		}
 	}
 
@@ -405,7 +405,7 @@ func (s *federationService) handleFileMetadataEvent(ctx context.Context, event *
 	if s.config.AutoMirror {
 		shouldMirror, _ := s.ShouldAutoMirror(ctx, hash)
 		if shouldMirror {
-			s.MirrorBlobAsync(ctx, hash)
+			_ = s.MirrorBlobAsync(ctx, hash)
 		}
 	}
 
@@ -640,7 +640,7 @@ func (s *federationService) downloadAndStore(ctx context.Context, hash, url stri
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -737,7 +737,7 @@ func (s *federationService) CheckServerHealth(ctx context.Context, serverURL str
 	if err != nil {
 		return false, nil // Not healthy
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	healthy := resp.StatusCode >= 200 && resp.StatusCode < 500
 
@@ -935,7 +935,7 @@ func (s *federationService) Stop() error {
 	// Close relay connections
 	s.relayMu.Lock()
 	for _, relay := range s.relayConns {
-		relay.Close()
+		_ = relay.Close()
 	}
 	s.relayMu.Unlock()
 

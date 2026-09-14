@@ -639,7 +639,7 @@ func (r *StreamingChunkReader) Read(p []byte) (n int, err error) {
 			n, err = r.currentFile.Read(p)
 			if err == io.EOF {
 				// Close current file and move to next chunk
-				r.currentFile.Close()
+				_ = r.currentFile.Close()
 				r.currentFile = nil
 				r.currentIdx++
 				if n > 0 {

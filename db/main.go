@@ -79,7 +79,7 @@ func NewDBWithConfig(cfg DBConfig, migrationsPath string) (*sql.DB, error) {
 	}
 	_, err = migrate.Exec(dbi, dialect, migrations, migrate.Up)
 	if err != nil {
-		dbi.Close()
+		_ = dbi.Close()
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 

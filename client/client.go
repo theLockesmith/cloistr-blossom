@@ -44,11 +44,13 @@ func (c *Client) Upload(blob []byte) (*BlobDescriptor, error) {
 		return nil, err
 	}
 	defer func() {
-		res.Body.Close()
+		_ = res.Body.Close()
 	}()
 
 	blobDescriptor := &BlobDescriptor{}
-	err = json.NewDecoder(res.Body).Decode(blobDescriptor)
+	if err = json.NewDecoder(res.Body).Decode(blobDescriptor); err != nil {
+		return nil, err
+	}
 
 	return blobDescriptor, nil
 }
@@ -82,11 +84,13 @@ func (c *Client) List(pubkeyHex string) ([]BlobDescriptor, error) {
 		return nil, err
 	}
 	defer func() {
-		res.Body.Close()
+		_ = res.Body.Close()
 	}()
 
 	var blobDescriptors []BlobDescriptor
-	err = json.NewDecoder(res.Body).Decode(&blobDescriptors)
+	if err = json.NewDecoder(res.Body).Decode(&blobDescriptors); err != nil {
+		return nil, err
+	}
 
 	return blobDescriptors, nil
 }
@@ -102,7 +106,7 @@ func (c *Client) Get(blobHash string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() {
-		res.Body.Close()
+		_ = res.Body.Close()
 	}()
 
 	return io.ReadAll(res.Body)

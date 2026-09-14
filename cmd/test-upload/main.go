@@ -47,7 +47,7 @@ func main() {
 			{"expiration", fmt.Sprintf("%d", time.Now().Add(time.Hour).Unix())},
 		},
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 	
 	evBytes, _ := json.Marshal(ev)
 	auth := base64.StdEncoding.EncodeToString(evBytes)
@@ -63,7 +63,7 @@ func main() {
 		fmt.Printf("Upload failed: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("Response status: %d\n", resp.StatusCode)

@@ -482,7 +482,7 @@ func TestMediaService_CacheExpiration(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 
 	// Should be expired now
-	cached, ok = c.Get(ctx, cacheKey)
+	_, ok = c.Get(ctx, cacheKey)
 	assert.False(t, ok)
 
 	// Request again - should process again

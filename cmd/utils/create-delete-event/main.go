@@ -20,7 +20,7 @@ func main() {
 			{"x", "c402f0974e2f6ebe96efee967c64c3ebfd4366e2f284f4d8650371af7787fdb0"},
 		},
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	bytes, err := json.Marshal(ev)
 	if err != nil {

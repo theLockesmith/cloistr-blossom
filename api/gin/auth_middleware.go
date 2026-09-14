@@ -142,12 +142,13 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 		}
 
 		// additional checks depending on action
-		if action == "upload" {
+		switch action {
+		case "upload":
 			if xTagValue == "" {
 				reject(c, log, "upload requires x tag")
 				return
 			}
-		} else if action == "delete" {
+		case "delete":
 			if xTagValue == "" {
 				reject(c, log, "delete requires x tag")
 				return

@@ -59,7 +59,7 @@ func (r *blobService) Save(
 	var encryptedDEK sql.NullString
 	var encryptionNonce sql.NullString
 	var originalSize sql.NullInt64
-	finalEncryptionMode := string(encryptionMode)
+	var finalEncryptionMode string
 
 	// Handle encryption based on mode
 	switch encryptionMode {
@@ -185,7 +185,7 @@ func (r *blobService) GetFromHash(ctx context.Context, sha256 string) (*core.Blo
 	if r.storage != nil && len(dbBlob.Blob) == 0 {
 		reader, err := r.storage.Get(ctx, sha256)
 		if err == nil {
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 			data, err := io.ReadAll(reader)
 			if err == nil {
 				blob.Blob = data
@@ -288,7 +288,7 @@ func (r *blobService) GetFromPubkeyWithFilter(ctx context.Context, pubkey string
 	if err != nil {
 		return nil, fmt.Errorf("query blobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var blobs []*core.Blob
 	var total int64
@@ -399,7 +399,7 @@ func (r *blobService) SearchBlobs(ctx context.Context, filter *core.BlobFilter) 
 	if err != nil {
 		return nil, fmt.Errorf("search blobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Initialize to an empty (non-nil) slice so an empty result serializes as
 	// "blobs":[] rather than "blobs":null.

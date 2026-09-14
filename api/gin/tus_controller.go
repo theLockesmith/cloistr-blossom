@@ -172,7 +172,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			ctx.String(http.StatusInternalServerError, "failed to create upload")
 			return
 		}
-		f.Close()
+		_ = f.Close()
 
 		// Handle creation-with-upload extension
 		if ctx.Request.ContentLength > 0 {
@@ -478,7 +478,7 @@ func (h *TusHandler) handleChunkUpload(ctx *gin.Context, uploadID string, offset
 	if err != nil {
 		return offset, fmt.Errorf("open data file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Seek to offset
 	if _, err := f.Seek(offset, 0); err != nil {

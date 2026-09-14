@@ -121,7 +121,7 @@ func (s *expirationService) CleanupExpired(ctx context.Context) (int, error) {
 		metrics.ExpirationSweepsTotal.WithLabelValues("error").Inc()
 		return 0, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var locked bool
 	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", expirationLockKey).Scan(&locked); err != nil {

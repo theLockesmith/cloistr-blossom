@@ -82,14 +82,4 @@ func (s *mimeTypeService) dbMimeTypeIntoCore(m db.MimeType) *core.MimeType {
 	}
 }
 
-// TODO: create pkg for sqlite utils
-func dbBoolToBool(v int64) bool {
-	return v == 1
-}
 
-func boolToDbBool(v bool) int64 {
-	if v {
-		return 1
-	}
-	return 0
-}

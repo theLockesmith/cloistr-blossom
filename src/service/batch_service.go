@@ -229,7 +229,7 @@ func (s *batchService) Download(ctx context.Context, req *core.BatchDownloadRequ
 
 			fw, err := zw.Create(filename)
 			if err != nil {
-				reader.Close()
+				_ = reader.Close()
 				result.Success = false
 				result.Error = fmt.Sprintf("failed to create zip entry: %v", err)
 				results = append(results, result)
@@ -237,7 +237,7 @@ func (s *batchService) Download(ctx context.Context, req *core.BatchDownloadRequ
 			}
 
 			n, err := io.Copy(fw, reader)
-			reader.Close()
+			_ = reader.Close()
 			if err != nil {
 				result.Success = false
 				result.Error = fmt.Sprintf("failed to write to zip: %v", err)
@@ -284,7 +284,7 @@ func (s *batchService) Download(ctx context.Context, req *core.BatchDownloadRequ
 			}
 
 			data, err := io.ReadAll(reader)
-			reader.Close()
+			_ = reader.Close()
 			if err != nil {
 				result.Success = false
 				result.Error = fmt.Sprintf("failed to read data: %v", err)
@@ -358,7 +358,7 @@ func (s *batchService) Download(ctx context.Context, req *core.BatchDownloadRequ
 			}
 
 			data, err := io.ReadAll(reader)
-			reader.Close()
+			_ = reader.Close()
 			if err != nil {
 				result.Success = false
 				result.Error = fmt.Sprintf("failed to read data: %v", err)

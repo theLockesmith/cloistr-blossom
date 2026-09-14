@@ -201,7 +201,7 @@ func getBlob(
 
 		// Cache the processed result (1 hour TTL)
 		cacheKey := variantCacheKey(hash, opts)
-		services.Cache().Set(ctx.Request.Context(), cacheKey, result.Data, time.Hour)
+		_ = services.Cache().Set(ctx.Request.Context(), cacheKey, result.Data, time.Hour)
 
 		setSecurityHeaders(ctx, result.ContentType, hash)
 		ctx.Header("Content-Type", result.ContentType)

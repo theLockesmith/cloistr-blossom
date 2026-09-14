@@ -130,13 +130,13 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 		for {
 			select {
 			case <-done:
-				conn.Close()
+				_ = conn.Close()
 				h.log.Info("websocket connection closed by server",
 					zap.String("pubkey", pubkey))
 				return
 
 			case err := <-errCh:
-				conn.Close()
+				_ = conn.Close()
 				h.log.Debug("websocket connection closed",
 					zap.String("pubkey", pubkey),
 					zap.Error(err))
@@ -144,7 +144,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 
 			case <-pingTicker.C:
 				if err := wsutil.WriteServerMessage(conn, ws.OpPing, nil); err != nil {
-					conn.Close()
+					_ = conn.Close()
 					h.log.Debug("websocket ping failed",
 						zap.String("pubkey", pubkey),
 						zap.Error(err))
@@ -152,7 +152,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 				}
 
 			case <-ctx.Done():
-				conn.Close()
+				_ = conn.Close()
 				h.log.Info("websocket connection closed by context",
 					zap.String("pubkey", pubkey))
 				return

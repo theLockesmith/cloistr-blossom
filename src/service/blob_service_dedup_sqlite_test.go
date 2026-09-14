@@ -32,7 +32,7 @@ func TestSaveWithDedupIsIdempotentOnSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite test database: %v", err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 
 	queries := db.New(database)
 	store, err := storage.NewLocalStorage(t.TempDir())

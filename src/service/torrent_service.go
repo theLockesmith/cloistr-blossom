@@ -23,7 +23,6 @@ import (
 const (
 	// maxTorrentFileSize limits memory usage during torrent generation.
 	// Files larger than this will be streamed.
-	maxTorrentFileSize = 100 * 1024 * 1024 // 100 MB
 )
 
 const (
@@ -221,8 +220,8 @@ func (s *torrentService) GetTorrentInfo(ctx context.Context, blobHash string) (*
 // DeleteTorrent removes a cached torrent file.
 func (s *torrentService) DeleteTorrent(ctx context.Context, blobHash string) error {
 	if s.cache != nil {
-		s.cache.Delete(ctx, torrentCachePrefix+blobHash)
-		s.cache.Delete(ctx, torrentInfoPrefix+blobHash)
+		_ = s.cache.Delete(ctx, torrentCachePrefix+blobHash)
+		_ = s.cache.Delete(ctx, torrentInfoPrefix+blobHash)
 	}
 	return nil
 }
@@ -267,7 +266,7 @@ func (s *torrentService) generatePiecesStreaming(ctx context.Context, blobHash s
 	if err != nil {
 		return nil, 0, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var pieces []byte
 	pieceCount := 0

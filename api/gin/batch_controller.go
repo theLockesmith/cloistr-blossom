@@ -64,7 +64,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to open file %s: %v", fileHeader.Filename, err)).Abort(ctx)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		// Read file data
 		data, err := io.ReadAll(file)
@@ -118,7 +118,7 @@ func (c *BatchController) BatchDownload(ctx *gin.Context) {
 		clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Set headers
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", response.Filename))

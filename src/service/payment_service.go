@@ -296,7 +296,7 @@ func (s *paymentService) ValidatePaymentProof(ctx context.Context, proof *core.P
 	// Check if expired
 	if time.Now().Unix() > paymentReq.ExpiresAt {
 		// Mark as expired
-		s.queries.MarkPaymentExpired(ctx, paymentReq.ID)
+		_ = s.queries.MarkPaymentExpired(ctx, paymentReq.ID)
 		return core.ErrPaymentExpired
 	}
 

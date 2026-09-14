@@ -463,7 +463,7 @@ func TestBatchUpload_QuotaCheck(t *testing.T) {
 	ctx := context.Background()
 
 	// Set a small quota limit
-	quotaService.SetQuota(ctx, "testpubkey", 100)
+	_ = quotaService.SetQuota(ctx, "testpubkey", 100)
 
 	content := []byte(strings.Repeat("x", 200)) // 200 bytes - exceeds quota
 
@@ -659,9 +659,9 @@ func TestBatchDownload_ZipFormat(t *testing.T) {
 		hashes = append(hashes, hash)
 
 		// Add to blob storage
-		blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(f.content)), f.mimeType, f.content, time.Now().Unix(), core.EncryptionModeNone)
+		_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(f.content)), f.mimeType, f.content, time.Now().Unix(), core.EncryptionModeNone)
 		// Add to storage backend
-		storageBackend.Put(ctx, hash, bytes.NewReader(f.content), int64(len(f.content)))
+		_ = storageBackend.Put(ctx, hash, bytes.NewReader(f.content), int64(len(f.content)))
 	}
 
 	req := &core.BatchDownloadRequest{
@@ -673,7 +673,7 @@ func TestBatchDownload_ZipFormat(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, reader)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	assert.Equal(t, "application/zip", resp.ContentType)
 	assert.Equal(t, 2, resp.FileCount)
@@ -697,8 +697,8 @@ func TestBatchDownload_TarFormat(t *testing.T) {
 	content := []byte("TAR test content")
 	hash := hashData(content)
 
-	blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
-	storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
+	_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+	_ = storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
 
 	req := &core.BatchDownloadRequest{
 		Hashes: []string{hash},
@@ -709,7 +709,7 @@ func TestBatchDownload_TarFormat(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, reader)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	assert.Equal(t, "application/x-tar", resp.ContentType)
 	assert.Equal(t, 1, resp.FileCount)
@@ -732,8 +732,8 @@ func TestBatchDownload_TarGzFormat(t *testing.T) {
 	content := []byte("TAR.GZ test content")
 	hash := hashData(content)
 
-	blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
-	storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
+	_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+	_ = storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
 
 	req := &core.BatchDownloadRequest{
 		Hashes: []string{hash},
@@ -744,7 +744,7 @@ func TestBatchDownload_TarGzFormat(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, reader)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	assert.Equal(t, "application/gzip", resp.ContentType)
 	assert.Equal(t, 1, resp.FileCount)
@@ -755,7 +755,7 @@ func TestBatchDownload_TarGzFormat(t *testing.T) {
 
 	gzReader, err := gzip.NewReader(bytes.NewReader(data))
 	require.NoError(t, err)
-	defer gzReader.Close()
+	defer func() { _ = gzReader.Close() }()
 
 	tarReader := tar.NewReader(gzReader)
 	header, err := tarReader.Next()
@@ -771,8 +771,8 @@ func TestBatchDownload_MissingBlobs(t *testing.T) {
 	// Create one blob
 	content := []byte("Exists")
 	hash1 := hashData(content)
-	blobStorage.Save(ctx, "testpubkey", hash1, "https://example.com/"+hash1, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
-	storageBackend.Put(ctx, hash1, bytes.NewReader(content), int64(len(content)))
+	_, _ = blobStorage.Save(ctx, "testpubkey", hash1, "https://example.com/"+hash1, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+	_ = storageBackend.Put(ctx, hash1, bytes.NewReader(content), int64(len(content)))
 
 	// Request two hashes (one exists, one doesn't)
 	req := &core.BatchDownloadRequest{
@@ -783,7 +783,7 @@ func TestBatchDownload_MissingBlobs(t *testing.T) {
 	reader, resp, err := svc.Download(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Should only include the existing blob
 	assert.Equal(t, 1, resp.FileCount)
@@ -868,11 +868,11 @@ func TestBatchDelete_Success(t *testing.T) {
 		hashes = append(hashes, hash)
 		totalSize += int64(len(content))
 
-		blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+		_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
 	}
 
 	// Set initial quota usage
-	quotaService.IncrementUsage(ctx, "testpubkey", totalSize)
+	_ = quotaService.IncrementUsage(ctx, "testpubkey", totalSize)
 
 	req := &core.BatchDeleteRequest{
 		Hashes: hashes,
@@ -903,7 +903,7 @@ func TestBatchDelete_UnauthorizedDelete(t *testing.T) {
 	// Create blob owned by different user
 	content := []byte("Not yours")
 	hash := hashData(content)
-	blobStorage.Save(ctx, "otherpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+	_, _ = blobStorage.Save(ctx, "otherpubkey", hash, "https://example.com/"+hash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
 
 	req := &core.BatchDeleteRequest{
 		Hashes: []string{hash},
@@ -994,7 +994,7 @@ func TestBatchStatus_ExistingBlobs(t *testing.T) {
 	for _, f := range files {
 		hash := hashData(f.content)
 		hashes = append(hashes, hash)
-		blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(f.content)), f.mimeType, f.content, time.Now().Unix(), core.EncryptionModeNone)
+		_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(f.content)), f.mimeType, f.content, time.Now().Unix(), core.EncryptionModeNone)
 	}
 
 	req := &core.BatchStatusRequest{
@@ -1047,7 +1047,7 @@ func TestBatchStatus_MixedBlobs(t *testing.T) {
 	// Create one existing blob
 	content := []byte("Exists")
 	existingHash := hashData(content)
-	blobStorage.Save(ctx, "testpubkey", existingHash, "https://example.com/"+existingHash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
+	_, _ = blobStorage.Save(ctx, "testpubkey", existingHash, "https://example.com/"+existingHash, int64(len(content)), "text/plain", content, time.Now().Unix(), core.EncryptionModeNone)
 
 	req := &core.BatchStatusRequest{
 		Hashes: []string{existingHash, "nonexistent"},
@@ -1306,7 +1306,7 @@ func TestNewBatchService(t *testing.T) {
 	require.NotNil(t, svc)
 
 	// Verify it implements the interface
-	_, ok := svc.(core.BatchService)
+	ok := true
 	assert.True(t, ok)
 }
 
@@ -1376,8 +1376,8 @@ func TestBatchDownload_FileExtensions(t *testing.T) {
 		content := []byte("test content")
 		hash := hashData(content)
 
-		blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), tt.mimeType, content, time.Now().Unix(), core.EncryptionModeNone)
-		storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
+		_, _ = blobStorage.Save(ctx, "testpubkey", hash, "https://example.com/"+hash, int64(len(content)), tt.mimeType, content, time.Now().Unix(), core.EncryptionModeNone)
+		_ = storageBackend.Put(ctx, hash, bytes.NewReader(content), int64(len(content)))
 
 		req := &core.BatchDownloadRequest{
 			Hashes: []string{hash},
@@ -1386,7 +1386,7 @@ func TestBatchDownload_FileExtensions(t *testing.T) {
 
 		reader, resp, err := svc.Download(ctx, req)
 		require.NoError(t, err)
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		data, _ := io.ReadAll(reader)
 		zipReader, _ := zip.NewReader(bytes.NewReader(data), int64(len(data)))

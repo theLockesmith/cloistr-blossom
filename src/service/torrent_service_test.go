@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"net/url"
 	"os"
 	"testing"
@@ -41,7 +40,7 @@ func setupTorrentTest(t *testing.T) (*torrentService, string, func()) {
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tempDir)
+		_ = os.RemoveAll(tempDir)
 	}
 
 	return svc, tempDir, cleanup
@@ -636,7 +635,7 @@ func TestBuildMagnetURI_Complete(t *testing.T) {
 func TestNewTorrentService(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "torrent-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -828,8 +827,8 @@ func TestGenerateTorrent_DeterministicInfoHash(t *testing.T) {
 	require.NoError(t, err)
 
 	// Clear cache
-	svc.cache.Delete(ctx, torrentCachePrefix+blobHash)
-	svc.cache.Delete(ctx, torrentInfoPrefix+blobHash)
+	_ = svc.cache.Delete(ctx, torrentCachePrefix+blobHash)
+	_ = svc.cache.Delete(ctx, torrentInfoPrefix+blobHash)
 
 	// Second generation
 	info2, _, err := svc.GenerateTorrent(ctx, blobHash, config)
@@ -851,7 +850,7 @@ func TestGenerateTorrent_BlobReadError(t *testing.T) {
 	// Create a temporary directory and local storage
 	tempDir, err := os.MkdirTemp("", "torrent-error-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -889,25 +888,5 @@ func TestGenerateTorrent_ReadBlobError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// mockReadCloser is a helper for testing read errors
-type mockReadCloser struct {
-	data []byte
-	pos  int
-	fail bool
-}
 
-func (m *mockReadCloser) Read(p []byte) (n int, err error) {
-	if m.fail {
-		return 0, io.ErrUnexpectedEOF
-	}
-	if m.pos >= len(m.data) {
-		return 0, io.EOF
-	}
-	n = copy(p, m.data[m.pos:])
-	m.pos += n
-	return n, nil
-}
 
-func (m *mockReadCloser) Close() error {
-	return nil
-}

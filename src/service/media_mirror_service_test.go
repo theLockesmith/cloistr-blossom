@@ -42,7 +42,7 @@ func newMirrorHarness(t *testing.T, mutate func(*core.MediaMirrorConfig)) (*medi
 	if err != nil {
 		t.Fatalf("open test database (this also verifies the mirror migration applies on SQLite): %v", err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 
 	queries := db.New(database)
 	store, err := storage.NewLocalStorage(t.TempDir())
@@ -112,7 +112,7 @@ func TestMirrorFetchesAndCaches(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -166,7 +166,7 @@ func TestMirrorFetchesAndCaches(t *testing.T) {
 func TestMirrorDeduplicatesIdenticalContentAcrossURLs(t *testing.T) {
 	body := pngOfSize(t, 16, 16)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -189,7 +189,7 @@ func TestMirrorRefusesOversizedContent(t *testing.T) {
 	t.Run("declared content-length", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", "999999999")
-			w.Write(make([]byte, 16))
+			_, _ = w.Write(make([]byte, 16))
 		}))
 		defer srv.Close()
 
@@ -205,7 +205,7 @@ func TestMirrorRefusesOversizedContent(t *testing.T) {
 			// No Content-Length: chunked, so the size is only known by reading.
 			w.Header().Set("Transfer-Encoding", "chunked")
 			for i := 0; i < 64; i++ {
-				w.Write(make([]byte, 1024))
+				_, _ = w.Write(make([]byte, 1024))
 			}
 		}))
 		defer srv.Close()
@@ -222,7 +222,7 @@ func TestMirrorRefusesDecompressionBomb(t *testing.T) {
 	// A 6000x6000 all-zero PNG compresses to a few KB but decodes to ~144MB.
 	bomb := pngOfSize(t, 6000, 6000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(bomb)
+		_, _ = w.Write(bomb)
 	}))
 	defer srv.Close()
 
@@ -241,7 +241,7 @@ func TestMirrorRefusesDecompressionBomb(t *testing.T) {
 func TestMirrorRefusesTypeMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		w.Write([]byte("<html><script>alert(1)</script></html>"))
+		_, _ = w.Write([]byte("<html><script>alert(1)</script></html>"))
 	}))
 	defer srv.Close()
 
@@ -253,7 +253,7 @@ func TestMirrorRefusesTypeMismatch(t *testing.T) {
 func TestMirrorRefusesDisallowedImageType(t *testing.T) {
 	body := pngOfSize(t, 8, 8)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -273,7 +273,7 @@ func TestMirrorDistinguishesUnreachableFromRefused(t *testing.T) {
 	defer dead.Close()
 
 	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not an image at all"))
+		_, _ = w.Write([]byte("not an image at all"))
 	}))
 	defer refusing.Close()
 
@@ -327,7 +327,7 @@ func TestMirrorRetriesAfterNegativeTTLExpires(t *testing.T) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -376,7 +376,7 @@ func TestMirrorCollapsesConcurrentFetches(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		<-release // hold the first request open so the others pile up
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -484,7 +484,7 @@ func TestMirrorSignURLsEnforcesBatchCap(t *testing.T) {
 func TestMirrorEvictsToLowWaterMark(t *testing.T) {
 	body := pngOfSize(t, 64, 64)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -535,7 +535,7 @@ func TestMirrorEvictsToLowWaterMark(t *testing.T) {
 func TestMirrorEvictIsNoOpUnderCap(t *testing.T) {
 	body := pngOfSize(t, 8, 8)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -560,7 +560,7 @@ func TestMirrorRefetchesAfterEviction(t *testing.T) {
 	var hits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 

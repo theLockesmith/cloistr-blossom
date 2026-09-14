@@ -72,7 +72,7 @@ func TestS3StorageIntegration(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	gotData, err := io.ReadAll(reader)
-	reader.Close()
+	_ = reader.Close()
 	if err != nil {
 		t.Fatalf("ReadAll: %v", err)
 	}

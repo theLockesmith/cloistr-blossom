@@ -179,7 +179,7 @@ func (c *Client) getInfo(ctx context.Context) (*GetInfoResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -242,7 +242,7 @@ func (c *Client) CreateInvoice(ctx context.Context, amountSats int64, memo strin
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create invoice: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -287,7 +287,7 @@ func (c *Client) LookupInvoice(ctx context.Context, paymentHash string) (paid bo
 	if err != nil {
 		return false, "", fmt.Errorf("failed to lookup invoice: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

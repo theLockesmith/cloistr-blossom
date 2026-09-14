@@ -20,7 +20,7 @@ func main() {
 			{"expiration", fmt.Sprintf("%d", time.Now().Add(time.Hour*24).Unix())},
 		},
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	bytes, err := json.Marshal(ev)
 	if err != nil {

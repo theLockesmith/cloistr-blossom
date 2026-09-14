@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -89,7 +88,7 @@ func (s *ipfsService) PinBlob(ctx context.Context, blobHash string, name string)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", core.ErrBlobNotFound, err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Read content to calculate CID
 	content, err := io.ReadAll(reader)
@@ -167,7 +166,7 @@ func (s *ipfsService) UnpinBlob(ctx context.Context, blobHash string) error {
 
 	// Remove from cache
 	if s.cache != nil {
-		s.cache.Delete(ctx, ipfsPinCachePrefix+blobHash)
+		_ = s.cache.Delete(ctx, ipfsPinCachePrefix+blobHash)
 	}
 
 	s.log.Info("blob unpinned from IPFS",
@@ -305,7 +304,7 @@ func (s *ipfsService) cachePin(ctx context.Context, pin *core.IPFSPin) {
 		return
 	}
 	data, _ := json.Marshal(pin)
-	s.cache.Set(ctx, ipfsPinCachePrefix+pin.BlobHash, data, ipfsPinCacheTTL)
+	_ = s.cache.Set(ctx, ipfsPinCachePrefix+pin.BlobHash, data, ipfsPinCacheTTL)
 }
 
 // calculateCID generates an IPFS CID from content.
@@ -385,9 +384,3 @@ func (s *noopIPFSService) GetIPFSGatewayURL(cidStr string) string {
 var _ core.IPFSService = (*ipfsService)(nil)
 var _ core.IPFSService = (*noopIPFSService)(nil)
 
-// Helper to read blob content (not used since we read directly)
-func readAll(r io.Reader) (*bytes.Buffer, error) {
-	buf := new(bytes.Buffer)
-	_, err := buf.ReadFrom(r)
-	return buf, err
-}

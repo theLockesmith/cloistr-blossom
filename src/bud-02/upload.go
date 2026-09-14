@@ -109,17 +109,11 @@ func UploadBlob(
 	// Update quota usage - count the blob size for this user regardless of dedup
 	// Each user's quota reflects their "ownership" of blob references
 	if isNewBlob {
-		// New blob was stored - increment quota
-		if err := quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes))); err != nil {
-			// Log but don't fail - the blob was saved successfully
-		}
+		// New blob was stored - increment quota (non-fatal)
+		_ = quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes)))
 	} else {
 		// Blob was deduplicated - still count against user's quota
-		// This is fair: user gets the space benefit of dedup in storage,
-		// but their quota reflects what they've uploaded
-		if err := quota.IncrementUsage(ctx, pubkey, blobDescriptor.Size); err != nil {
-			// Log but don't fail
-		}
+		_ = quota.IncrementUsage(ctx, pubkey, blobDescriptor.Size)
 	}
 
 	return blobDescriptor, nil

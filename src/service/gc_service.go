@@ -121,7 +121,7 @@ func (s *gcService) reconcileLocked(ctx context.Context, limit int) (*core.GCRec
 		metrics.GCSweepsTotal.WithLabelValues("error").Inc()
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var locked bool
 	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", gcLockKey).Scan(&locked); err != nil {

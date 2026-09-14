@@ -52,7 +52,7 @@ func MirrorBlob(
 		return nil, fmt.Errorf("GET blob at: %s returned HTTP status: %d: %w", blobUrl.String(), res.StatusCode, err)
 	}
 	defer func() {
-		res.Body.Close()
+		_ = res.Body.Close()
 	}()
 	blobBytes, err := io.ReadAll(res.Body)
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {

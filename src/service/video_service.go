@@ -27,24 +27,24 @@ const (
 )
 
 type videoService struct {
-	storage      storage.StorageBackend
-	cache        cache.Cache
-	workDir      string
-	ffmpegPath   string
-	log          *zap.Logger
-	jobs         map[string]*core.TranscodeJob
-	jobsMu       sync.RWMutex
-	cdnBaseUrl   string
-	hwAccel      core.HWAccelConfig
-	encoder      string          // detected encoder (libx264, h264_nvenc, hevc_nvenc, etc.)
-	codec        core.VideoCodec // selected codec (h264, hevc, av1)
+	storage    storage.StorageBackend
+	cache      cache.Cache
+	workDir    string
+	ffmpegPath string
+	log        *zap.Logger
+	jobs       map[string]*core.TranscodeJob
+	jobsMu     sync.RWMutex
+	cdnBaseUrl string
+	hwAccel    core.HWAccelConfig
+	encoder    string          // detected encoder (libx264, h264_nvenc, hevc_nvenc, etc.)
+	codec      core.VideoCodec // selected codec (h264, hevc, av1)
 }
 
 // VideoConfig holds configuration for the video service.
 type VideoConfig struct {
-	WorkDir    string            // Directory for temporary transcoding files
-	FFmpegPath string            // Path to FFmpeg binary (empty = auto-detect)
-	CDNBaseUrl string            // Base URL for serving segments
+	WorkDir    string             // Directory for temporary transcoding files
+	FFmpegPath string             // Path to FFmpeg binary (empty = auto-detect)
+	CDNBaseUrl string             // Base URL for serving segments
 	HWAccel    core.HWAccelConfig // Hardware acceleration configuration
 }
 
@@ -349,7 +349,7 @@ func (s *videoService) runTranscode(ctx context.Context, job *core.TranscodeJob)
 		s.updateJobStatus(job, core.TranscodeStatusFailed, 0, fmt.Sprintf("get blob: %v", err))
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Write to temp file for FFmpeg
 	inputPath := filepath.Join(job.OutputDir, "input.tmp")
@@ -360,12 +360,12 @@ func (s *videoService) runTranscode(ctx context.Context, job *core.TranscodeJob)
 	}
 
 	if _, err := inputFile.ReadFrom(reader); err != nil {
-		inputFile.Close()
+		_ = inputFile.Close()
 		s.updateJobStatus(job, core.TranscodeStatusFailed, 0, fmt.Sprintf("write input file: %v", err))
 		return
 	}
-	inputFile.Close()
-	defer os.Remove(inputPath)
+	_ = inputFile.Close()
+	defer func() { _ = os.Remove(inputPath) }()
 
 	// Transcode to each quality
 	totalQualities := len(job.Qualities)
@@ -482,7 +482,7 @@ func (s *videoService) buildTranscodeArgs(inputPath, outputPath, outputDir strin
 		args = append(args,
 			"-preset", preset,
 			"-rc", "vbr", // Variable bitrate
-			"-cq", "23",  // Constant quality (similar to CRF)
+			"-cq", "23", // Constant quality (similar to CRF)
 		)
 		if s.hwAccel.LookAhead > 0 {
 			// Clamp to maximum supported by most NVENC models
@@ -614,9 +614,9 @@ func (s *videoService) generateMasterPlaylist(job *core.TranscodeJob) error {
 
 	for _, quality := range job.Qualities {
 		bandwidth := (quality.VideoBitrate + quality.AudioBitrate) * 1000
-		playlist.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-			bandwidth, quality.Width, quality.Height, quality.Name))
-		playlist.WriteString(fmt.Sprintf("%s/stream.m3u8\n", quality.Name))
+		fmt.Fprintf(&playlist, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
+			bandwidth, quality.Width, quality.Height, quality.Name)
+		fmt.Fprintf(&playlist, "%s/stream.m3u8\n", quality.Name)
 	}
 
 	masterPath := filepath.Join(job.OutputDir, "master.m3u8")
@@ -673,7 +673,7 @@ func (s *videoService) updateJobStatus(job *core.TranscodeJob, status core.Trans
 	// Cache job status
 	if s.cache != nil {
 		data, _ := json.Marshal(job)
-		s.cache.Set(context.Background(), jobCachePrefix+job.BlobHash, data, jobCacheTTL)
+		_ = s.cache.Set(context.Background(), jobCachePrefix+job.BlobHash, data, jobCacheTTL)
 	}
 }
 
@@ -721,7 +721,7 @@ func (s *videoService) GetHLSManifest(ctx context.Context, blobHash string) (*co
 	if err != nil {
 		return nil, core.ErrTranscodeNotFound
 	}
-	defer masterReader.Close()
+	defer func() { _ = masterReader.Close() }()
 
 	var masterBuf bytes.Buffer
 	if _, err := masterBuf.ReadFrom(masterReader); err != nil {
@@ -750,8 +750,8 @@ func (s *videoService) GetHLSManifest(ctx context.Context, blobHash string) (*co
 		}
 
 		var variantBuf bytes.Buffer
-		variantBuf.ReadFrom(variantReader)
-		variantReader.Close()
+		_, _ = variantBuf.ReadFrom(variantReader)
+		_ = variantReader.Close()
 
 		manifest.Variants[quality.Name] = variantBuf.String()
 	}
@@ -815,7 +815,7 @@ func (s *videoService) GetSegment(ctx context.Context, blobHash, quality, segmen
 	if err != nil {
 		return nil, fmt.Errorf("get segment: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(reader); err != nil {
@@ -872,12 +872,12 @@ func (s *videoService) DeleteTranscodedFiles(ctx context.Context, blobHash strin
 
 	// Remove from cache
 	if s.cache != nil {
-		s.cache.Delete(ctx, jobCachePrefix+blobHash)
+		_ = s.cache.Delete(ctx, jobCachePrefix+blobHash)
 	}
 
 	// Clean up local work directory
 	outputDir := filepath.Join(s.workDir, blobHash)
-	os.RemoveAll(outputDir)
+	_ = os.RemoveAll(outputDir)
 
 	return nil
 }
@@ -1020,7 +1020,7 @@ func (s *videoService) GetDASHManifest(ctx context.Context, blobHash string) (*c
 	if err != nil {
 		return nil, core.ErrTranscodeNotFound
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(reader); err != nil {
@@ -1073,7 +1073,7 @@ func (s *videoService) GetDASHSegment(ctx context.Context, blobHash, segmentName
 	if err != nil {
 		return nil, fmt.Errorf("get DASH segment: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(reader); err != nil {
@@ -1125,7 +1125,7 @@ func (s *videoService) GetSubtitle(ctx context.Context, blobHash, language strin
 	if err != nil {
 		return nil, core.ErrSubtitleNotFound
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(reader); err != nil {
@@ -1150,8 +1150,8 @@ func (s *videoService) ListSubtitles(ctx context.Context, blobHash string) ([]co
 		}
 
 		var buf bytes.Buffer
-		buf.ReadFrom(reader)
-		reader.Close()
+		_, _ = buf.ReadFrom(reader)
+		_ = reader.Close()
 
 		var track core.SubtitleTrack
 		if err := json.Unmarshal(buf.Bytes(), &track); err == nil {
@@ -1185,9 +1185,7 @@ func isValidWebVTT(content []byte) bool {
 	text := string(content)
 
 	// Remove BOM if present
-	if strings.HasPrefix(text, "\ufeff") {
-		text = strings.TrimPrefix(text, "\ufeff")
-	}
+	text = strings.TrimPrefix(text, "\ufeff")
 
 	// Check for WEBVTT signature
 	// Per spec, "WEBVTT" must be followed by space, tab, newline, or EOF

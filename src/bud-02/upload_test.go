@@ -42,14 +42,13 @@ func newTestServices(t *testing.T, dbFile string, conf *config.Config) core.Serv
 var jpegMagic = []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10}
 
 // pngMagic returns PNG magic bytes.
-var pngMagic = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 
 // textBytes returns plain text bytes that mimetype.Detect will see as text/plain.
 var textBytes = []byte("hello world, just plain text")
 
 func TestUpload(t *testing.T) {
 	dbFile := "./db-TestUpload.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 
@@ -75,7 +74,7 @@ func TestUpload(t *testing.T) {
 
 func TestUnauthUpload(t *testing.T) {
 	dbFile := "./db-TestUnauthUpload.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 
@@ -128,7 +127,7 @@ func baseConf(dbFile, pk string) *config.Config {
 // is completely unrestricted — no mime check, no size check, no day cap.
 func TestUploadLimits_Disabled(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_Disabled.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 	conf := baseConf(dbFile, pk)
@@ -148,7 +147,7 @@ func TestUploadLimits_Disabled(t *testing.T) {
 // passes when "image/" is in the tier's AllowedTypePrefixes.
 func TestUploadLimits_MimeType_AllowedPrefixMatches(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_MimeType_Allowed.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 	conf := baseConf(dbFile, pk)
@@ -171,7 +170,7 @@ func TestUploadLimits_MimeType_AllowedPrefixMatches(t *testing.T) {
 // allowed prefixes is rejected.
 func TestUploadLimits_MimeType_BlockedPrefix(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_MimeType_Blocked.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 	conf := baseConf(dbFile, pk)
@@ -202,7 +201,7 @@ func TestUploadLimits_MimeType_BlockedPrefix(t *testing.T) {
 // header would claim.
 func TestUploadLimits_MimeType_MagicByteWins(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_MagicByteWins.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 
@@ -230,7 +229,7 @@ func TestUploadLimits_MimeType_MagicByteWins(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Each sub-test uses its own DB to avoid cross-contamination.
 			subDB := dbFile + "_" + tt.name + ".sqlite3"
-			t.Cleanup(func() { os.Remove(subDB) })
+			t.Cleanup(func() { _ = os.Remove(subDB) })
 
 			conf := baseConf(subDB, pk)
 			conf.UploadLimits = config.UploadLimitsConfig{
@@ -256,7 +255,7 @@ func TestUploadLimits_MimeType_MagicByteWins(t *testing.T) {
 // the named tier.
 func TestUploadLimits_FileSize_AtAndOverLimit(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_FileSize.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 
@@ -275,7 +274,7 @@ func TestUploadLimits_FileSize_AtAndOverLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			subDB := dbFile + "_" + tt.name + ".sqlite3"
-			t.Cleanup(func() { os.Remove(subDB) })
+			t.Cleanup(func() { _ = os.Remove(subDB) })
 
 			conf := baseConf(subDB, pk)
 			conf.UploadLimits = config.UploadLimitsConfig{
@@ -305,7 +304,7 @@ func TestUploadLimits_FileSize_AtAndOverLimit(t *testing.T) {
 // up to the limit and rejects the next one.
 func TestUploadLimits_UploadsPerDay(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_UploadsPerDay.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 	conf := baseConf(dbFile, pk)
@@ -344,7 +343,7 @@ func TestUploadLimits_UploadsPerDay(t *testing.T) {
 // platform-mode deployment it would be exercised via the DB tier function.
 func TestUploadLimits_AnonymousTier_Config(t *testing.T) {
 	dbFile := "./db-TestUploadLimits_AnonymousTier.sqlite3"
-	t.Cleanup(func() { os.Remove(dbFile) })
+	t.Cleanup(func() { _ = os.Remove(dbFile) })
 
 	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
 	conf := baseConf(dbFile, pk)

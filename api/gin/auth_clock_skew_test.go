@@ -40,7 +40,7 @@ func authEventAt(createdAt time.Time, expiresAt time.Time) *nostr.Event {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 	return ev
 }
 
@@ -114,7 +114,7 @@ func TestAuth_RejectsNonNumericExpiration(t *testing.T) {
 			nostr.Tag{"x", "sha256hash"},
 		},
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 	assert.Equal(t, http.StatusUnauthorized, serveAuth(t, ev))
 }
 
@@ -130,7 +130,7 @@ func TestAuth_SkewToleranceDoesNotBypassOtherChecks(t *testing.T) {
 			nostr.Tag{"t", "delete"}, // endpoint expects upload
 			nostr.Tag{"x", "sha256hash"},
 		}
-		ev.Sign(sk)
+		_ = ev.Sign(sk)
 		assert.Equal(t, http.StatusUnauthorized, serveAuth(t, ev))
 	})
 
@@ -146,7 +146,7 @@ func TestAuth_SkewToleranceDoesNotBypassOtherChecks(t *testing.T) {
 				nostr.Tag{"t", "upload"},
 			},
 		}
-		ev.Sign(sk)
+		_ = ev.Sign(sk)
 		assert.Equal(t, http.StatusUnauthorized, serveAuth(t, ev))
 	})
 

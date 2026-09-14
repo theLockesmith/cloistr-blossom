@@ -60,7 +60,7 @@ func createValidAuthEvent(action string, xTag string, expirationOffset time.Dura
 		ev.Tags = append(ev.Tags, nostr.Tag{"x", xTag})
 	}
 
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	return ev
 }
@@ -194,7 +194,7 @@ func TestNostrAuthMiddleware_WrongKind(t *testing.T) {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	authHeader, err := encodeAuthEvent(ev)
 	require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestNostrAuthMiddleware_FutureCreatedAt(t *testing.T) {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	authHeader, err := encodeAuthEvent(ev)
 	require.NoError(t, err)
@@ -260,7 +260,7 @@ func TestNostrAuthMiddleware_MissingExpirationTag(t *testing.T) {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	authHeader, err := encodeAuthEvent(ev)
 	require.NoError(t, err)
@@ -292,7 +292,7 @@ func TestNostrAuthMiddleware_MissingTTag(t *testing.T) {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	authHeader, err := encodeAuthEvent(ev)
 	require.NoError(t, err)
@@ -525,7 +525,7 @@ func TestNostrAuthMiddleware_EmptyXTagValue(t *testing.T) {
 		},
 		Content: "",
 	}
-	ev.Sign(sk)
+	_ = ev.Sign(sk)
 
 	authHeader, err := encodeAuthEvent(ev)
 	require.NoError(t, err)
@@ -586,7 +586,7 @@ func TestNostrAuthMiddleware_MalformedTags(t *testing.T) {
 				Tags:      tt.tags,
 				Content:   "",
 			}
-			ev.Sign(sk)
+			_ = ev.Sign(sk)
 
 			authHeader, err := encodeAuthEvent(ev)
 			require.NoError(t, err)
@@ -656,7 +656,7 @@ func TestNostrAuthMiddleware_EdgeCaseTimestamps(t *testing.T) {
 				},
 				Content: "",
 			}
-			ev.Sign(sk)
+			_ = ev.Sign(sk)
 
 			authHeader, err := encodeAuthEvent(ev)
 			require.NoError(t, err)

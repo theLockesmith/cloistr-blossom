@@ -162,7 +162,7 @@ func (s *replicationService) executeJob(ctx context.Context, job *core.Replicati
 		job.Error = fmt.Sprintf("read source: %v", err)
 		return job, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Get size
 	size, err := sourceStorage.Size(ctx, job.BlobHash)

@@ -39,22 +39,22 @@ type S3Storage struct {
 // NewS3Storage creates a new S3Storage instance.
 func NewS3Storage(ctx context.Context, cfg S3Config) (*S3Storage, error) {
 	// Build AWS config with custom endpoint and credentials
-	resolver := aws.EndpointResolverWithOptionsFunc(
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+	resolver := aws.EndpointResolverWithOptionsFunc( //nolint:staticcheck // S3-compatible endpoints require the deprecated resolver
+		func(service, region string, options ...interface{}) (aws.Endpoint, error) { //nolint:staticcheck
 			if cfg.Endpoint != "" {
-				return aws.Endpoint{
+				return aws.Endpoint{ //nolint:staticcheck
 					URL:               cfg.Endpoint,
 					HostnameImmutable: true,
 					SigningRegion:     cfg.Region,
 				}, nil
 			}
-			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+			return aws.Endpoint{}, &aws.EndpointNotFoundError{} //nolint:staticcheck
 		},
 	)
 
 	awsCfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(cfg.Region),
-		config.WithEndpointResolverWithOptions(resolver),
+		config.WithEndpointResolverWithOptions(resolver), //nolint:staticcheck
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			cfg.AccessKey,
 			cfg.SecretKey,

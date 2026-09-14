@@ -59,7 +59,7 @@ func (s *MediaService) GetImage(ctx context.Context, hash string, opts *ProcessO
 	if err != nil {
 		return nil, fmt.Errorf("get image from storage: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// If no processing needed, return original
 	if opts == nil || (opts.Width == 0 && opts.Height == 0 && opts.Format == "") {
@@ -80,7 +80,7 @@ func (s *MediaService) GetImage(ctx context.Context, hash string, opts *ProcessO
 	}
 
 	// Cache the result
-	s.cache.Set(ctx, cacheKey, result.Data, s.cacheTTL)
+	_ = s.cache.Set(ctx, cacheKey, result.Data, s.cacheTTL)
 
 	return result, nil
 }

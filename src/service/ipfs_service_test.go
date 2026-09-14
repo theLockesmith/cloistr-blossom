@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 func TestIPFSServiceNotConfigured(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ipfs-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -37,16 +38,16 @@ func TestIPFSServiceNotConfigured(t *testing.T) {
 	assert.False(t, svc.IsConfigured(), "IPFS should not be configured")
 
 	// All operations should return ErrIPFSNotConfigured
-	_, err = svc.PinBlob(nil, "hash", "name")
+	_, err = svc.PinBlob(context.TODO(), "hash", "name")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	err = svc.UnpinBlob(nil, "hash")
+	err = svc.UnpinBlob(context.TODO(), "hash")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	_, err = svc.GetPinStatus(nil, "hash")
+	_, err = svc.GetPinStatus(context.TODO(), "hash")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	_, err = svc.ListPins(nil, "", 10)
+	_, err = svc.ListPins(context.TODO(), "", 10)
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
 	// Gateway URL still works (just formats a string) with default gateway
@@ -57,7 +58,7 @@ func TestIPFSServiceNotConfigured(t *testing.T) {
 func TestIPFSServiceMissingCredentials(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ipfs-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -82,7 +83,7 @@ func TestIPFSServiceMissingCredentials(t *testing.T) {
 func TestIPFSServiceGatewayURL(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ipfs-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -112,7 +113,7 @@ func TestIPFSServiceGatewayURL(t *testing.T) {
 func TestIPFSServiceGatewayURLTrailingSlash(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ipfs-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -196,15 +197,15 @@ func TestNoopIPFSService(t *testing.T) {
 	assert.False(t, svc.IsConfigured())
 	assert.Empty(t, svc.GetIPFSGatewayURL("cid"))
 
-	_, err := svc.PinBlob(nil, "hash", "name")
+	_, err := svc.PinBlob(context.TODO(), "hash", "name")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	err = svc.UnpinBlob(nil, "hash")
+	err = svc.UnpinBlob(context.TODO(), "hash")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	_, err = svc.GetPinStatus(nil, "hash")
+	_, err = svc.GetPinStatus(context.TODO(), "hash")
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 
-	_, err = svc.ListPins(nil, "", 10)
+	_, err = svc.ListPins(context.TODO(), "", 10)
 	assert.ErrorIs(t, err, core.ErrIPFSNotConfigured)
 }

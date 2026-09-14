@@ -31,11 +31,11 @@ func createTestImage(width, height int, format string) []byte {
 	var buf bytes.Buffer
 	switch format {
 	case "jpeg":
-		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
+		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
 	case "png":
-		png.Encode(&buf, img)
+		_ = png.Encode(&buf, img)
 	default:
-		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
+		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
 	}
 	return buf.Bytes()
 }

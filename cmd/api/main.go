@@ -94,7 +94,7 @@ func main() {
 		appCache,
 		logger,
 	)
-	api.Run(conf.ApiAddr)
+	_ = api.Run(conf.ApiAddr)
 }
 
 // updateMetricsPeriodically updates Prometheus gauges with current stats

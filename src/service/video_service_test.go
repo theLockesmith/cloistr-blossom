@@ -19,7 +19,7 @@ func TestVideoServiceIsSupported(t *testing.T) {
 	// Create a minimal video service for testing
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestVideoServiceIsSupported(t *testing.T) {
 func TestVideoServiceFFmpegAvailability(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestVideoServiceFFmpegAvailability(t *testing.T) {
 func TestVideoServiceTranscodeStatusNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestVideoServiceTranscodeStatusNotFound(t *testing.T) {
 func TestVideoServiceManifestNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestTranscodeStatusValues(t *testing.T) {
 func TestVideoServiceDASHManifestNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestVideoServiceDASHManifestNotFound(t *testing.T) {
 func TestVideoServiceDASHSegmentNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -207,7 +207,7 @@ func TestDASHManifestType(t *testing.T) {
 func TestVideoServiceAddSubtitleValid(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -250,7 +250,7 @@ This is a test subtitle.
 func TestVideoServiceAddSubtitleInvalid(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ It does not start with WEBVTT.
 func TestVideoServiceGetSubtitleNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -303,7 +303,7 @@ func TestVideoServiceGetSubtitleNotFound(t *testing.T) {
 func TestVideoServiceListSubtitles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -355,7 +355,7 @@ Test subtitle.
 func TestVideoServiceDeleteSubtitle(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -473,7 +473,7 @@ func TestSubtitleTypes(t *testing.T) {
 func TestVideoServiceSubtitleWithBOM(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "video-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)

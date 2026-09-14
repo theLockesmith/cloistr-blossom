@@ -152,7 +152,7 @@ func (c *Client) checkMint(mintURL string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("mint returned status %d", resp.StatusCode)
@@ -334,7 +334,7 @@ func (c *Client) checkProofs(ctx context.Context, mintURL string, req CheckReque
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)

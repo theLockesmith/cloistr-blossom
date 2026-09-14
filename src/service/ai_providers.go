@@ -431,7 +431,7 @@ func (p *CustomAPIProvider) Scan(ctx context.Context, req *core.ScanRequest) (*c
 		result.ScanDuration = time.Since(start)
 		return result, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

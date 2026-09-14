@@ -17,7 +17,7 @@ import (
 func TestCDNServiceDisabled(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "cdn-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestCDNServiceDisabled(t *testing.T) {
 func TestCDNServiceEnabled(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "cdn-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestCDNServiceEnabled(t *testing.T) {
 func TestCDNServicePresignedURLsFallback(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "cdn-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestCDNServicePresignedURLsFallback(t *testing.T) {
 func TestCDNServiceExpiryParsing(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "cdn-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestCDNServiceExpiryParsing(t *testing.T) {
 func TestCDNServiceNilConfig(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "cdn-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	localStorage, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)

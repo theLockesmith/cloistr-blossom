@@ -7,8 +7,6 @@ import (
 )
 
 const (
-	keyAllowedMIMEType    = "ALLOWED_MIME_TYPE"
-	keyUploadMaxSizeBytes = "UPLOAD_MAX_SIZE_BYTES"
 )
 
 type settingService struct {

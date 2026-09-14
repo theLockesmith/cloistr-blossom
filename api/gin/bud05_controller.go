@@ -38,7 +38,7 @@ func uploadMedia(
 
 		// Read request body
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
-		defer ctx.Request.Body.Close()
+		defer func() { _ = ctx.Request.Body.Close() }()
 		if err != nil {
 			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read request body: %s", err.Error())).Abort(ctx)
 			return

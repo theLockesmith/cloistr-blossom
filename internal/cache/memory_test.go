@@ -106,9 +106,9 @@ func TestMemoryCache_EvictMultiple(t *testing.T) {
 	ctx := context.Background()
 
 	// Add three 10-byte entries
-	cache.Set(ctx, "key1", []byte("1234567890"), 0)
-	cache.Set(ctx, "key2", []byte("abcdefghij"), 0)
-	cache.Set(ctx, "key3", []byte("ABCDEFGHIJ"), 0)
+	_ = cache.Set(ctx, "key1", []byte("1234567890"), 0)
+	_ = cache.Set(ctx, "key2", []byte("abcdefghij"), 0)
+	_ = cache.Set(ctx, "key3", []byte("ABCDEFGHIJ"), 0)
 
 	// Add a 25-byte entry - should evict multiple entries
 	err := cache.Set(ctx, "big", []byte("1234567890123456789012345"), 0)
@@ -178,14 +178,14 @@ func TestMemoryCache_Stats(t *testing.T) {
 	assert.Equal(t, int64(0), size)
 	assert.Equal(t, 0, count)
 
-	cache.Set(ctx, "key1", []byte("12345"), 0) // 5 bytes
-	cache.Set(ctx, "key2", []byte("1234567890"), 0) // 10 bytes
+	_ = cache.Set(ctx, "key1", []byte("12345"), 0) // 5 bytes
+	_ = cache.Set(ctx, "key2", []byte("1234567890"), 0) // 10 bytes
 
 	size, count = cache.Stats()
 	assert.Equal(t, int64(15), size)
 	assert.Equal(t, 2, count)
 
-	cache.Delete(ctx, "key1")
+	_ = cache.Delete(ctx, "key1")
 
 	size, count = cache.Stats()
 	assert.Equal(t, int64(10), size)
@@ -196,8 +196,8 @@ func TestMemoryCache_Close(t *testing.T) {
 	cache := NewMemoryCache(1024)
 	ctx := context.Background()
 
-	cache.Set(ctx, "key1", []byte("value1"), 0)
-	cache.Set(ctx, "key2", []byte("value2"), 0)
+	_ = cache.Set(ctx, "key1", []byte("value1"), 0)
+	_ = cache.Set(ctx, "key2", []byte("value2"), 0)
 
 	err := cache.Close()
 	require.NoError(t, err)

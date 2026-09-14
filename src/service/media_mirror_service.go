@@ -205,7 +205,7 @@ func MirrorPath(canonicalURL string, expiresAt int64, signature string) string {
 	b.WriteString(urlsign.EncodeURL(canonicalURL))
 	if expiresAt != 0 {
 		b.WriteString("&e=")
-		b.WriteString(fmt.Sprintf("%d", expiresAt))
+		fmt.Fprintf(&b, "%d", expiresAt)
 	}
 	b.WriteString("&s=")
 	b.WriteString(signature)
@@ -450,7 +450,7 @@ func (s *mediaMirrorService) doFetch(ctx context.Context, canonical string) (*co
 			return nil, core.NewMirrorError(core.MirrorStatusUnreachable, core.MirrorReasonTransport, err.Error())
 		}
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		return nil, core.NewMirrorError(

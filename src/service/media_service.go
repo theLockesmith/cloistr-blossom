@@ -135,7 +135,7 @@ func (s *mediaService) GetThumbnail(ctx context.Context, hash string, width, hei
 	if err != nil {
 		return nil, fmt.Errorf("get blob from storage: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Generate thumbnail
 	result, err := s.processor.Process(reader, media.ProcessOptions{
@@ -154,7 +154,7 @@ func (s *mediaService) GetThumbnail(ctx context.Context, hash string, width, hei
 
 	// Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result.Data, s.cacheTTL)
+		_ = s.cache.Set(ctx, cacheKey, result.Data, s.cacheTTL)
 	}
 
 	return &core.MediaProcessResult{

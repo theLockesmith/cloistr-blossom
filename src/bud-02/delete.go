@@ -49,10 +49,7 @@ func DeleteBlob(
 	}
 
 	// Decrement quota usage after successful delete
-	if err := quota.DecrementUsage(ctx, pubkey, blobSize); err != nil {
-		// Log but don't fail - the reference was deleted successfully
-		// Usage will be corrected on next recalculation
-	}
+	_ = quota.DecrementUsage(ctx, pubkey, blobSize)
 
 	return nil
 }

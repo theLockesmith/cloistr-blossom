@@ -561,7 +561,7 @@ func TestScanContent_CacheHit(t *testing.T) {
 		ScannedAt:         time.Now().Unix(),
 	}
 	data, _ := json.Marshal(cachedResult)
-	appCache.Set(ctx, "ai_scan:cachedhash", data, 1*time.Hour)
+	_ = appCache.Set(ctx, "ai_scan:cachedhash", data, 1*time.Hour)
 
 	req := &core.ScanRequest{
 		Hash:     "cachedhash",
@@ -860,7 +860,7 @@ func TestGetScanResult(t *testing.T) {
 		ScannedAt:         time.Now().Unix(),
 	}
 	data, _ := json.Marshal(result)
-	appCache.Set(ctx, "ai_scan:resulthash", data, 1*time.Hour)
+	_ = appCache.Set(ctx, "ai_scan:resulthash", data, 1*time.Hour)
 
 	retrieved, err := svc.GetScanResult(ctx, "resulthash")
 	require.NoError(t, err)

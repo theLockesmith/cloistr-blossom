@@ -74,7 +74,7 @@ func setupTestServices(t *testing.T, dbFile string) (core.Services, func()) {
 	queries := db.New(database)
 
 	services := service.New(context.TODO(), database, queries, conf, nil, logger)
-	services.Init(context.TODO())
+	_ = services.Init(context.TODO())
 
 	cleanup := func() {
 		if err := os.Remove(dbFile); err != nil {

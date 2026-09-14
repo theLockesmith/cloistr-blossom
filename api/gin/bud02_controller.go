@@ -44,12 +44,7 @@ func uploadBlob(
 		}
 
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
-		defer func(body io.ReadCloser) {
-			err := body.Close()
-			if err != nil {
-
-			}
-		}(ctx.Request.Body)
+		defer func() { _ = ctx.Request.Body.Close() }()
 		if err != nil {
 			clerrors.BadRequest(clerrors.CodeInvalidInput, fmt.Sprintf("failed to read request body: %s", err.Error())).Abort(ctx)
 			return
@@ -144,7 +139,7 @@ func uploadBlob(
 
 		// Publish to federation if enabled (async, non-blocking)
 		if federation := services.Federation(); federation != nil && federation.IsEnabled() {
-			go federation.PublishBlobAsync(ctx.Request.Context(), blobDescriptor)
+			go func() { _ = federation.PublishBlobAsync(ctx.Request.Context(), blobDescriptor) }()
 		}
 
 		ctx.JSON(

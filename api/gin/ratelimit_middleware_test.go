@@ -871,7 +871,6 @@ func TestRateLimitMiddleware_MultipleRequests(t *testing.T) {
 			requestCount++
 			remaining := limit - requestCount
 			if remaining < 0 {
-				remaining = 0
 				return false, 0, time.Now().Add(window)
 			}
 			return true, remaining, time.Now().Add(window)

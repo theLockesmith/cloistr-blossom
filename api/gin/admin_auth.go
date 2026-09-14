@@ -111,7 +111,7 @@ func (m *AdminAuthManager) ValidateSession(token string) (*AdminSession, error) 
 
 	// Check expiry
 	var expiry int64
-	fmt.Sscanf(expiryStr, "%d", &expiry)
+	_, _ = fmt.Sscanf(expiryStr, "%d", &expiry)
 	if time.Now().Unix() > expiry {
 		return nil, fmt.Errorf("session expired")
 	}
@@ -203,7 +203,7 @@ func (m *AdminAuthManager) VerifyNostrAdminAuth(eventBase64 string) (string, err
 	}
 
 	var expiry int64
-	fmt.Sscanf(expirationTag, "%d", &expiry)
+	_, _ = fmt.Sscanf(expirationTag, "%d", &expiry)
 	if time.Now().Unix() > expiry {
 		return "", fmt.Errorf("auth event expired")
 	}
