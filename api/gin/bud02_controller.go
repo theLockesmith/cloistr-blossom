@@ -160,8 +160,7 @@ func listBlobs(
 	return func(ctx *gin.Context) {
 		pubkey := ctx.Param("pubkey")
 
-		authenticatedPK, _ := ctx.Get("pk")
-		if authenticatedPK != pubkey {
+		if ctx.GetString("pk") != pubkey {
 			ctx.AbortWithStatus(http.StatusForbidden)
 			return
 		}

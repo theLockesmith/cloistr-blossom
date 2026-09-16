@@ -97,3 +97,35 @@ func TestListAuth_WrongVerbReturns401(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+func TestListAuth_ExpiredTokenReturns401(t *testing.T) {
+	r := setupListTestRouter()
+
+	ev := createValidAuthEvent("list", "", -1*time.Hour)
+	authHeader, err := encodeAuthEvent(ev)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/list/"+ev.PubKey, nil)
+	req.Header.Set("Authorization", "Nostr "+authHeader)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestListAuth_FilterWithWrongPubkeyReturns403(t *testing.T) {
+	r := setupListTestRouter()
+
+	ev := createValidAuthEvent("list", "", 1*time.Hour)
+	authHeader, err := encodeAuthEvent(ev)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/list/someotherpubkey?type=image/", nil)
+	req.Header.Set("Authorization", "Nostr "+authHeader)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}

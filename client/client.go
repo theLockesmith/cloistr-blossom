@@ -72,10 +72,16 @@ func (c *Client) Has(blobHash string) (bool, error) {
 }
 
 func (c *Client) List(pubkeyHex string) ([]BlobDescriptor, error) {
+	authEventBase64, err := makeAuthEvent("", "", "list", c.sk)
+	if err != nil {
+		return nil, err
+	}
+
 	req, err := http.NewRequest(http.MethodGet, c.serverUrl+"/list/"+pubkeyHex, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Add("Authorization", "Nostr "+authEventBase64)
 
 	res, err := c.client.Do(req)
 	if err != nil {
