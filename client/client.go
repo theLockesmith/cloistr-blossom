@@ -72,7 +72,7 @@ func (c *Client) Has(blobHash string) (bool, error) {
 }
 
 func (c *Client) List(pubkeyHex string) ([]BlobDescriptor, error) {
-	req, err := http.NewRequest(http.MethodPut, c.serverUrl+"/list/"+pubkeyHex, http.NoBody)
+	req, err := http.NewRequest(http.MethodGet, c.serverUrl+"/list/"+pubkeyHex, http.NoBody)
 	if err != nil {
 		return nil, err
 	}

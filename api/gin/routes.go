@@ -248,6 +248,7 @@ func SetupRoutes(
 
 	r.GET(
 		"/list/:pubkey",
+		nostrAuthMiddleware("list", log),
 		listBlobs(services),
 	)
 

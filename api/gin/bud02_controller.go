@@ -160,6 +160,12 @@ func listBlobs(
 	return func(ctx *gin.Context) {
 		pubkey := ctx.Param("pubkey")
 
+		authenticatedPK, _ := ctx.Get("pk")
+		if authenticatedPK != pubkey {
+			ctx.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+
 		// Parse filter parameters from query string
 		filter := parseBlobFilter(ctx)
 
