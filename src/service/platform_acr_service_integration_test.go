@@ -4,7 +4,8 @@ package service
 
 // Integration tests for the platform ACR service. They share the ephemeral
 // Postgres started by TestMain in gc_service_integration_test.go and add a
-// minimal stand-in for the platform users table and has_service_access().
+// minimal stand-in for the platform users table, has_service_access() and
+// ensure_user().
 //
 //	GOWORK=off go test -v -tags=integration ./src/service/... -run TestPlatformACR
 
@@ -21,7 +22,7 @@ import (
 
 // applyPlatformACRSchema mirrors the parts of the platform schema the access
 // check depends on: has_service_access() denies a pubkey with no users row and
-// a pubkey whose row is disabled. The stub ignores the service argument; these
+// a pubkey whose row is disabled; ensure_user() inserts a row if missing. The stub ignores the service argument; these
 // tests cover row provisioning, not per-service grants.
 func applyPlatformACRSchema(t *testing.T) {
 	t.Helper()
@@ -34,6 +35,10 @@ func applyPlatformACRSchema(t *testing.T) {
 		RETURNS BOOLEAN AS $$
 			SELECT COALESCE((SELECT enabled FROM users WHERE pubkey = check_pubkey), FALSE);
 		$$ LANGUAGE sql STABLE;
+		CREATE OR REPLACE FUNCTION ensure_user(check_pubkey CHAR(64))
+		RETURNS void AS $$
+			INSERT INTO users (pubkey) VALUES (check_pubkey) ON CONFLICT (pubkey) DO NOTHING;
+		$$ LANGUAGE sql;
 	`)
 	if err != nil {
 		t.Fatalf("apply platform ACR schema: %v", err)
