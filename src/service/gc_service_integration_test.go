@@ -41,6 +41,10 @@ import (
 // Integration tests check for nil and call t.Skip when it is unset.
 var integrationDB *sql.DB
 
+// integrationDSN is the connection string for integrationDB, for tests that
+// build their own client (e.g. platform.NewClient).
+var integrationDSN string
+
 // gcIntegrationContainerName is the Docker container name chosen by TestMain.
 var gcIntegrationContainerName string
 
@@ -103,6 +107,7 @@ func runIntegrationMain(m *testing.M) int {
 	}
 
 	integrationDB = sqlDB
+	integrationDSN = dsn
 	return m.Run()
 }
 
