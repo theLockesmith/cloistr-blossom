@@ -6,9 +6,9 @@ require (
 	git.aegis-hq.xyz/coldforge/cloistr-common v0.3.2
 	github.com/anacrolix/torrent v1.61.0
 	github.com/aws/aws-sdk-go-v2 v1.47.1
-	github.com/aws/aws-sdk-go-v2/config v1.33.6
+	github.com/aws/aws-sdk-go-v2/config v1.33.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.7
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.1
 	github.com/disintegration/imaging v1.6.2
 	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/gin-contrib/cors v1.7.9
