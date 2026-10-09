@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/redact"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
@@ -61,8 +62,8 @@ func NewIPFSService(
 	svc.configured = true
 
 	log.Info("IPFS pinning service initialized",
-		zap.String("endpoint", conf.Endpoint),
-		zap.String("gateway", conf.GatewayURL),
+		zap.String("endpoint", redact.URL(conf.Endpoint)),
+		zap.String("gateway", redact.URL(conf.GatewayURL)),
 		zap.Bool("auto_pin", conf.AutoPin))
 
 	return svc, nil
