@@ -12,6 +12,7 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/redact"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/logging"
@@ -37,10 +38,10 @@ func main() {
 	if conf.Cache.URL != "" {
 		redisCache, err := cache.NewRedisCache(conf.Cache.URL, "blossom:")
 		if err != nil {
-			logger.Warn("failed to connect to cache, using in-memory fallback: " + err.Error())
+			logger.Warn("failed to connect to cache " + redact.URL(conf.Cache.URL) + ", using in-memory fallback: " + redact.Err(err).Error())
 			appCache = cache.NewMemoryCache(100 * 1024 * 1024)
 		} else {
-			logger.Info("connected to cache: " + conf.Cache.URL)
+			logger.Info("connected to cache: " + redact.URL(conf.Cache.URL))
 			appCache = redisCache
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/encryption"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/lightning"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/redact"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
@@ -95,7 +96,7 @@ func New(
 	if conf.IsPlatformMode() {
 		// Platform mode: use unified platform database
 		log.Info("initializing services in platform mode",
-			zap.String("database_url", maskDatabaseURL(conf.Platform.DatabaseURL)),
+			zap.String("database_url", redact.URL(conf.Platform.DatabaseURL)),
 			zap.String("service_id", conf.Platform.ServiceID))
 
 		platformClient, err = platform.NewClient(platform.Config{
@@ -104,7 +105,7 @@ func New(
 			ServiceID:   conf.Platform.ServiceID,
 		})
 		if err != nil {
-			log.Fatal("failed to initialize platform client", zap.Error(err))
+			log.Fatal("failed to initialize platform client", zap.Error(redact.Err(err)))
 		}
 
 		acrService, err = NewPlatformACRService(platformClient, log)
@@ -619,33 +620,6 @@ func mediaMirrorConfigFromYAML(conf *config.Config) core.MediaMirrorConfig {
 	}
 
 	return cfg
-}
-
-// maskDatabaseURL masks the password in a database URL for safe logging.
-func maskDatabaseURL(url string) string {
-	if url == "" {
-		return "(not set)"
-	}
-	// Simple masking - in production, use a proper URL parser
-	// This just masks anything between :// and @
-	start := 0
-	for i := 0; i < len(url)-2; i++ {
-		if url[i:i+3] == "://" {
-			start = i + 3
-			break
-		}
-	}
-	end := len(url)
-	for i := start; i < len(url); i++ {
-		if url[i] == '@' {
-			end = i
-			break
-		}
-	}
-	if start > 0 && end < len(url) {
-		return url[:start] + "***@" + url[end+1:]
-	}
-	return url
 }
 
 // initStorageBackend creates the appropriate storage backend based on config.
