@@ -24,7 +24,10 @@ func SetupRoutes(
 	appCache cache.Cache,
 	log *zap.Logger,
 ) *gin.Engine {
-	r := gin.New()
+	r, err := newEngine(conf)
+	if err != nil {
+		log.Fatal("configure client IP", zap.Error(err))
+	}
 
 	// Access logging, with the media mirror's fetch route excluded.
 	//

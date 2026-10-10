@@ -417,6 +417,14 @@ type Config struct {
 	AccessControlRules []AccessControlRule `yaml:"access_control_rules"`
 	AllowedMimeTypes   []string            `yaml:"allowed_mime_types"`
 
+	// TrustedProxies are the CIDRs whose ClientIPHeader is believed. Only the
+	// in-cluster router should match; any other peer is taken as the client.
+	TrustedProxies []string `yaml:"trusted_proxies"`
+	// ClientIPHeader is the header the public edge OVERWRITES with the real
+	// client address. Never X-Forwarded-For: the edge appends to it, so its
+	// leftmost entry is client-controlled.
+	ClientIPHeader string `yaml:"client_ip_header"`
+
 	// New configuration sections
 	Storage       StorageConfig       `yaml:"storage"`
 	Database      DatabaseConfig      `yaml:"database"`
@@ -460,6 +468,16 @@ func NewConfig(path string) (*Config, error) {
 
 // applyDefaults sets default values and handles backwards compatibility.
 func (c *Config) applyDefaults() {
+	if c.TrustedProxies == nil {
+		c.TrustedProxies = []string{
+			"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8",
+			"::1/128", "fc00::/7",
+		}
+	}
+	if c.ClientIPHeader == "" {
+		c.ClientIPHeader = "X-Real-IP"
+	}
+
 	// Backwards compatibility: if legacy db_path is set but Database is not configured
 	if c.DbPath != "" && c.Database.Driver == "" {
 		c.Database.Driver = "sqlite"
