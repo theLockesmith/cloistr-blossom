@@ -3,6 +3,7 @@ package cache
 import (
 	"container/list"
 	"context"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -132,4 +133,34 @@ func (c *MemoryCache) Stats() (size int64, count int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.currentSize, len(c.items)
+}
+
+// IncrBy implements Counter. The read, add and write happen under one lock.
+func (c *MemoryCache) IncrBy(_ context.Context, key string, n int64, ttl time.Duration) (int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var cur int64
+	var expiresAt time.Time
+	if entry, ok := c.items[key]; ok {
+		if entry.expiresAt.IsZero() || time.Now().Before(entry.expiresAt) {
+			cur, _ = strconv.ParseInt(string(entry.data), 10, 64)
+			expiresAt = entry.expiresAt // keep the creation-time expiry
+		}
+		c.removeEntry(entry)
+	}
+	if cur == 0 && expiresAt.IsZero() && ttl > 0 {
+		expiresAt = time.Now().Add(ttl)
+	}
+
+	cur += n
+	data := []byte(strconv.FormatInt(cur, 10))
+	for c.currentSize+int64(len(data)) > c.maxSize && c.lruList.Len() > 0 {
+		c.evictLRU()
+	}
+	entry := &memoryEntry{key: key, data: data, expiresAt: expiresAt}
+	entry.element = c.lruList.PushFront(entry)
+	c.items[key] = entry
+	c.currentSize += int64(len(data))
+	return cur, nil
 }

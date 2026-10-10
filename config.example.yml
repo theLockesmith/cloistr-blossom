@@ -89,6 +89,14 @@ quota:
 # rate_limiting:
 #   enabled: true
 #
+#   # In-cluster callers (private peer, no client_ip_header: they never passed
+#   # the public edge) are not limited unless this is true. They are services
+#   # such as Stash's server, whose users would otherwise share one bucket.
+#   limit_internal_callers: false
+#
+#   # NOTE: the limiter runs before auth, so every request is keyed by client
+#   # IP today; the pubkey limits and whitelisted_pubkeys below do not apply.
+#
 #   # Per-IP limits (for unauthenticated requests)
 #   ip:
 #     download:
@@ -116,7 +124,7 @@ quota:
 #   # Bandwidth limits
 #   bandwidth:
 #     download_mb_per_minute: 100    # Max MB downloaded per minute
-#     upload_mb_per_minute: 50       # Max MB uploaded per minute
+#     upload_mb_per_minute: 50       # Max MB uploaded per minute (raised to max_upload_size_bytes if lower)
 #
 #   # Pubkeys exempt from rate limiting
 #   whitelisted_pubkeys:

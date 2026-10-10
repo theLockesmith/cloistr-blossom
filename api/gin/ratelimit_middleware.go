@@ -35,7 +35,7 @@ func RateLimitMiddleware(
 	}
 
 	return func(c *gin.Context) {
-		if !conf.Enabled {
+		if !conf.Enabled || (!conf.LimitInternalCallers && isInternalCaller(c, conf.ClientIPHeader)) {
 			c.Next()
 			return
 		}
@@ -133,7 +133,7 @@ func BandwidthLimitMiddleware(
 	}
 
 	return func(c *gin.Context) {
-		if !conf.Enabled {
+		if !conf.Enabled || (!conf.LimitInternalCallers && isInternalCaller(c, conf.ClientIPHeader)) {
 			c.Next()
 			return
 		}

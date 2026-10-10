@@ -115,15 +115,35 @@ func (r *slidingWindowLimiter) AllowN(ctx context.Context, key string, n int, li
 	windowStart := now.Truncate(window)
 	resetAt := windowStart.Add(window)
 
-	cacheKey := fmt.Sprintf("rl:%s:%d", key, windowStart.Unix())
+	cacheKey := fmt.Sprintf("rl:%s:%d", key, windowStart.UnixMilli())
 
 	// Try cache first
+	if counter, ok := r.cache.(cache.Counter); ok {
+		return r.allowWithCounter(ctx, counter, cacheKey, n, limit, window, resetAt)
+	}
 	if r.cache != nil {
 		return r.allowWithCache(ctx, cacheKey, n, limit, window, resetAt)
 	}
 
 	// Fall back to local storage
 	return r.allowLocal(key, n, limit, window, windowStart, resetAt)
+}
+
+// allowWithCounter counts with one atomic increment, so concurrent requests
+// on any pod cannot all read the same count and all pass. A refused request
+// still counts; the window is fixed, so that only matters until it resets.
+// If the cache errors, the request is allowed: an outage of the limiter's
+// store must not take uploads and downloads down with it.
+func (r *slidingWindowLimiter) allowWithCounter(ctx context.Context, counter cache.Counter, cacheKey string, n int, limit int, window time.Duration, resetAt time.Time) (bool, int, time.Time) {
+	count, err := counter.IncrBy(ctx, cacheKey, int64(n), window+time.Second)
+	if err != nil {
+		return true, limit, resetAt
+	}
+	remaining := limit - int(count)
+	if remaining < 0 {
+		remaining = 0
+	}
+	return count <= int64(limit), remaining, resetAt
 }
 
 func (r *slidingWindowLimiter) allowWithCache(ctx context.Context, cacheKey string, n int, limit int, window time.Duration, resetAt time.Time) (bool, int, time.Time) {
@@ -244,13 +264,35 @@ func (b *bandwidthLimiter) AllowBytes(ctx context.Context, key string, bytes int
 	windowStart := now.Truncate(window)
 	resetAt := windowStart.Add(window)
 
-	cacheKey := fmt.Sprintf("bw:%s:%d", key, windowStart.Unix())
+	cacheKey := fmt.Sprintf("bw:%s:%d", key, windowStart.UnixMilli())
 
+	if counter, ok := b.cache.(cache.Counter); ok {
+		return b.allowWithCounter(ctx, counter, cacheKey, bytes, limitBytes, window, resetAt)
+	}
 	if b.cache != nil {
 		return b.allowWithCache(ctx, cacheKey, bytes, limitBytes, window, resetAt)
 	}
 
 	return b.allowLocal(key, bytes, limitBytes, window, windowStart, resetAt)
+}
+
+// allowWithCounter is the atomic counterpart of allowWithCache; see
+// slidingWindowLimiter.allowWithCounter. Refused bytes are handed back, since
+// a refused upload never transfers them.
+func (b *bandwidthLimiter) allowWithCounter(ctx context.Context, counter cache.Counter, cacheKey string, bytes int64, limitBytes int64, window time.Duration, resetAt time.Time) (bool, int64, time.Time) {
+	total, err := counter.IncrBy(ctx, cacheKey, bytes, window+time.Second)
+	if err != nil {
+		return true, limitBytes, resetAt
+	}
+	if total > limitBytes {
+		total, _ = counter.IncrBy(ctx, cacheKey, -bytes, window+time.Second)
+		remaining := limitBytes - total
+		if remaining < 0 {
+			remaining = 0
+		}
+		return false, remaining, resetAt
+	}
+	return true, limitBytes - total, resetAt
 }
 
 func (b *bandwidthLimiter) allowWithCache(ctx context.Context, cacheKey string, bytes int64, limitBytes int64, window time.Duration, resetAt time.Time) (bool, int64, time.Time) {

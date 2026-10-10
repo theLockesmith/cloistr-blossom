@@ -2,6 +2,7 @@ package gin
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/gin-gonic/gin"
 
@@ -24,4 +25,15 @@ func newEngine(conf *config.Config) (*gin.Engine, error) {
 	}
 	r.RemoteIPHeaders = []string{conf.ClientIPHeader}
 	return r, nil
+}
+
+// isInternalCaller reports whether the request came straight from inside the
+// cluster: a private peer and no client IP header. The public edge always sets
+// that header, so public traffic can never look internal.
+func isInternalCaller(c *gin.Context, header string) bool {
+	if header == "" || c.GetHeader(header) != "" {
+		return false
+	}
+	ip := net.ParseIP(c.RemoteIP())
+	return ip != nil && (ip.IsPrivate() || ip.IsLoopback())
 }

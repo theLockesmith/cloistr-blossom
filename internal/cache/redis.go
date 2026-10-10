@@ -61,3 +61,20 @@ func (c *RedisCache) Delete(ctx context.Context, key string) error {
 func (c *RedisCache) Close() error {
 	return c.client.Close()
 }
+
+// IncrBy implements Counter. SETNX creates the key at 0 with its TTL, then
+// INCRBY adds; MULTI/EXEC makes the pair atomic. The TTL is set only when
+// the key is created, so later hits never push the expiry back.
+func (c *RedisCache) IncrBy(ctx context.Context, key string, n int64, ttl time.Duration) (int64, error) {
+	k := c.key(key)
+	var incr *redis.IntCmd
+	_, err := c.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		p.SetNX(ctx, k, 0, ttl)
+		incr = p.IncrBy(ctx, k, n)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return incr.Val(), nil
+}
