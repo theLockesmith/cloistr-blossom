@@ -76,6 +76,14 @@ quota:
 #   # Default: "public, max-age=31536000" (1 year for immutable content)
 #   cache_control: "public, max-age=31536000"
 
+# Client IP detection (used by rate limiting and logs)
+# The client address is read from client_ip_header ONLY when the TCP peer is in
+# trusted_proxies (the in-cluster router); otherwise the peer address is used.
+# Never set client_ip_header to X-Forwarded-For: the edge appends to it, so its
+# leftmost entry is whatever the client sent.
+# trusted_proxies: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128", "fc00::/7"]
+# client_ip_header: X-Real-IP
+
 # Rate limiting (optional)
 # Protect against abuse with per-IP and per-pubkey rate limits.
 # rate_limiting:
