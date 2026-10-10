@@ -382,6 +382,14 @@ type RateLimitConfig struct {
 type RateLimitingConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable rate limiting
 
+	// LimitInternalCallers also limits in-cluster callers (a private peer
+	// with no client IP header, i.e. one that never passed the public edge).
+	// Off by default: those are services like Stash's server, whose users
+	// would all share one bucket per pod; such services limit their own users.
+	LimitInternalCallers bool `yaml:"limit_internal_callers"`
+	// ClientIPHeader mirrors Config.ClientIPHeader; filled in by defaults.
+	ClientIPHeader string `yaml:"-"`
+
 	// Per-IP limits (for unauthenticated requests)
 	IP struct {
 		Download RateLimitConfig `yaml:"download"` // GET requests for blobs
@@ -477,6 +485,7 @@ func (c *Config) applyDefaults() {
 	if c.ClientIPHeader == "" {
 		c.ClientIPHeader = "X-Real-IP"
 	}
+	c.RateLimiting.ClientIPHeader = c.ClientIPHeader
 
 	// Backwards compatibility: if legacy db_path is set but Database is not configured
 	if c.DbPath != "" && c.Database.Driver == "" {
@@ -566,6 +575,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.RateLimiting.Bandwidth.UploadMBPerMinute == 0 {
 		c.RateLimiting.Bandwidth.UploadMBPerMinute = 50 // 50 MB/min default
+	}
+	// The upload budget is checked against Content-Length before the body is
+	// read, so it must at least fit the largest upload we accept; otherwise
+	// every upload above it is refused forever.
+	if maxMB := (c.MaxUploadSizeBytes + (1<<20 - 1)) >> 20; c.RateLimiting.Bandwidth.UploadMBPerMinute < maxMB {
+		c.RateLimiting.Bandwidth.UploadMBPerMinute = maxMB
 	}
 
 	// Default IPFS settings
