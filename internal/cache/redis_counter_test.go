@@ -12,10 +12,14 @@ import (
 )
 
 // Runs against a real Redis/Dragonfly when BLOSSOM_TEST_REDIS_URL is set
-// (e.g. redis://localhost:6379/15); skipped otherwise.
+// (e.g. redis://localhost:6379/15); skipped otherwise, except in CI, where
+// .gitlab-ci.yml provides a redis service and a skip would hide a regression.
 func TestRedisIncrBy(t *testing.T) {
 	url := os.Getenv("BLOSSOM_TEST_REDIS_URL")
 	if url == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("BLOSSOM_TEST_REDIS_URL must be set in CI; this test must not skip there")
+		}
 		t.Skip("BLOSSOM_TEST_REDIS_URL not set")
 	}
 	c, err := NewRedisCache(url, "blossomtest:"+t.Name()+":")

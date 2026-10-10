@@ -33,9 +33,16 @@ test:
   stage: test
   image: golang:${GO_VERSION}-bookworm
   <<: *go-cache
+  # Real Redis for internal/cache's counter test: the rate limiter's fixed
+  # window depends on SETNX+INCRBY semantics that the in-memory cache cannot
+  # prove (a sliding TTL passes every memory test and fails this one).
+  services:
+    - name: redis:7-alpine
+      alias: redis
   variables:
     GOPATH: ${CI_PROJECT_DIR}/.go
     CGO_ENABLED: "1"
+    BLOSSOM_TEST_REDIS_URL: "redis://redis:6379/0"
   before_script:
     - apt-get update && apt-get install -y gcc libc6-dev
   script:
