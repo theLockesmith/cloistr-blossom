@@ -293,7 +293,7 @@ Server discovery and feature advertisement at `/.well-known/blossom`.
 | GET | `/.well-known/blossom` | No | Get server capabilities |
 | GET | `/.well-known/health` | No | Health check |
 
-**Response:**
+**Response** (example with every feature enabled; each flag reflects the server's own config):
 ```json
 {
   "name": "Cloistr Blossom",
@@ -331,6 +331,12 @@ Server discovery and feature advertisement at `/.well-known/blossom`.
   }
 }
 ```
+
+**Production (files.cloistr.xyz), verified 2026-10-16.** These features are implemented but switched
+off in production, and the live endpoint reports them `false`: `transcoding` (the image also ships no
+FFmpeg), `chunked_upload` (the `/upload/chunked` routes are not registered), `federation`, `ipfs`,
+`cdn` and `media_mirror`. Payments (BUD-07) are not advertised. Resumable uploads via tus are on. Read
+the live `GET /.well-known/blossom` rather than this example to learn what a server supports.
 
 ### BUD-07 Payments
 
