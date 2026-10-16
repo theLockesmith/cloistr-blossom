@@ -9,6 +9,7 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
 
 func UploadBlob(
@@ -19,6 +20,7 @@ func UploadBlob(
 	pubkey string,
 	blobBytes []byte,
 	encryptionMode core.EncryptionMode,
+	declaredType string,
 ) (*core.Blob, error) {
 	var (
 		blobs    = services.Blob()
@@ -35,7 +37,9 @@ func UploadBlob(
 		return nil, err
 	}
 
-	// Detect MIME type from magic bytes — never trusts client-supplied Content-Type.
+	// Detect MIME type from magic bytes. Policy checks use the sniffed type;
+	// the stored type may be upgraded from declaredType for allowlisted text
+	// formats the sniffer cannot recognise (see mimetypes.Resolve).
 	mimeType := mimetype.Detect(blobBytes)
 
 	// Tier-aware enforcement when upload_limits.enabled is true.
@@ -97,7 +101,7 @@ func UploadBlob(
 		hash,
 		url,
 		int64(len(blobBytes)),
-		mimeType.String(),
+		mimetypes.Resolve(blobBytes, declaredType),
 		blobBytes,
 		time.Now().Unix(),
 		encryptionMode,
