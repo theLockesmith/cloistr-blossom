@@ -20,10 +20,16 @@ import (
 type blobHeaderServices struct {
 	core.Services
 	blobs *oneBlobStorage
+	cdn   core.CDNService // nil means no redirect
 }
 
 func (s blobHeaderServices) Blob() core.BlobStorage { return s.blobs }
-func (s blobHeaderServices) CDN() core.CDNService   { return noRedirectCDN{} }
+func (s blobHeaderServices) CDN() core.CDNService {
+	if s.cdn == nil {
+		return noRedirectCDN{}
+	}
+	return s.cdn
+}
 func (s blobHeaderServices) Federation() core.FederationService {
 	return nil
 }
@@ -31,6 +37,13 @@ func (s blobHeaderServices) Federation() core.FederationService {
 type noRedirectCDN struct{ core.CDNService }
 
 func (noRedirectCDN) ShouldRedirect() bool { return false }
+
+type redirectCDN struct{ core.CDNService }
+
+func (redirectCDN) ShouldRedirect() bool { return true }
+func (redirectCDN) GetBlobURL(_ context.Context, hash, _ string) (string, error) {
+	return "https://cdn.example/" + hash, nil
+}
 
 // oneBlobStorage holds a single blob and counts full-content reads, so the
 // test can check HEAD does not load the bytes when the stored type is usable.
@@ -155,4 +168,25 @@ func TestBlobHead_MissingBlobIs404(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodHead, "/"+strings.Repeat("b", 64), nil))
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestBlobHead_MatchesGetCDNRedirect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := blobHeaderServices{
+		blobs: &oneBlobStorage{blob: core.Blob{Sha256: testBlobHash, Type: "image/png", Blob: pngBytes}},
+		cdn:   redirectCDN{},
+	}
+	r := gin.New()
+	r.GET("/:hash", getBlob(svc))
+	r.HEAD("/:hash", hasBlob(svc))
+
+	get := httptest.NewRecorder()
+	r.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/"+testBlobHash, nil))
+	head := httptest.NewRecorder()
+	r.ServeHTTP(head, httptest.NewRequest(http.MethodHead, "/"+testBlobHash, nil))
+
+	require.Equal(t, http.StatusFound, get.Code)
+	assert.Equal(t, get.Code, head.Code)
+	assert.Equal(t, "https://cdn.example/"+testBlobHash, head.Header().Get("Location"))
+	assert.Equal(t, get.Header().Get("Location"), head.Header().Get("Location"))
 }
