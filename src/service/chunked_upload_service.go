@@ -19,6 +19,7 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
 
 type chunkedUploadService struct {
@@ -378,11 +379,9 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 		return nil, fmt.Errorf("%w: expected %s, got %s", core.ErrHashMismatch, hashToUse, finalHash)
 	}
 
-	// Determine MIME type
-	mimeType := "application/octet-stream"
-	if dbSession.MimeType.Valid && dbSession.MimeType.String != "" {
-		mimeType = dbSession.MimeType.String
-	}
+	// Sniff the MIME type; the session's declared type only upgrades a
+	// generic sniff for allowlisted text formats.
+	mimeType := mimetypes.Resolve(assembledData.Bytes(), dbSession.MimeType.String)
 
 	// Save blob using blob service
 	now := time.Now().Unix()
