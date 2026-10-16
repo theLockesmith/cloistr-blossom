@@ -96,6 +96,9 @@ type BlobStorage interface {
 	) (*Blob, error)
 	Exists(ctx context.Context, sha256 string) (bool, error)
 	GetFromHash(ctx context.Context, sha256 string) (*Blob, error)
+	// GetDescriptor returns a blob's metadata without loading its content;
+	// the returned Blob has a nil Blob field.
+	GetDescriptor(ctx context.Context, sha256 string) (*Blob, error)
 	GetFromPubkey(ctx context.Context, pubkey string) ([]*Blob, error)
 	// GetFromPubkeyWithFilter returns blobs for a pubkey with filtering and pagination.
 	GetFromPubkeyWithFilter(ctx context.Context, pubkey string, filter *BlobFilter) (*BlobListResult, error)
