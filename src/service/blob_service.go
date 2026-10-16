@@ -173,6 +173,21 @@ func (r *blobService) Exists(ctx context.Context, sha256 string) (bool, error) {
 	return err == nil, err
 }
 
+func (r *blobService) GetDescriptor(ctx context.Context, sha256 string) (*core.Blob, error) {
+	dbBlob, err := r.queries.GetBlobFromHash(ctx, sha256)
+	if err != nil {
+		return nil, err
+	}
+	blob := r.dbBlobIntoBlobDescriptor(dbBlob)
+	blob.Blob = nil
+	// Report the length GetFromHash serves: plaintext for server-side
+	// encryption, the stored bytes otherwise (e2e blobs are served as stored).
+	if dbBlob.EncryptionMode != "server" {
+		blob.Size = dbBlob.Size
+	}
+	return blob, nil
+}
+
 func (r *blobService) GetFromHash(ctx context.Context, sha256 string) (*core.Blob, error) {
 	dbBlob, err := r.queries.GetBlobFromHash(ctx, sha256)
 	if err != nil {

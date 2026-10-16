@@ -137,6 +137,10 @@ func (m *mockBlobStorage) DeleteReference(ctx context.Context, pubkey string, sh
 	return false, nil
 }
 
+func (m *mockBlobStorage) GetDescriptor(ctx context.Context, sha256 string) (*core.Blob, error) {
+	return nil, core.ErrBlobNotFound
+}
+
 func (m *mockBlobStorage) IsEncryptionEnabled() bool {
 	return false
 }

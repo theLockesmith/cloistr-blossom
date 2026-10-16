@@ -3,6 +3,7 @@ package gin
 import (
 	"bytes"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,9 +23,30 @@ func variantCacheKey(hash string, opts media.ProcessOptions) string {
 	return fmt.Sprintf("variant:%s_%dx%d_%s_%v", hash, opts.Width, opts.Height, opts.Format, opts.Crop)
 }
 
-// setSecurityHeaders sets security headers for blob responses.
-// Safe media types (images, video, audio) are served inline for preview.
-// All other types are forced to download to prevent XSS/execution.
+// blobContentType returns the Content-Type to serve for a blob: the stored
+// type when it parses as a media type, otherwise a sniff of the content,
+// otherwise application/octet-stream. content is only called when the stored
+// type is unusable, so HEAD can avoid loading the bytes in the common case.
+//
+// The stored type is not trusted for safety: the inline/attachment decision,
+// nosniff and the sandbox CSP in setSecurityHeaders are applied to whatever
+// this returns.
+func blobContentType(stored string, content func() []byte) string {
+	if mt, params, err := mime.ParseMediaType(stored); err == nil && strings.Contains(mt, "/") {
+		if formatted := mime.FormatMediaType(mt, params); formatted != "" {
+			return formatted
+		}
+	}
+	if data := content(); data != nil {
+		return mimetype.Detect(data).String()
+	}
+	return "application/octet-stream"
+}
+
+// setSecurityHeaders sets security headers for blob responses. contentType
+// must be the Content-Type actually served. Safe media types (images except
+// SVG, video, audio, PDF) are served inline for preview; everything else is
+// forced to download to prevent XSS/execution.
 func setSecurityHeaders(ctx *gin.Context, contentType, hash string) {
 	// Always prevent MIME sniffing
 	ctx.Header("X-Content-Type-Options", "nosniff")
@@ -43,25 +65,19 @@ func setSecurityHeaders(ctx *gin.Context, contentType, hash string) {
 	}
 }
 
-// isSafeForInline returns true for media types that are safe to render in browser.
+// isSafeForInline returns true for media types that are safe to render in
+// browser. It is an allowlist: unparseable types, any +xml type and any SVG
+// variant (SVG can carry scripts) are not safe.
 func isSafeForInline(contentType string) bool {
-	// Images (excluding SVG which can contain scripts)
-	if strings.HasPrefix(contentType, "image/") && contentType != "image/svg+xml" {
-		return true
+	mt, _, err := mime.ParseMediaType(contentType)
+	if err != nil || strings.HasSuffix(mt, "+xml") || strings.HasPrefix(mt, "image/svg") {
+		return false
 	}
-	// Video
-	if strings.HasPrefix(contentType, "video/") {
-		return true
-	}
-	// Audio
-	if strings.HasPrefix(contentType, "audio/") {
+	if strings.HasPrefix(mt, "image/") || strings.HasPrefix(mt, "video/") || strings.HasPrefix(mt, "audio/") {
 		return true
 	}
 	// PDF (rendered by browser PDF viewer, sandboxed)
-	if contentType == "application/pdf" {
-		return true
-	}
-	return false
+	return mt == "application/pdf"
 }
 
 func getBlob(
@@ -130,6 +146,7 @@ func getBlob(
 				}
 				setSecurityHeaders(ctx, contentType, hash)
 				ctx.Header("Content-Type", contentType)
+				ctx.Header("Content-Length", strconv.Itoa(len(cached)))
 				ctx.Header("X-Cache", "HIT")
 				_, _ = ctx.Writer.Write(cached)
 				ctx.Status(http.StatusOK)
@@ -139,7 +156,7 @@ func getBlob(
 			}
 		}
 
-		fileBytes, err := bud01.GetBlob(
+		blob, err := bud01.GetBlob(
 			ctx.Request.Context(),
 			services,
 			hash,
@@ -162,27 +179,27 @@ func getBlob(
 			return
 		}
 
-		// If no processing requested, return original
-		if !needsProcessing {
-			mType := mimetype.Detect(fileBytes)
-			setSecurityHeaders(ctx, mType.String(), hash)
-			ctx.Header("Content-Type", mType.String())
+		fileBytes := blob.Blob
+		writeOriginal := func() {
+			contentType := blobContentType(blob.Type, func() []byte { return fileBytes })
+			setSecurityHeaders(ctx, contentType, hash)
+			ctx.Header("Content-Type", contentType)
+			ctx.Header("Content-Length", strconv.Itoa(len(fileBytes)))
 			_, _ = ctx.Writer.Write(fileBytes)
 			ctx.Status(http.StatusOK)
 			metrics.DownloadsTotal.WithLabelValues("success").Inc()
 			metrics.DownloadBytes.Add(float64(len(fileBytes)))
+		}
+
+		// If no processing requested, return original
+		if !needsProcessing {
+			writeOriginal()
 			return
 		}
 
-		// Check if this is an image
-		mType := mimetype.Detect(fileBytes)
-		if !media.IsImage(mType.String()) {
-			setSecurityHeaders(ctx, mType.String(), hash)
-			ctx.Header("Content-Type", mType.String())
-			_, _ = ctx.Writer.Write(fileBytes)
-			ctx.Status(http.StatusOK)
-			metrics.DownloadsTotal.WithLabelValues("success").Inc()
-			metrics.DownloadBytes.Add(float64(len(fileBytes)))
+		// Only image content is processed; the decision is made on the bytes.
+		if !media.IsImage(mimetype.Detect(fileBytes).String()) {
+			writeOriginal()
 			return
 		}
 
@@ -190,12 +207,7 @@ func getBlob(
 		result, err := processor.Process(bytes.NewReader(fileBytes), opts)
 		if err != nil {
 			// On processing error, return original
-			setSecurityHeaders(ctx, mType.String(), hash)
-			ctx.Header("Content-Type", mType.String())
-			_, _ = ctx.Writer.Write(fileBytes)
-			ctx.Status(http.StatusOK)
-			metrics.DownloadsTotal.WithLabelValues("success").Inc()
-			metrics.DownloadBytes.Add(float64(len(fileBytes)))
+			writeOriginal()
 			return
 		}
 
@@ -205,6 +217,7 @@ func getBlob(
 
 		setSecurityHeaders(ctx, result.ContentType, hash)
 		ctx.Header("Content-Type", result.ContentType)
+		ctx.Header("Content-Length", strconv.Itoa(len(result.Data)))
 		ctx.Header("X-Cache", "MISS")
 		ctx.Header("X-Image-Width", strconv.Itoa(result.Width))
 		ctx.Header("X-Image-Height", strconv.Itoa(result.Height))
@@ -220,16 +233,30 @@ func hasBlob(
 ) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		pathParts := strings.Split(ctx.Param("hash"), ".")
-		_, err := bud01.HasBlob(
+		hash := pathParts[0]
+		blob, err := bud01.GetBlobDescriptor(
 			ctx.Request.Context(),
 			services,
-			pathParts[0],
+			hash,
 		)
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusNotFound)
 			return
 		}
 
+		// Send the same Content-Type and security headers GET would. The
+		// content is loaded only when the stored type is unusable and GET
+		// would sniff it.
+		contentType := blobContentType(blob.Type, func() []byte {
+			full, err := bud01.GetBlob(ctx.Request.Context(), services, hash)
+			if err != nil {
+				return nil
+			}
+			return full.Blob
+		})
+		setSecurityHeaders(ctx, contentType, hash)
+		ctx.Header("Content-Type", contentType)
+		ctx.Header("Content-Length", strconv.FormatInt(blob.Size, 10))
 		ctx.Status(http.StatusOK)
 	}
 }

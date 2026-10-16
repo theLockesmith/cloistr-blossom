@@ -6,10 +6,16 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
-func HasBlob(
+// GetBlobDescriptor returns a blob's metadata without loading its content.
+func GetBlobDescriptor(
 	ctx context.Context,
 	services core.Services,
 	hash string,
-) (bool, error) {
-	return services.Blob().Exists(ctx, hash)
+) (*core.Blob, error) {
+	blob, err := services.Blob().GetDescriptor(ctx, hash)
+	if err != nil {
+		return nil, core.ErrBlobNotFound
+	}
+
+	return blob, nil
 }
