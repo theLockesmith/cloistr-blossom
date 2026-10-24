@@ -4,6 +4,7 @@ db/**.sqlite3
 config.yml
 blossom-server
 src/bud-05/data/
+src/bud-02/data/
 CLAUDE.md
 .claude
 .claude/

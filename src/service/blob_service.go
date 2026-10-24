@@ -607,6 +607,19 @@ func (r *blobService) HasReference(ctx context.Context, pubkey string, sha256 st
 	return exists, nil
 }
 
+// ListReferenceOwners returns every pubkey holding a reference to a blob.
+func (r *blobService) ListReferenceOwners(ctx context.Context, sha256 string) ([]string, error) {
+	refs, err := r.queries.GetBlobReferencesByHash(ctx, sha256)
+	if err != nil {
+		return nil, err
+	}
+	owners := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		owners = append(owners, ref.Pubkey)
+	}
+	return owners, nil
+}
+
 // DeleteReference removes a user's reference to a blob.
 // If this was the last reference, the actual blob is deleted.
 func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {

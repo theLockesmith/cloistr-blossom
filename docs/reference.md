@@ -534,6 +534,22 @@ by Nostr relay queries).
 
 Response: `{ "blobs": [...], "total": <int> }` (`total` is the full match count, ignoring pagination).
 
+### Blob Delete (Admin)
+
+Remove a blob on an operator's behalf, for test cleanup or an erasure request.
+Admin session required.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| DELETE | `/admin/api/blobs/:hash` | Admin | Delete a blob for every owner (dry run unless `?confirm=true`) |
+
+- Without `?confirm=true` (exactly that value) nothing changes; the response lists the owners it would touch.
+- With it, each owner's reference is deleted and the blob's size is taken off that owner's usage, the same accounting as an owner deleting it themselves. The blob row and stored object go when the last reference does.
+- Unlike a report's `removed` action, the hash is **not** added to the removed-blobs list, so the same bytes can be uploaded again. Use the report action for content that must stay blocked.
+- It does not remove a user's quota/usage row (on the platform backend that row lives in the shared `public.users` table, which blossom cannot write).
+
+Response: `{ "hash", "size", "owners": [...], "removed": [...], "dry_run", "deleted" }`. `owners` is who held it when the call started; `removed` is whose reference this call deleted and refunded (an owner who deleted their own copy meanwhile is skipped, so a retry is safe). `deleted` is false if a concurrent upload re-referenced the blob. 400 for a malformed hash, 404 for an unknown one, 500 on a database error.
+
 ### List Endpoint Filters
 
 `/list/:pubkey` query parameters:

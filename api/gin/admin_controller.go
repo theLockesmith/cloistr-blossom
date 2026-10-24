@@ -742,6 +742,8 @@ func RegisterAdminRoutes(r *gin.Engine, services core.Services, adminPubkey stri
 
 	// Server-wide blob search (moderation/ops)
 	protectedAPI.GET("/blobs/search", searchBlobs(services))
+	// Delete a blob for all owners without blocklisting it (dry run unless ?confirm=true)
+	protectedAPI.DELETE("/blobs/:hash", adminDeleteBlob(services))
 
 	// Garbage-collection / reconciliation (ops). Report is read-only;
 	// reconcile is dry-run unless called with ?confirm=true.

@@ -125,6 +125,14 @@ func (m *mockBlobStorage) HasReference(ctx context.Context, pubkey string, sha25
 	return false, nil
 }
 
+func (m *mockBlobStorage) ListReferenceOwners(ctx context.Context, sha256 string) ([]string, error) {
+	var owners []string
+	for pk := range m.references[sha256] {
+		owners = append(owners, pk)
+	}
+	return owners, nil
+}
+
 func (m *mockBlobStorage) DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {
 	if refs, exists := m.references[sha256]; exists {
 		delete(refs, pubkey)
