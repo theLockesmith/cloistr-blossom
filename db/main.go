@@ -57,7 +57,7 @@ func NewDBWithConfig(cfg DBConfig, migrationsPath string) (*sql.DB, error) {
 				return nil, fmt.Errorf("create database directory: %w", err)
 			}
 		}
-		dbi, err = sql.Open("sqlite3", cfg.DSN)
+		dbi, err = sql.Open(sqliteDriverName, cfg.DSN)
 		dialect = "sqlite3"
 
 	default:
