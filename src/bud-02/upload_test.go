@@ -69,7 +69,7 @@ func TestUpload(t *testing.T) {
 	blobBytes := []byte{}
 	authHash, _ := hashing.Hash(blobBytes)
 
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, authHash, pk, blobBytes, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, authHash, pk, blobBytes, core.EncryptionModeNone, "")
 	assert.NoError(t, err)
 }
 
@@ -101,7 +101,7 @@ func TestUnauthUpload(t *testing.T) {
 	blobBytes := []byte{}
 	authHash, _ := hashing.Hash(blobBytes)
 
-	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, authHash, pk, blobBytes, core.EncryptionModeNone)
+	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, authHash, pk, blobBytes, core.EncryptionModeNone, "")
 	assert.Error(t, err, "expected unauthorized error")
 }
 
@@ -140,7 +140,7 @@ func TestUploadLimits_Disabled(t *testing.T) {
 	// textBytes would be blocked by the default image-only allowlist if enabled.
 	data := textBytes
 	hash, _ := hashing.Hash(data)
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone, "")
 	assert.NoError(t, err, "disabled upload_limits must not restrict any upload")
 }
 
@@ -163,7 +163,7 @@ func TestUploadLimits_MimeType_AllowedPrefixMatches(t *testing.T) {
 
 	data := jpegMagic
 	hash, _ := hashing.Hash(data)
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone, "")
 	assert.NoError(t, err, "JPEG should pass when image/ prefix is allowed for named tier")
 }
 
@@ -186,7 +186,7 @@ func TestUploadLimits_MimeType_BlockedPrefix(t *testing.T) {
 
 	data := textBytes
 	hash, _ := hashing.Hash(data)
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone, "")
 	assert.Error(t, err, "text/plain should be rejected when only image/ and video/ are allowed")
 }
 
@@ -242,7 +242,7 @@ func TestUploadLimits_MimeType_MagicByteWins(t *testing.T) {
 			svc := newTestServices(t, subDB, conf)
 
 			hash, _ := hashing.Hash(tt.data)
-			_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, tt.data, core.EncryptionModeNone)
+			_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, tt.data, core.EncryptionModeNone, "")
 			if tt.wantErr {
 				assert.Error(t, err, tt.description)
 			} else {
@@ -291,7 +291,7 @@ func TestUploadLimits_FileSize_AtAndOverLimit(t *testing.T) {
 			data := make([]byte, tt.size)
 			copy(data, jpegMagic)
 			hash, _ := hashing.Hash(data)
-			_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone)
+			_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone, "")
 			if tt.wantErr {
 				assert.Error(t, err, "upload over cap must fail")
 			} else {
@@ -320,17 +320,17 @@ func TestUploadLimits_UploadsPerDay(t *testing.T) {
 	// First upload — unique bytes so hash ≠ authHash mismatch doesn't bite us.
 	data1 := []byte{0xde, 0xad}
 	h1, _ := hashing.Hash(data1)
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, h1, pk, data1, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, h1, pk, data1, core.EncryptionModeNone, "")
 	assert.NoError(t, err, "first upload should succeed (1 of 2)")
 
 	data2 := []byte{0xbe, 0xef}
 	h2, _ := hashing.Hash(data2)
-	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, h2, pk, data2, core.EncryptionModeNone)
+	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, h2, pk, data2, core.EncryptionModeNone, "")
 	assert.NoError(t, err, "second upload should succeed (2 of 2)")
 
 	data3 := []byte{0xca, 0xfe}
 	h3, _ := hashing.Hash(data3)
-	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, h3, pk, data3, core.EncryptionModeNone)
+	_, err = UploadBlob(context.Background(), svc, conf.CdnUrl, h3, pk, data3, core.EncryptionModeNone, "")
 	assert.Error(t, err, "third upload should fail (daily limit of 2 reached)")
 	assert.Contains(t, err.Error(), "daily upload limit", "error message must mention daily limit")
 }
@@ -366,6 +366,39 @@ func TestUploadLimits_AnonymousTier_Config(t *testing.T) {
 	// Standalone → TierNamed → named.MaxFileBytes = 1024, so a 10-byte upload passes.
 	data := jpegMagic
 	hash, _ := hashing.Hash(data)
-	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone)
+	_, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, data, core.EncryptionModeNone, "")
 	assert.NoError(t, err, "standalone mode resolves to TierNamed, so named-tier limits apply")
+}
+
+// TestUpload_DeclaredTypeUpgrade verifies the stored type comes from the
+// sniff, upgraded to the declared type only for allowlisted text formats.
+func TestUpload_DeclaredTypeUpgrade(t *testing.T) {
+	dbFile := "./db-TestUpload_DeclaredTypeUpgrade.sqlite3"
+	t.Cleanup(func() { os.Remove(dbFile) })
+
+	pk, _ := nostr.GetPublicKey(nostr.GeneratePrivateKey())
+	conf := baseConf(dbFile, pk)
+	svc := newTestServices(t, dbFile, conf)
+
+	tests := []struct {
+		name     string
+		data     []byte
+		declared string
+		want     string
+	}{
+		{"css declared over text is stored as css", []byte("body { color: red }\n"), "text/css", "text/css; charset=utf-8"},
+		{"html declared over text stays text", []byte("just some text\n"), "text/html", "text/plain; charset=utf-8"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hash, _ := hashing.Hash(tt.data)
+			blob, err := UploadBlob(context.Background(), svc, conf.CdnUrl, hash, pk, tt.data, core.EncryptionModeNone, tt.declared)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, blob.Type)
+
+			stored, err := svc.Blob().GetFromHash(context.Background(), hash)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, stored.Type)
+		})
+	}
 }

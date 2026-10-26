@@ -128,6 +128,7 @@ func uploadBlob(
 			ctx.GetString("pk"),
 			bodyBytes,
 			encryptionMode,
+			ctx.GetHeader("Content-Type"),
 		)
 		if err != nil {
 			metrics.UploadsTotal.WithLabelValues("error", string(encryptionMode)).Inc()

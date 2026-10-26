@@ -80,6 +80,60 @@ func isSafeForInline(contentType string) bool {
 	return mt == "application/pdf"
 }
 
+// processOptionsFromQuery reads the image processing parameters of a blob
+// request and reports whether any processing was requested.
+func processOptionsFromQuery(ctx *gin.Context) (media.ProcessOptions, bool) {
+	width, _ := strconv.Atoi(ctx.Query("width"))
+	height, _ := strconv.Atoi(ctx.Query("height"))
+
+	opts := media.ProcessOptions{
+		Width:  width,
+		Height: height,
+	}
+
+	// Handle thumbnail presets
+	switch ctx.Query("thumbnail") {
+	case "small":
+		opts.Width, opts.Height, opts.Crop = 150, 150, true
+	case "medium":
+		opts.Width, opts.Height, opts.Crop = 300, 300, true
+	case "large":
+		opts.Width, opts.Height, opts.Crop = 600, 600, true
+	}
+
+	// Handle format conversion
+	switch ctx.Query("format") {
+	case "jpeg", "jpg":
+		opts.Format = media.FormatJPEG
+	case "png":
+		opts.Format = media.FormatPNG
+	case "webp":
+		opts.Format = media.FormatWebP
+	case "gif":
+		opts.Format = media.FormatGIF
+	}
+
+	return opts, opts.Width > 0 || opts.Height > 0 || opts.Format != ""
+}
+
+// redirectToCDN redirects an unprocessed blob request to the CDN when CDN
+// redirects are enabled, and reports whether it did. GET and HEAD share it so
+// both answer with the same status and Location.
+func redirectToCDN(ctx *gin.Context, services core.Services, hash string) bool {
+	if !services.CDN().ShouldRedirect() {
+		return false
+	}
+	cdnURL, err := services.CDN().GetBlobURL(ctx.Request.Context(), hash, "")
+	if err != nil || cdnURL == "" {
+		return false
+	}
+	ctx.Redirect(http.StatusFound, cdnURL)
+	if ctx.Request.Method == http.MethodGet {
+		metrics.DownloadsTotal.WithLabelValues("cdn_redirect").Inc()
+	}
+	return true
+}
+
 func getBlob(
 	services core.Services,
 ) gin.HandlerFunc {
@@ -89,51 +143,10 @@ func getBlob(
 		pathParts := strings.Split(ctx.Param("hash"), ".")
 		hash := pathParts[0]
 
-		// Check for image processing parameters
-		width, _ := strconv.Atoi(ctx.Query("width"))
-		height, _ := strconv.Atoi(ctx.Query("height"))
-		format := ctx.Query("format")
-		thumbnail := ctx.Query("thumbnail")
+		opts, needsProcessing := processOptionsFromQuery(ctx)
 
-		// Build processing options
-		opts := media.ProcessOptions{
-			Width:  width,
-			Height: height,
-		}
-
-		// Handle thumbnail presets
-		switch thumbnail {
-		case "small":
-			opts.Width, opts.Height, opts.Crop = 150, 150, true
-		case "medium":
-			opts.Width, opts.Height, opts.Crop = 300, 300, true
-		case "large":
-			opts.Width, opts.Height, opts.Crop = 600, 600, true
-		}
-
-		// Handle format conversion
-		switch format {
-		case "jpeg", "jpg":
-			opts.Format = media.FormatJPEG
-		case "png":
-			opts.Format = media.FormatPNG
-		case "webp":
-			opts.Format = media.FormatWebP
-		case "gif":
-			opts.Format = media.FormatGIF
-		}
-
-		needsProcessing := opts.Width > 0 || opts.Height > 0 || opts.Format != ""
-
-		// CDN redirect for unprocessed blobs
-		// Only redirect if CDN is enabled, redirect is configured, and no processing is needed
-		if !needsProcessing && services.CDN().ShouldRedirect() {
-			cdnURL, err := services.CDN().GetBlobURL(ctx.Request.Context(), hash, "")
-			if err == nil && cdnURL != "" {
-				ctx.Redirect(http.StatusFound, cdnURL)
-				metrics.DownloadsTotal.WithLabelValues("cdn_redirect").Inc()
-				return
-			}
+		if !needsProcessing && redirectToCDN(ctx, services, hash) {
+			return
 		}
 
 		// Check cache for processed variants
@@ -234,6 +247,11 @@ func hasBlob(
 	return func(ctx *gin.Context) {
 		pathParts := strings.Split(ctx.Param("hash"), ".")
 		hash := pathParts[0]
+
+		if _, needsProcessing := processOptionsFromQuery(ctx); !needsProcessing && redirectToCDN(ctx, services, hash) {
+			return
+		}
+
 		blob, err := bud01.GetBlobDescriptor(
 			ctx.Request.Context(),
 			services,
