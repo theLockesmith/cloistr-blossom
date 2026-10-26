@@ -133,4 +133,7 @@ type BlobStorage interface {
 	// If this was the last reference, the actual blob is deleted from storage.
 	// Returns (wasLastReference, error).
 	DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error)
+
+	// ListReferenceOwners returns every pubkey holding a reference to a blob.
+	ListReferenceOwners(ctx context.Context, sha256 string) ([]string, error)
 }
