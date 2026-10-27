@@ -170,6 +170,36 @@ func TestBlobHead_MissingBlobIs404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+// BUD-01: GET of a well-formed hash the server does not hold is 404, like
+// HEAD; only a malformed hash is a 400.
+func TestBlobGet_MissingBlobStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	missing := strings.Repeat("b", 64)
+	tests := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"absent hash", "/" + missing, http.StatusNotFound},
+		{"absent hash with extension", "/" + missing + ".png", http.StatusNotFound},
+		{"absent hash in upper case", "/" + strings.ToUpper(missing), http.StatusNotFound},
+		{"present hash", "/" + testBlobHash, http.StatusOK},
+		{"too short", "/zz", http.StatusBadRequest},
+		{"not hex", "/" + strings.Repeat("g", 64), http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &oneBlobStorage{blob: core.Blob{Sha256: testBlobHash, Type: "text/plain", Blob: []byte("hi")}}
+			r := gin.New()
+			r.GET("/:hash", getBlob(blobHeaderServices{blobs: store}))
+
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			assert.Equal(t, tt.want, w.Code, w.Body.String())
+		})
+	}
+}
+
 func TestBlobHead_MatchesGetCDNRedirect(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := blobHeaderServices{
