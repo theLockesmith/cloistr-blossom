@@ -142,6 +142,11 @@ func getBlob(
 	return func(ctx *gin.Context) {
 		pathParts := strings.Split(ctx.Param("hash"), ".")
 		hash := pathParts[0]
+		if !sha256Regex.MatchString(hash) {
+			metrics.DownloadsTotal.WithLabelValues("error").Inc()
+			clerrors.BadRequest(clerrors.CodeInvalidInput, "hash must be 64 hex characters").Abort(ctx)
+			return
+		}
 
 		opts, needsProcessing := processOptionsFromQuery(ctx)
 
@@ -187,8 +192,10 @@ func getBlob(
 				}
 			}
 
+			// bud01.GetBlob reports every lookup failure as not found,
+			// matching HEAD.
 			metrics.DownloadsTotal.WithLabelValues("error").Inc()
-			clerrors.BadRequest(clerrors.CodeInvalidInput, err.Error()).Abort(ctx)
+			clerrors.NotFound(clerrors.CodeResourceNotFound, err.Error()).Abort(ctx)
 			return
 		}
 
