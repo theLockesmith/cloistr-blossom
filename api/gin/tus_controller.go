@@ -707,7 +707,7 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 
 	// Save blob
 	url := fmt.Sprintf("%s/%s", h.cdnBaseURL, hashStr)
-	blob, _, err := h.blobService.SaveWithDedup(
+	blob, newReference, err := h.blobService.SaveWithDedup(
 		ctx,
 		info.Pubkey,
 		hashStr,
@@ -725,8 +725,8 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		h.limits.RecordUpload(ctx, info.Pubkey)
 	}
 
-	// Update quota
-	if h.quotaService != nil {
+	// Charge once per blob the key owns (not again for a re-upload).
+	if h.quotaService != nil && newReference {
 		_ = h.quotaService.IncrementUsage(ctx, info.Pubkey, int64(len(data)))
 	}
 

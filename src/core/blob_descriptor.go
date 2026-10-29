@@ -113,7 +113,11 @@ type BlobStorage interface {
 
 	// SaveWithDedup saves a blob with content-addressable deduplication.
 	// If the blob already exists (same hash), it creates a reference for this user
-	// without re-storing the data. Returns (blob, isNewBlob, error).
+	// without re-storing the data. Returns (blob, newReference, error):
+	// newReference is true only when this pubkey did not already own the blob,
+	// i.e. exactly when the caller should charge the pubkey's usage. A key is
+	// charged at most once per blob it references, matching the single credit
+	// it gets when it deletes that reference.
 	SaveWithDedup(
 		ctx context.Context,
 		pubkey string,

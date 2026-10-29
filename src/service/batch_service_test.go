@@ -73,8 +73,10 @@ func (m *mockBlobStorage) SaveWithDedup(ctx context.Context, pubkey string, sha2
 	if m.references[sha256] == nil {
 		m.references[sha256] = make(map[string]bool)
 	}
+	newReference := !m.references[sha256][pubkey]
 	m.references[sha256][pubkey] = true
-	return m.blobs[sha256], isNew, nil
+	_ = isNew
+	return m.blobs[sha256], newReference, nil
 }
 
 func (m *mockBlobStorage) Exists(ctx context.Context, sha256 string) (bool, error) {
@@ -1472,4 +1474,21 @@ func TestBatchUpload_OnlyHashesTheTokenNames(t *testing.T) {
 	assert.False(t, resp.Results[1].Success, "a file the token does not name is refused")
 	exists, _ := blobStorage.Exists(ctx, hashData(other))
 	assert.False(t, exists, "the unnamed file must not be stored")
+}
+
+// TestBatchUpload_ChargesOncePerOwnedBlob: a batch re-upload of a blob the key
+// already owns is not charged again.
+func TestBatchUpload_ChargesOncePerOwnedBlob(t *testing.T) {
+	svc, _, _, quotaService, _ := setupBatchTest(t)
+	ctx := context.Background()
+	data := []byte("uploaded twice")
+
+	for i := 0; i < 2; i++ {
+		_, err := svc.Upload(ctx, &core.BatchUploadRequest{
+			Pubkey: "testpubkey",
+			Files:  []core.BatchUploadFile{{Filename: "a.txt", MimeType: "text/plain", Size: int64(len(data)), Reader: bytes.NewReader(data)}},
+		})
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int64(len(data)), quotaService.quotaUsage["testpubkey"])
 }

@@ -96,7 +96,7 @@ func UploadBlob(
 	// - If blob exists and user already has it: returns existing blob
 	// - If blob exists but user doesn't have it: creates reference (no re-store)
 	// - If blob doesn't exist: saves blob and creates reference
-	blobDescriptor, isNewBlob, err := blobs.SaveWithDedup(
+	blobDescriptor, newReference, err := blobs.SaveWithDedup(
 		ctx,
 		pubkey,
 		hash,
@@ -112,19 +112,12 @@ func UploadBlob(
 	}
 	ul.RecordUpload(ctx, pubkey)
 
-	// Update quota usage - count the blob size for this user regardless of dedup
-	// Each user's quota reflects their "ownership" of blob references
-	if isNewBlob {
-		// New blob was stored - increment quota
-		if err := quota.IncrementUsage(ctx, pubkey, int64(len(blobBytes))); err != nil {
-			// Log but don't fail - the blob was saved successfully
-		}
-	} else {
-		// Blob was deduplicated - still count against user's quota
-		// This is fair: user gets the space benefit of dedup in storage,
-		// but their quota reflects what they've uploaded
+	// Charge the key once per blob it owns, whether or not the bytes were
+	// already stored for someone else (dedup). Re-uploading a blob the key
+	// already owns is not charged again: deleting it credits it only once.
+	if newReference {
 		if err := quota.IncrementUsage(ctx, pubkey, blobDescriptor.Size); err != nil {
-			// Log but don't fail
+			// Log but don't fail - the blob was saved successfully
 		}
 	}
 

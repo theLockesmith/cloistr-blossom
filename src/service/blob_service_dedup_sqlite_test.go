@@ -72,12 +72,13 @@ func TestSaveWithDedupIsIdempotentOnSQLite(t *testing.T) {
 		t.Error("second save reported the blob as new")
 	}
 
-	// A second owner must get their own reference rather than an error.
+	// A second owner must get their own reference rather than an error, and it
+	// is a new reference for them (so they are charged for it once).
 	const otherPubkey = "0000000000000000000000000000000000000000000000000000000000000003"
-	if _, isNew, err := blobs.SaveWithDedup(ctx, otherPubkey, hash, "", int64(len(data)), "text/plain", data, 1, core.EncryptionModeNone); err != nil {
+	if _, newRef, err := blobs.SaveWithDedup(ctx, otherPubkey, hash, "", int64(len(data)), "text/plain", data, 1, core.EncryptionModeNone); err != nil {
 		t.Fatalf("second owner save: %v", err)
-	} else if isNew {
-		t.Error("second owner's save reported the blob as new; it should have deduplicated")
+	} else if !newRef {
+		t.Error("second owner's first save must report a new reference for them")
 	}
 	if has, err := blobs.HasReference(ctx, otherPubkey, hash); err != nil || !has {
 		t.Errorf("second owner has no reference (has=%v err=%v)", has, err)

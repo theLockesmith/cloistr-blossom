@@ -134,7 +134,7 @@ func uploadMedia(
 		created := time.Now().Unix()
 		// SaveWithDedup records the uploader as an owner, which is what puts
 		// the file in their list and lets them delete it.
-		blob, _, err := services.Blob().SaveWithDedup(
+		blob, newReference, err := services.Blob().SaveWithDedup(
 			ctx.Request.Context(),
 			pubkey,
 			result.Hash,
@@ -156,8 +156,8 @@ func uploadMedia(
 		// Honor the requested expiration (best-effort; blob is already stored).
 		applyUploadExpiration(ctx, services, result.Hash, expiresAt, hasExpiration)
 
-		// Update quota usage
-		if pubkey != "" {
+		// Charge once per blob the key owns (not again for a re-upload).
+		if pubkey != "" && newReference {
 			_ = services.Quota().IncrementUsage(ctx.Request.Context(), pubkey, int64(len(result.Data)))
 		}
 

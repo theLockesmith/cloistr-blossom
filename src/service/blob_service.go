@@ -533,7 +533,7 @@ func (r *blobService) SaveWithDedup(
 			return nil, false, fmt.Errorf("check reference: %w", refErr)
 		}
 		if hasRef {
-			// User already has this blob - return existing
+			// User already has this blob - return existing, nothing to charge
 			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
 		}
 
@@ -566,7 +566,8 @@ func (r *blobService) SaveWithDedup(
 			zap.String("hash", sha256),
 			zap.Int32("ref_count", existingBlob.RefCount+1))
 
-		return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
+		// A new reference for this key: it now owns the blob.
+		return r.dbBlobIntoBlobDescriptor(existingBlob), true, nil
 	}
 
 	// Blob doesn't exist - save normally
@@ -592,7 +593,9 @@ func (r *blobService) SaveWithDedup(
 		zap.String("pubkey", pubkey),
 		zap.String("hash", sha256))
 
-	return savedBlob, true, nil
+	// No rows: a concurrent save by this key created the reference first and
+	// is the one that charges for it.
+	return savedBlob, !errors.Is(err, sql.ErrNoRows), nil
 }
 
 // HasReference checks if a user has a reference to a blob.
