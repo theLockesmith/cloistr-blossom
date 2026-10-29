@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -301,11 +302,12 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 	conf.Pubkey.Upload.Requests = 1
 	conf.Pubkey.Upload.Window = "1m"
 
-	limiterCalled := false
+	// The per-pubkey bucket is exhausted; the IP bucket is not.
+	var keys []string
 	limiter := &mockRateLimiter{
 		allowFunc: func(ctx context.Context, key string, limit int, window time.Duration) (bool, int, time.Time) {
-			limiterCalled = true
-			return false, 0, time.Now().Add(time.Minute)
+			keys = append(keys, key)
+			return !strings.HasPrefix(key, "pk:"), 0, time.Now().Add(time.Minute)
 		},
 	}
 	middleware := RateLimitMiddleware(limiter, conf, zap.NewNop())
@@ -317,9 +319,9 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 	c.Request = req
 	c.Set("pk", whitelistedPubkey)
 	middleware(c)
-	assert.True(t, limiterCalled, "an unsigned request is limited whatever the context says")
+	assert.Equal(t, []string{"ip:" + c.ClientIP()}, keys, "an unsigned request is limited by IP whatever the context says")
 
-	limiterCalled = false
+	keys = nil
 	req = httptest.NewRequest(http.MethodPut, "/upload", nil)
 	req.Header.Set("Authorization", signedTokenAs(t, sk, "upload", xHashA))
 	w = httptest.NewRecorder()
@@ -327,7 +329,7 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 	c.Request = req
 	middleware(c)
 
-	assert.False(t, limiterCalled, "Limiter should not be called for a verified whitelisted pubkey")
+	assert.Equal(t, []string{"ip:" + c.ClientIP()}, keys, "a verified whitelisted key skips its per-pubkey limit")
 	assert.False(t, c.IsAborted(), "Whitelisted request should pass through")
 }
 
