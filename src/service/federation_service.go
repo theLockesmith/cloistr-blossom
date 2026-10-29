@@ -39,6 +39,9 @@ type federationService struct {
 	storage    storage.StorageBackend
 	log        *zap.Logger
 
+	// maxUploadBytes caps a federated download, as it caps an upload.
+	maxUploadBytes int
+
 	// Server identity
 	serverSk    string // Private key (hex)
 	serverPk    string // Public key (hex)
@@ -67,6 +70,7 @@ func NewFederationService(
 	cdnBaseURL string,
 	queries *db.Queries,
 	storage storage.StorageBackend,
+	maxUploadBytes int,
 	log *zap.Logger,
 ) (core.FederationService, error) {
 	if !cfg.Enabled {
@@ -105,6 +109,7 @@ func NewFederationService(
 		cdnBaseURL:   cdnBaseURL,
 		queries:      queries,
 		storage:      storage,
+		maxUploadBytes: maxUploadBytes,
 		log:          log,
 		serverSk:     sk,
 		serverPk:     pk,
@@ -659,15 +664,19 @@ func (s *federationService) downloadAndStore(ctx context.Context, hash, url stri
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Read body, stopping one byte past the announced size so a source that
-	// sends more cannot make us buffer it all.
-	var body io.Reader = resp.Body
-	if expectedSize > 0 {
-		body = io.LimitReader(resp.Body, expectedSize+1)
+	// Read at most one byte past the max upload size, or past the announced
+	// size when that is smaller. The announced size comes from the peer's
+	// event and may be 0 or missing, so it never lifts the cap.
+	limit := int64(max(s.maxUploadBytes, 0))
+	if expectedSize > 0 && expectedSize < limit {
+		limit = expectedSize
 	}
-	data, err := io.ReadAll(body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("blob larger than %d bytes", limit)
 	}
 
 	// Verify hash
