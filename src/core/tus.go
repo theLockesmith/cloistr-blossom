@@ -3,7 +3,12 @@ package core
 import (
 	"context"
 	"errors"
+	"time"
 )
+
+// TusUploadTTL is how long an upload may go without a chunk before it
+// expires and the sweep removes it.
+const TusUploadTTL = 24 * time.Hour
 
 var (
 	// ErrTusUploadNotFound is returned for an upload id with no upload.

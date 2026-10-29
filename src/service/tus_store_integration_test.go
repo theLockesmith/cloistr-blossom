@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
@@ -78,5 +82,72 @@ func TestTusStore_ConcurrentAppendOneWinner_Postgres(t *testing.T) {
 	}
 	if n := countObjects(t, dir); n != 1 {
 		t.Fatalf("%d objects in blob storage, want only the winner's", n)
+	}
+}
+
+// Both replicas run the expiry sweep on their own timer, so two sweeps can
+// hit the same expired uploads at once. Each upload goes exactly once, with
+// no error, and a live upload is left alone.
+func TestTusStore_ConcurrentSweepsBothReplicas_Postgres(t *testing.T) {
+	if integrationDB == nil {
+		t.Skip("no integration database")
+	}
+	applyTusIntegrationSchema(t)
+	dir := t.TempDir()
+	objects, err := storage.NewLocalStorage(dir)
+	if err != nil {
+		t.Fatalf("NewLocalStorage: %v", err)
+	}
+	a := NewTusStore(integrationDB, db.New(integrationDB), objects, zap.NewNop())
+	b := NewTusStore(integrationDB, db.New(integrationDB), objects, zap.NewNop())
+	ctx := context.Background()
+	now := time.Now().Unix()
+	prefix := fmt.Sprintf("sweep-%d", time.Now().UnixNano())
+
+	const expired = 20
+	for i := 0; i < expired; i++ {
+		id := fmt.Sprintf("%s-old-%d", prefix, i)
+		createTusUpload(t, a, id, 5, now+3600)
+		if _, err := a.AppendChunk(ctx, id, 0, []byte("ab")); err != nil {
+			t.Fatalf("AppendChunk %s: %v", id, err)
+		}
+		expireTusUpload(t, a, id, now-1)
+	}
+	live := prefix + "-live"
+	createTusUpload(t, a, live, 5, now+3600)
+	if _, err := a.AppendChunk(ctx, live, 0, []byte("cd")); err != nil {
+		t.Fatalf("AppendChunk live: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	errs := make([]error, 2)
+	for i, s := range []core.TusUploadStore{a, b} {
+		wg.Add(1)
+		go func(i int, s core.TusUploadStore) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = s.DeleteExpired(ctx, now)
+		}(i, s)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("sweep %d: %v", i, err)
+		}
+	}
+	for i := 0; i < expired; i++ {
+		id := fmt.Sprintf("%s-old-%d", prefix, i)
+		if _, err := a.Get(ctx, id); err != core.ErrTusUploadNotFound {
+			t.Fatalf("expired upload %s still there: %v", id, err)
+		}
+	}
+	if got, err := b.ReadAll(ctx, live); err != nil || string(got) != "cd" {
+		t.Fatalf("live upload = %q, %v", got, err)
+	}
+	if n := countObjects(t, dir); n != 1 {
+		t.Fatalf("%d objects left, want only the live upload's chunk", n)
 	}
 }
