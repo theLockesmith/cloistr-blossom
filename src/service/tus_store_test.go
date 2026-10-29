@@ -67,6 +67,16 @@ func createTusUpload(t *testing.T, store core.TusUploadStore, id string, size in
 	}
 }
 
+// expireTusUpload backdates an upload's expiry, as if its last chunk were
+// long ago.
+func expireTusUpload(t *testing.T, store core.TusUploadStore, id string, at int64) {
+	t.Helper()
+	_, err := store.(*tusStore).db.Exec("UPDATE tus_uploads SET expires_at = $1 WHERE id = $2", at, id)
+	if err != nil {
+		t.Fatalf("expire %s: %v", id, err)
+	}
+}
+
 func TestTusStore_ChunksAssembleInOrder(t *testing.T) {
 	store, _ := newSQLiteTusStore(t)
 	ctx := context.Background()
@@ -141,10 +151,11 @@ func TestTusStore_DeleteExpiredKeepsLiveUploads(t *testing.T) {
 	store, dir := newSQLiteTusStore(t)
 	ctx := context.Background()
 	now := time.Now().Unix()
-	createTusUpload(t, store, "old", 5, now-1)
+	createTusUpload(t, store, "old", 5, now+3600)
 	createTusUpload(t, store, "live", 5, now+3600)
 	_, _ = store.AppendChunk(ctx, "old", 0, []byte("ab"))
 	_, _ = store.AppendChunk(ctx, "live", 0, []byte("cd"))
+	expireTusUpload(t, store, "old", now-1)
 
 	n, err := store.DeleteExpired(ctx, now)
 	if err != nil || n != 1 {

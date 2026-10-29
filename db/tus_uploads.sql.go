@@ -11,7 +11,7 @@ import (
 
 const advanceTusUploadOffset = `-- name: AdvanceTusUploadOffset :execrows
 UPDATE tus_uploads
-SET upload_offset = $3
+SET upload_offset = $3, expires_at = $4
 WHERE id = $1 AND upload_offset = $2
 `
 
@@ -19,10 +19,16 @@ type AdvanceTusUploadOffsetParams struct {
 	ID             string
 	UploadOffset   int64
 	UploadOffset_2 int64
+	ExpiresAt      int64
 }
 
 func (q *Queries) AdvanceTusUploadOffset(ctx context.Context, arg AdvanceTusUploadOffsetParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, advanceTusUploadOffset, arg.ID, arg.UploadOffset, arg.UploadOffset_2)
+	result, err := q.db.ExecContext(ctx, advanceTusUploadOffset,
+		arg.ID,
+		arg.UploadOffset,
+		arg.UploadOffset_2,
+		arg.ExpiresAt,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -130,6 +136,24 @@ func (q *Queries) DeleteTusUploadChunks(ctx context.Context, uploadID string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const deleteTusUploadIfExpired = `-- name: DeleteTusUploadIfExpired :execrows
+DELETE FROM tus_uploads
+WHERE id = $1 AND expires_at < $2
+`
+
+type DeleteTusUploadIfExpiredParams struct {
+	ID        string
+	ExpiresAt int64
+}
+
+func (q *Queries) DeleteTusUploadIfExpired(ctx context.Context, arg DeleteTusUploadIfExpiredParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTusUploadIfExpired, arg.ID, arg.ExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const getExpiredTusUploadIDs = `-- name: GetExpiredTusUploadIDs :many

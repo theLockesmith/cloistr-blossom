@@ -17,7 +17,7 @@ LIMIT 1;
 
 -- name: AdvanceTusUploadOffset :execrows
 UPDATE tus_uploads
-SET upload_offset = $3
+SET upload_offset = $3, expires_at = $4
 WHERE id = $1 AND upload_offset = $2;
 
 -- name: CreateTusUploadChunk :exec
@@ -47,3 +47,7 @@ RETURNING object_key;
 SELECT id
 FROM tus_uploads
 WHERE expires_at < $1;
+
+-- name: DeleteTusUploadIfExpired :execrows
+DELETE FROM tus_uploads
+WHERE id = $1 AND expires_at < $2;

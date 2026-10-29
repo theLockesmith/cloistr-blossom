@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -49,9 +48,6 @@ type TusHandler struct {
 	cdnBaseURL   string
 	maxFileBytes int64
 	log          *zap.Logger
-
-	sweepMu   sync.Mutex
-	lastSweep time.Time
 }
 
 // TusConfig contains configuration for the tus handler.
@@ -176,8 +172,6 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 		// Parse Upload-Metadata header (optional)
 		metadata := h.parseMetadata(ctx.GetHeader("Upload-Metadata"))
 
-		h.maybeSweepExpired()
-
 		// Generate upload ID
 		uploadID := uuid.New().String()
 
@@ -188,7 +182,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			Offset:    0,
 			Metadata:  metadata,
 			CreatedAt: time.Now().Unix(),
-			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+			ExpiresAt: time.Now().Add(core.TusUploadTTL).Unix(),
 		}
 
 		if err := h.store.Create(ctx.Request.Context(), &info); err != nil {
@@ -565,31 +559,6 @@ func lookupErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 	return http.StatusInternalServerError
-}
-
-// tusSweepInterval is how often an upload creation also removes expired
-// uploads, so abandoned ones do not pile up in the store.
-const tusSweepInterval = time.Hour
-
-func (h *TusHandler) maybeSweepExpired() {
-	h.sweepMu.Lock()
-	if time.Since(h.lastSweep) < tusSweepInterval {
-		h.sweepMu.Unlock()
-		return
-	}
-	h.lastSweep = time.Now()
-	h.sweepMu.Unlock()
-
-	go func() {
-		n, err := h.store.DeleteExpired(context.Background(), time.Now().Unix())
-		if err != nil {
-			h.log.Warn("failed to remove expired tus uploads", zap.Error(err))
-			return
-		}
-		if n > 0 {
-			h.log.Info("removed expired tus uploads", zap.Int("count", n))
-		}
-	}()
 }
 
 // tusBlockedMessage matches what the other upload paths tell a blocked key.
