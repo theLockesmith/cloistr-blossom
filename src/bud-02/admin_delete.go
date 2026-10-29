@@ -63,7 +63,11 @@ func AdminDeleteBlob(ctx context.Context, services core.Services, hash string, d
 			continue
 		}
 		// DeleteReference also deletes the blob when this is the last reference.
-		if _, err := blobs.DeleteReference(ctx, pk, hash); err != nil {
+		_, err = blobs.DeleteReference(ctx, pk, hash)
+		if errors.Is(err, core.ErrReferenceNotFound) {
+			continue // removed concurrently; that delete credited it
+		}
+		if err != nil {
 			return res, fmt.Errorf("delete reference for %s: %w", pk, err)
 		}
 		res.Removed = append(res.Removed, pk)

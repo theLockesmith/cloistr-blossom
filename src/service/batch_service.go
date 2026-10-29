@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -518,7 +519,16 @@ func (s *batchService) Delete(ctx context.Context, pubkey string, req *core.Batc
 		}
 
 		// Delete reference (and blob if last reference)
+		// Credited only when this call removed the reference (nil error), so
+		// a concurrent delete of the same reference is credited once.
 		_, err = s.blobStorage.DeleteReference(ctx, pubkey, hash)
+		if errors.Is(err, core.ErrReferenceNotFound) {
+			result.Success = false
+			result.Error = "not found or not authorized"
+			response.FailureCount++
+			response.Results[i] = result
+			continue
+		}
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("failed to delete: %v", err)

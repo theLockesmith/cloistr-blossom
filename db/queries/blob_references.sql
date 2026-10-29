@@ -10,7 +10,7 @@ FROM blob_references
 WHERE pubkey = $1 AND hash = $2
 LIMIT 1;
 
--- name: DeleteBlobReference :exec
+-- name: DeleteBlobReference :execrows
 DELETE FROM blob_references
 WHERE pubkey = $1 AND hash = $2;
 
