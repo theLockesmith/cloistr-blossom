@@ -53,3 +53,11 @@ RETURNING ref_count;
 SELECT ref_count
 FROM blobs
 WHERE hash = $1;
+
+-- name: LockBlobRow :execrows
+-- Takes the blob row's write lock (a no-op update; works on Postgres and
+-- SQLite) so a reference add and a last-reference removal on the same hash
+-- serialize. Returns 0 when the blob row no longer exists.
+UPDATE blobs
+SET ref_count = ref_count
+WHERE hash = $1;

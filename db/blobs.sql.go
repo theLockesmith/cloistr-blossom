@@ -235,3 +235,20 @@ func (q *Queries) InsertBlob(ctx context.Context, arg InsertBlobParams) (Blob, e
 	)
 	return i, err
 }
+
+const lockBlobRow = `-- name: LockBlobRow :execrows
+UPDATE blobs
+SET ref_count = ref_count
+WHERE hash = $1
+`
+
+// Takes the blob row's write lock (a no-op update; works on Postgres and
+// SQLite) so a reference add and a last-reference removal on the same hash
+// serialize. Returns 0 when the blob row no longer exists.
+func (q *Queries) LockBlobRow(ctx context.Context, hash string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, lockBlobRow, hash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
