@@ -43,76 +43,83 @@ func RateLimitMiddleware(
 		// Determine request type
 		requestType := classifyRequest(c)
 
-		// Get identifier (pubkey for authenticated, IP for anonymous)
-		pubkey := c.GetString("pk")
-		var key string
-		var limitConfig config.RateLimitConfig
-		var window time.Duration
-
-		if pubkey != "" {
-			// Check whitelist
-			if whitelist[pubkey] {
-				c.Next()
-				return
-			}
-
-			key = "pk:" + pubkey
-			switch requestType {
-			case "download":
-				limitConfig = conf.Pubkey.Download
-				window = pubkeyDownloadWindow
-			case "upload":
-				limitConfig = conf.Pubkey.Upload
-				window = pubkeyUploadWindow
-			default:
-				limitConfig = conf.Pubkey.General
-				window = pubkeyGeneralWindow
-			}
-		} else {
-			// Use client IP
-			ip := c.ClientIP()
-			key = "ip:" + ip
-			switch requestType {
-			case "download":
-				limitConfig = conf.IP.Download
-				window = ipDownloadWindow
-			case "upload":
-				limitConfig = conf.IP.Upload
-				window = ipUploadWindow
-			default:
-				limitConfig = conf.IP.General
-				window = ipGeneralWindow
-			}
+		ip := c.ClientIP()
+		var ipLimit, pkLimit config.RateLimitConfig
+		var ipWindow, pkWindow time.Duration
+		switch requestType {
+		case "download":
+			ipLimit, ipWindow = conf.IP.Download, ipDownloadWindow
+			pkLimit, pkWindow = conf.Pubkey.Download, pubkeyDownloadWindow
+		case "upload":
+			ipLimit, ipWindow = conf.IP.Upload, ipUploadWindow
+			pkLimit, pkWindow = conf.Pubkey.Upload, pubkeyUploadWindow
+		default:
+			ipLimit, ipWindow = conf.IP.General, ipGeneralWindow
+			pkLimit, pkWindow = conf.Pubkey.General, pubkeyGeneralWindow
 		}
 
-		// Check rate limit
-		allowed, remaining, resetAt := limiter.Allow(c.Request.Context(), key, limitConfig.Requests, window)
-
-		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", strconv.Itoa(limitConfig.Requests))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
-		c.Header("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
-
-		if !allowed {
-			retryAfter := int(time.Until(resetAt).Seconds())
-			if retryAfter < 1 {
-				retryAfter = 1
-			}
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-
-			log.Debug("rate limit exceeded",
-				zap.String("key", key),
-				zap.String("type", requestType),
-				zap.Int("limit", limitConfig.Requests))
-
-			metrics.RateLimitedTotal.WithLabelValues(requestType).Inc()
-
-			clerrors.TooManyRequests(clerrors.CodeRateLimitExceeded, "rate limit exceeded, please try again later", retryAfter).Abort(c)
+		// This runs before the per-route auth middleware, so it verifies the
+		// auth header itself; an unverified claim is never trusted. The IP
+		// limit always applies, so minting fresh keys from one address does
+		// not buy a fresh budget; a verified key is also held to its own limit.
+		pubkey := verifiedPubkey(c)
+		if pubkey != "" && whitelist[pubkey] {
+			c.Next()
+			return
+		}
+		if !checkRateLimit(c, limiter, log, "ip:"+ip, requestType, ipLimit, ipWindow) {
+			return
+		}
+		if pubkey != "" && !checkRateLimit(c, limiter, log, "pk:"+pubkey, requestType, pkLimit, pkWindow) {
 			return
 		}
 
 		c.Next()
 	}
+}
+
+// checkRateLimit counts the request against key and answers 429 when the
+// limit is exceeded. It reports whether the request may continue.
+func checkRateLimit(c *gin.Context, limiter ratelimit.RateLimiter, log *zap.Logger, key, requestType string, limitConfig config.RateLimitConfig, window time.Duration) bool {
+	// Check rate limit
+	allowed, remaining, resetAt := limiter.Allow(c.Request.Context(), key, limitConfig.Requests, window)
+
+	// Set rate limit headers
+	c.Header("X-RateLimit-Limit", strconv.Itoa(limitConfig.Requests))
+	c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
+	c.Header("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
+
+	if !allowed {
+		retryAfter := int(time.Until(resetAt).Seconds())
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		c.Header("Retry-After", strconv.Itoa(retryAfter))
+
+		log.Debug("rate limit exceeded",
+			zap.String("key", key),
+			zap.String("type", requestType),
+			zap.Int("limit", limitConfig.Requests))
+
+		metrics.RateLimitedTotal.WithLabelValues(requestType).Inc()
+
+		clerrors.TooManyRequests(clerrors.CodeRateLimitExceeded, "rate limit exceeded, please try again later", retryAfter).Abort(c)
+		return false
+	}
+	return true
+}
+
+// verifiedPubkey returns the signer of a valid kind-24242 Authorization
+// header, or "" when there is none or it does not verify.
+func verifiedPubkey(c *gin.Context) string {
+	if c.GetHeader("Authorization") == "" {
+		return ""
+	}
+	ev, _, reason := verifyAuthHeader(c.GetHeader("Authorization"))
+	if reason != "" {
+		return ""
+	}
+	return ev.PubKey
 }
 
 // BandwidthLimitMiddleware creates a bandwidth limiting middleware.
@@ -138,20 +145,15 @@ func BandwidthLimitMiddleware(
 			return
 		}
 
-		// Check whitelist
-		pubkey := c.GetString("pk")
-		if pubkey != "" && whitelist[pubkey] {
+		// Check whitelist against a verified signer only (see RateLimitMiddleware).
+		if pk := verifiedPubkey(c); pk != "" && whitelist[pk] {
 			c.Next()
 			return
 		}
 
-		// Determine key
-		var key string
-		if pubkey != "" {
-			key = "pk:" + pubkey
-		} else {
-			key = "ip:" + c.ClientIP()
-		}
+		// Bandwidth is counted per IP: per-key buckets would let one address
+		// mint keys for fresh budgets.
+		key := "ip:" + c.ClientIP()
 
 		// For uploads, check bandwidth before processing
 		if c.Request.Method == "PUT" || c.Request.Method == "POST" {
