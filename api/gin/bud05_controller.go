@@ -37,6 +37,14 @@ func uploadMedia(
 		}
 
 		// Read request body
+		// Same access check as PUT /upload. In platform mode it also creates
+		// the platform user row for a first-time key; without it the quota
+		// check below reports a new user as banned.
+		if err := services.ACR().Validate(ctx.Request.Context(), pubkey, core.ResourceUpload); err != nil {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "upload not permitted for this key").Abort(ctx)
+			return
+		}
+
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		defer ctx.Request.Body.Close()
 		if err != nil {
@@ -122,7 +130,9 @@ func uploadMedia(
 
 		// Save the processed blob
 		created := time.Now().Unix()
-		blob, err := services.Blob().Save(
+		// SaveWithDedup records the uploader as an owner, which is what puts
+		// the file in their list and lets them delete it.
+		blob, _, err := services.Blob().SaveWithDedup(
 			ctx.Request.Context(),
 			pubkey,
 			result.Hash,
