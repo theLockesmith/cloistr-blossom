@@ -59,6 +59,9 @@ type BatchItemResult struct {
 
 // BatchUploadRequest represents a request to upload multiple files.
 type BatchUploadRequest struct {
+	// AllowedHashes, when non-nil, lists the hashes the auth token names (its
+	// x tags); a file whose hash is not listed is refused.
+	AllowedHashes  []string          `json:"-"`
 	Pubkey         string            `json:"pubkey"`
 	Files          []BatchUploadFile `json:"-"` // Files are handled separately in multipart
 	EncryptionMode string            `json:"encryption_mode,omitempty"`

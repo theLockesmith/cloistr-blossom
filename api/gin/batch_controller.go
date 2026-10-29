@@ -55,6 +55,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 		Pubkey:         pubkey.(string),
 		Files:          make([]core.BatchUploadFile, 0, len(files)),
 		EncryptionMode: ctx.PostForm("encryption_mode"),
+		AllowedHashes:  tokenHashes(ctx),
 	}
 
 	// Parse expires_in if provided
@@ -105,6 +106,16 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response)
+}
+
+// tokenHashes returns the hashes the auth token names (its x tags), never nil,
+// so a request without them is limited to nothing rather than unrestricted.
+func tokenHashes(ctx *gin.Context) []string {
+	hashes := ctx.GetStringSlice("xs")
+	if hashes == nil {
+		hashes = []string{}
+	}
+	return hashes
 }
 
 // mayUpload refuses a blocklisted key or one the platform access rule denies
@@ -185,6 +196,19 @@ func (c *BatchController) BatchDelete(ctx *gin.Context) {
 	if len(req.Hashes) == 0 {
 		clerrors.BadRequest(clerrors.CodeInvalidInput, "no hashes provided").Abort(ctx)
 		return
+	}
+
+	// The token must name every hash, as DELETE /:hash requires x == hash;
+	// otherwise a token signed for one blob deletes them all.
+	named := make(map[string]bool)
+	for _, h := range tokenHashes(ctx) {
+		named[h] = true
+	}
+	for _, h := range req.Hashes {
+		if !named[h] {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, fmt.Sprintf("auth token does not authorize deleting %s", h)).Abort(ctx)
+			return
+		}
 	}
 
 	response, err := c.batch.Delete(ctx.Request.Context(), pubkey.(string), &req)

@@ -108,6 +108,7 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 		expirationTagValue := ""
 		tTagValue := ""
 		xTagValue := ""
+		var xTagValues []string
 
 		for i := range ev.Tags {
 			if ev.Tags[i][0] == "expiration" && len(ev.Tags[i]) == 2 {
@@ -116,6 +117,7 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 				tTagValue = ev.Tags[i][1]
 			} else if ev.Tags[i][0] == "x" && len(ev.Tags[i]) == 2 {
 				xTagValue = ev.Tags[i][1]
+				xTagValues = append(xTagValues, xTagValue)
 			}
 		}
 		if expirationTagValue == "" || tTagValue == "" {
@@ -162,6 +164,8 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 
 		c.Set("pk", ev.PubKey)
 		c.Set("x", xTagValue)
+		// Every x tag: batch endpoints act only on hashes the token names.
+		c.Set("xs", xTagValues)
 
 		c.Next()
 	}
