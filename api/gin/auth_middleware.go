@@ -51,6 +51,12 @@ func reject(c *gin.Context, log *zap.Logger, reason string) {
 	c.AbortWithStatus(http.StatusUnauthorized)
 }
 
+// handlerPubkeyKey is the context key the tus, batch and chunked upload
+// handlers read the caller's key from. nostrAuthMiddleware sets "pk", so those
+// handlers answer 401 to every caller until this is switched over, which
+// waits until every check on those paths is in place.
+const handlerPubkeyKey = "pubkey"
+
 func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")

@@ -235,8 +235,8 @@ func (h *TusHandler) tusHead() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Status(http.StatusNotFound)
 			return
 		}
@@ -268,8 +268,8 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusNotFound, "upload not found")
 			return
@@ -383,9 +383,20 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Status(http.StatusNotFound)
+			return
+		}
+
+		info, err := h.loadUploadInfo(uploadID)
+		if err != nil {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		if caller := ctx.GetString(handlerPubkeyKey); caller == "" || caller != info.Pubkey {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, "not your upload")
 			return
 		}
 
@@ -403,6 +414,19 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 		h.log.Info("tus upload terminated", zap.String("upload_id", uploadID))
 		ctx.Status(http.StatusNoContent)
 	}
+}
+
+// uploadIDParam returns the :id parameter if it is an id this server could
+// have issued (a canonical UUID). The id names a directory under the temp dir,
+// and gin passes ".." and "." through as ids, so anything else is refused
+// before it reaches the filesystem.
+func uploadIDParam(ctx *gin.Context) (string, bool) {
+	id := ctx.Param("id")
+	u, err := uuid.Parse(id)
+	if err != nil || u.String() != id {
+		return "", false
+	}
+	return id, true
 }
 
 // setTusHeaders sets standard tus protocol headers.
