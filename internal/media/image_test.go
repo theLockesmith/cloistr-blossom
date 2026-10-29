@@ -576,3 +576,45 @@ func TestImageProcessor_QualityDefaults(t *testing.T) {
 		assert.NotNil(t, result)
 	})
 }
+
+// withEXIFOrientation inserts an APP1 EXIF segment carrying only the given
+// orientation tag right after the JPEG's SOI marker, the way a phone camera
+// records a portrait shot taken with the sensor in landscape.
+func withEXIFOrientation(jpegData []byte, orientation uint16) []byte {
+	tiff := []byte{
+		'M', 'M', 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08, // big-endian header, IFD0 at 8
+		0x00, 0x01, // one entry
+		0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, // Orientation, SHORT, count 1
+		byte(orientation >> 8), byte(orientation), 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, // no next IFD
+	}
+	payload := append([]byte("Exif\x00\x00"), tiff...)
+	seg := []byte{0xFF, 0xE1, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}
+	seg = append(seg, payload...)
+
+	out := append([]byte{}, jpegData[:2]...)
+	out = append(out, seg...)
+	return append(out, jpegData[2:]...)
+}
+
+// The re-encode drops EXIF, so the orientation it records must be applied to
+// the pixels first, or a portrait phone photo comes back sideways.
+func TestImageProcessor_Process_AppliesEXIFOrientation(t *testing.T) {
+	processor := NewImageProcessor()
+	src := withEXIFOrientation(createTestImage(40, 20, "jpeg"), 6) // rotate 90° CW
+
+	t.Run("original size", func(t *testing.T) {
+		result, err := processor.Process(bytes.NewReader(src), ProcessOptions{Format: FormatJPEG})
+		require.NoError(t, err)
+		assert.Equal(t, 20, result.Width)
+		assert.Equal(t, 40, result.Height)
+		assert.NotContains(t, string(result.Data), "Exif\x00\x00", "metadata must not survive")
+	})
+
+	t.Run("resized by width", func(t *testing.T) {
+		result, err := processor.Process(bytes.NewReader(src), ProcessOptions{Width: 10})
+		require.NoError(t, err)
+		assert.Equal(t, 10, result.Width)
+		assert.Equal(t, 20, result.Height)
+	})
+}

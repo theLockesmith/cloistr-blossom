@@ -89,8 +89,17 @@ func IsImage(mimeType string) bool {
 
 // Process transforms an image according to the given options.
 func (p *ImageProcessor) Process(data io.Reader, opts ProcessOptions) (*ProcessResult, error) {
-	// Decode the source image
-	img, format, err := image.Decode(data)
+	src, err := io.ReadAll(data)
+	if err != nil {
+		return nil, fmt.Errorf("read image: %w", err)
+	}
+	_, format, err := image.DecodeConfig(bytes.NewReader(src))
+	if err != nil {
+		return nil, fmt.Errorf("decode image: %w", err)
+	}
+	// Re-encoding drops EXIF, so apply its orientation to the pixels first or
+	// a portrait phone photo comes back sideways.
+	img, err := imaging.Decode(bytes.NewReader(src), imaging.AutoOrientation(true))
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
 	}
