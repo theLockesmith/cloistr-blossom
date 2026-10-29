@@ -35,6 +35,14 @@ import (
 // tolerance does not extend an expired event beyond a minute of skew.
 const clockSkewTolerance = 60 * time.Second
 
+// maxAuthLifetime caps how far in the future a token's expiration may be, on
+// every verb. Without it a token signed to expire years out could be replayed
+// until then. One hour is blossom-client-sdk's default (oneHour()) and what
+// cloistr-pages signs; stash, the cloistr-email signer and collab-common sign
+// five minutes. clockSkewTolerance is allowed on top, so a one-hour token from
+// a device a few seconds fast is not refused.
+const maxAuthLifetime = time.Hour
+
 // reject logs WHY a request was refused, then aborts with 401.
 //
 // Every rejection here used to log at Debug and return a bare status with no
@@ -140,6 +148,10 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 		// would otherwise have events that look expired on arrival.
 		if time.Unix(int64(n), 0).Before(time.Now().Add(-clockSkewTolerance)) {
 			reject(c, log, "expiration is in the past")
+			return
+		}
+		if time.Unix(int64(n), 0).After(time.Now().Add(maxAuthLifetime + clockSkewTolerance)) {
+			reject(c, log, "expiration too far in the future")
 			return
 		}
 

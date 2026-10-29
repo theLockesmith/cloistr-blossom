@@ -623,10 +623,10 @@ func TestNostrAuthMiddleware_EdgeCaseTimestamps(t *testing.T) {
 			expectedStatus:   http.StatusOK,
 		},
 		{
-			name:             "very long expiration",
+			name:             "very long expiration is refused (maxAuthLifetime)",
 			createdAt:        time.Now().Add(-1 * time.Minute),
 			expirationOffset: 365 * 24 * time.Hour, // 1 year
-			expectedStatus:   http.StatusOK,
+			expectedStatus:   http.StatusUnauthorized,
 		},
 		{
 			name:             "created_at exactly at current time",
