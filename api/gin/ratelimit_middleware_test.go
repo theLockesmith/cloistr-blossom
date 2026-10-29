@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -259,41 +260,40 @@ func TestRateLimitMiddleware_PerPubkey(t *testing.T) {
 	conf := &config.RateLimitingConfig{
 		Enabled: true,
 	}
+	conf.IP.Upload.Requests = 30
 	conf.Pubkey.Upload.Requests = 20
 	conf.Pubkey.Upload.Window = "1m"
 
-	var lastKey string
+	limits := map[string]int{}
 	limiter := &mockRateLimiter{
 		allowFunc: func(ctx context.Context, key string, limit int, window time.Duration) (bool, int, time.Time) {
-			lastKey = key
-			// Check that we got the correct limit for pubkey (20, not IP limit)
-			assert.Equal(t, 20, limit)
+			limits[key] = limit
 			return true, 10, time.Now().Add(time.Minute)
 		},
 	}
 
-	_ = setupRateLimitTestRouter(conf, limiter)
-
-	testPubkey := "abc123def456"
+	sk := nostr.GeneratePrivateKey()
+	testPubkey, _ := nostr.GetPublicKey(sk)
 	req := httptest.NewRequest(http.MethodPut, "/upload", nil)
+	req.Header.Set("Authorization", signedTokenAs(t, sk, "upload", xHashA))
 
-	// Simulate authenticated request by setting pubkey in context via middleware
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
-	c.Set("pk", testPubkey)
 
-	// Manually call middleware
 	middleware := RateLimitMiddleware(limiter, conf, zap.NewNop())
 	middleware(c)
 
-	assert.Equal(t, "pk:"+testPubkey, lastKey)
+	// A verified signer is held to the per-pubkey limit AND the IP limit.
+	assert.Equal(t, 20, limits["pk:"+testPubkey])
+	assert.Equal(t, 30, limits["ip:"+c.ClientIP()])
 	assert.False(t, c.IsAborted(), "Authenticated request should not be aborted when within limit")
 }
 
 // TestRateLimitMiddleware_WhitelistedPubkey tests that whitelisted pubkeys bypass rate limits
 func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
-	whitelistedPubkey := "whitelisted123"
+	sk := nostr.GeneratePrivateKey()
+	whitelistedPubkey, _ := nostr.GetPublicKey(sk)
 	conf := &config.RateLimitingConfig{
 		Enabled:            true,
 		WhitelistedPubkeys: []string{whitelistedPubkey},
@@ -308,19 +308,26 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 			return false, 0, time.Now().Add(time.Minute)
 		},
 	}
+	middleware := RateLimitMiddleware(limiter, conf, zap.NewNop())
 
-	_ = setupRateLimitTestRouter(conf, limiter)
-
+	// A planted context value is not a signature: the limiter ignores it.
 	req := httptest.NewRequest(http.MethodPut, "/upload", nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 	c.Set("pk", whitelistedPubkey)
+	middleware(c)
+	assert.True(t, limiterCalled, "an unsigned request is limited whatever the context says")
 
-	middleware := RateLimitMiddleware(limiter, conf, zap.NewNop())
+	limiterCalled = false
+	req = httptest.NewRequest(http.MethodPut, "/upload", nil)
+	req.Header.Set("Authorization", signedTokenAs(t, sk, "upload", xHashA))
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	c.Request = req
 	middleware(c)
 
-	assert.False(t, limiterCalled, "Limiter should not be called for whitelisted pubkey")
+	assert.False(t, limiterCalled, "Limiter should not be called for a verified whitelisted pubkey")
 	assert.False(t, c.IsAborted(), "Whitelisted request should pass through")
 }
 
@@ -501,7 +508,8 @@ func TestBandwidthLimitMiddleware_Headers(t *testing.T) {
 
 // TestBandwidthLimitMiddleware_WhitelistedPubkey tests that whitelisted pubkeys bypass bandwidth limits
 func TestBandwidthLimitMiddleware_WhitelistedPubkey(t *testing.T) {
-	whitelistedPubkey := "whitelisted456"
+	sk := nostr.GeneratePrivateKey()
+	whitelistedPubkey, _ := nostr.GetPublicKey(sk)
 	conf := &config.RateLimitingConfig{
 		Enabled:            true,
 		WhitelistedPubkeys: []string{whitelistedPubkey},
@@ -516,20 +524,18 @@ func TestBandwidthLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 		},
 	}
 
-	_ = setupBandwidthTestRouter(conf, limiter)
-
 	body := bytes.NewBufferString("test upload data")
 	req := httptest.NewRequest(http.MethodPut, "/upload", body)
 	req.ContentLength = int64(body.Len())
+	req.Header.Set("Authorization", signedTokenAs(t, sk, "upload", xHashA))
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
-	c.Set("pk", whitelistedPubkey)
 
 	middleware := BandwidthLimitMiddleware(limiter, conf, zap.NewNop())
 	middleware(c)
 
-	assert.False(t, limiterCalled, "Limiter should not be called for whitelisted pubkey")
+	assert.False(t, limiterCalled, "Limiter should not be called for a verified whitelisted pubkey")
 	assert.False(t, c.IsAborted(), "Whitelisted request should pass through")
 }
 
@@ -630,7 +636,7 @@ func TestBandwidthLimitMiddleware_PerIP(t *testing.T) {
 }
 
 // TestBandwidthLimitMiddleware_PerPubkey tests per-pubkey bandwidth limiting
-func TestBandwidthLimitMiddleware_PerPubkey(t *testing.T) {
+func TestBandwidthLimitMiddleware_KeyedByIPEvenWhenSigned(t *testing.T) {
 	conf := &config.RateLimitingConfig{
 		Enabled: true,
 	}
@@ -644,22 +650,20 @@ func TestBandwidthLimitMiddleware_PerPubkey(t *testing.T) {
 		},
 	}
 
-	_ = setupBandwidthTestRouter(conf, limiter)
-
-	testPubkey := "xyz789abc123"
 	body := bytes.NewBufferString("test upload data")
 	req := httptest.NewRequest(http.MethodPut, "/upload", body)
 	req.ContentLength = int64(body.Len())
+	req.Header.Set("Authorization", signedToken(t, "upload", xHashA))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
-	c.Set("pk", testPubkey)
 
 	middleware := BandwidthLimitMiddleware(limiter, conf, zap.NewNop())
 	middleware(c)
 
-	assert.Contains(t, capturedKey, "pk:"+testPubkey)
+	// Per-key bandwidth buckets would let one address mint keys for budget.
+	assert.Equal(t, "upload:ip:"+c.ClientIP(), capturedKey)
 	assert.False(t, c.IsAborted())
 }
 

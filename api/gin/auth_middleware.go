@@ -65,96 +65,106 @@ func reject(c *gin.Context, log *zap.Logger, reason string) {
 // to every caller.
 const ctxPubkey = "pk"
 
+// authTags holds the tags of a verified auth event that the endpoint checks.
+type authTags struct {
+	t  string
+	x  string   // last x tag
+	xs []string // every x tag
+}
+
+// verifyAuthHeader checks everything about a kind-24242 Authorization header
+// that does not depend on the endpoint: encoding, signature, kind, created_at
+// and expiration (including maxAuthLifetime). It returns the event and its
+// tags, or a non-empty rejection reason. The rate limiters use it too, so a
+// pubkey is only ever trusted from a valid signature.
+func verifyAuthHeader(authHeader string) (*goNostr.Event, authTags, string) {
+	if authHeader == "" {
+		return nil, authTags{}, "missing Authorization header"
+	}
+
+	if !strings.HasPrefix(authHeader, "Nostr ") {
+		return nil, authTags{}, "missing Nostr header prefix"
+	}
+
+	eventBase64 := strings.TrimPrefix(authHeader, "Nostr ")
+
+	eventBytes, err := base64.StdEncoding.DecodeString(eventBase64)
+	if err != nil {
+		return nil, authTags{}, "base64 decode failed: " + err.Error()
+	}
+
+	ev := &goNostr.Event{}
+	if err := json.Unmarshal(eventBytes, ev); err != nil {
+		return nil, authTags{}, "event json decode failed: " + err.Error()
+	}
+
+	if ok, err := ev.CheckSignature(); !ok || err != nil {
+		return nil, authTags{}, "invalid event signature"
+	}
+
+	// ****************************** Blossom Auth logic from this point *******************************************
+
+	// kind must be 24242
+	if ev.Kind != 24242 {
+		return nil, authTags{}, "wrong event kind (want 24242)"
+	}
+
+	// created_at must be in the past, allowing for the signer's clock being
+	// ahead of ours. Without the tolerance a device one second fast has
+	// every request refused — see clockSkewTolerance.
+	if ev.CreatedAt.Time().After(time.Now().Add(clockSkewTolerance)) {
+		return nil, authTags{}, "created_at too far in the future"
+	}
+
+	expirationTagValue := ""
+	tTagValue := ""
+	xTagValue := ""
+	var xTagValues []string
+
+	for i := range ev.Tags {
+		if ev.Tags[i][0] == "expiration" && len(ev.Tags[i]) == 2 {
+			expirationTagValue = ev.Tags[i][1]
+		} else if ev.Tags[i][0] == "t" && len(ev.Tags[i]) == 2 {
+			tTagValue = ev.Tags[i][1]
+		} else if ev.Tags[i][0] == "x" && len(ev.Tags[i]) == 2 {
+			xTagValue = ev.Tags[i][1]
+			xTagValues = append(xTagValues, xTagValue)
+		}
+	}
+	if expirationTagValue == "" || tTagValue == "" {
+		return nil, authTags{}, "missing expiration or t tag"
+	}
+
+	// the expiration tag must be set to a Unix timestamp in the future.
+	//
+	// The Atoi error was previously discarded, so a non-numeric expiration
+	// fell through as n=0 and was rejected as "1970" — the right outcome by
+	// accident, and indistinguishable in the logs from a genuinely expired
+	// event. It is now its own reason.
+	n, convErr := strconv.Atoi(expirationTagValue)
+	if convErr != nil {
+		return nil, authTags{}, "expiration tag is not a unix timestamp"
+	}
+	// Same tolerance as created_at: a signer whose clock is BEHIND ours
+	// would otherwise have events that look expired on arrival.
+	if time.Unix(int64(n), 0).Before(time.Now().Add(-clockSkewTolerance)) {
+		return nil, authTags{}, "expiration is in the past"
+	}
+	if time.Unix(int64(n), 0).After(time.Now().Add(maxAuthLifetime + clockSkewTolerance)) {
+		return nil, authTags{}, "expiration too far in the future"
+	}
+
+	return ev, authTags{t: tTagValue, x: xTagValue, xs: xTagValues}, ""
+}
+
 func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			reject(c, log, "missing Authorization header")
+		ev, tags, reason := verifyAuthHeader(c.GetHeader("Authorization"))
+		if reason != "" {
+			reject(c, log, reason)
 			return
 		}
-
-		if !strings.HasPrefix(authHeader, "Nostr ") {
-			reject(c, log, "missing Nostr header prefix")
-			return
-		}
-
-		eventBase64 := strings.TrimPrefix(authHeader, "Nostr ")
-
-		eventBytes, err := base64.StdEncoding.DecodeString(eventBase64)
-		if err != nil {
-			reject(c, log, "base64 decode failed: "+err.Error())
-			return
-		}
-
-		ev := &goNostr.Event{}
-		if err := json.Unmarshal(eventBytes, ev); err != nil {
-			reject(c, log, "event json decode failed: "+err.Error())
-			return
-		}
-
-		if ok, err := ev.CheckSignature(); !ok || err != nil {
-			reject(c, log, "invalid event signature")
-			return
-		}
-
-		// ****************************** Blossom Auth logic from this point *******************************************
-
-		// kind must be 24242
-		if ev.Kind != 24242 {
-			reject(c, log, "wrong event kind (want 24242)")
-			return
-		}
-
-		// created_at must be in the past, allowing for the signer's clock being
-		// ahead of ours. Without the tolerance a device one second fast has
-		// every request refused — see clockSkewTolerance.
-		if ev.CreatedAt.Time().After(time.Now().Add(clockSkewTolerance)) {
-			reject(c, log, "created_at too far in the future")
-			return
-		}
-
-		expirationTagValue := ""
-		tTagValue := ""
-		xTagValue := ""
-		var xTagValues []string
-
-		for i := range ev.Tags {
-			if ev.Tags[i][0] == "expiration" && len(ev.Tags[i]) == 2 {
-				expirationTagValue = ev.Tags[i][1]
-			} else if ev.Tags[i][0] == "t" && len(ev.Tags[i]) == 2 {
-				tTagValue = ev.Tags[i][1]
-			} else if ev.Tags[i][0] == "x" && len(ev.Tags[i]) == 2 {
-				xTagValue = ev.Tags[i][1]
-				xTagValues = append(xTagValues, xTagValue)
-			}
-		}
-		if expirationTagValue == "" || tTagValue == "" {
-			reject(c, log, "missing expiration or t tag")
-			return
-		}
-
-		// the expiration tag must be set to a Unix timestamp in the future.
-		//
-		// The Atoi error was previously discarded, so a non-numeric expiration
-		// fell through as n=0 and was rejected as "1970" — the right outcome by
-		// accident, and indistinguishable in the logs from a genuinely expired
-		// event. It is now its own reason.
-		n, convErr := strconv.Atoi(expirationTagValue)
-		if convErr != nil {
-			reject(c, log, "expiration tag is not a unix timestamp")
-			return
-		}
-		// Same tolerance as created_at: a signer whose clock is BEHIND ours
-		// would otherwise have events that look expired on arrival.
-		if time.Unix(int64(n), 0).Before(time.Now().Add(-clockSkewTolerance)) {
-			reject(c, log, "expiration is in the past")
-			return
-		}
-		if time.Unix(int64(n), 0).After(time.Now().Add(maxAuthLifetime + clockSkewTolerance)) {
-			reject(c, log, "expiration too far in the future")
-			return
-		}
-
+		tTagValue, xTagValue, xTagValues := tags.t, tags.x, tags.xs
 		// the t tag must have a verb matching the intended action of the endpoint
 		if tTagValue != action {
 			reject(c, log, "t tag does not match endpoint action")
