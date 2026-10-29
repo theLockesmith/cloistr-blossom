@@ -29,20 +29,20 @@ const (
 
 // BatchJob represents a batch operation job.
 type BatchJob struct {
-	ID           string             `json:"id"`
-	Type         BatchOperationType `json:"type"`
-	Status       BatchJobStatus     `json:"status"`
-	Pubkey       string             `json:"pubkey"`
-	TotalItems   int                `json:"total_items"`
-	ProcessedItems int             `json:"processed_items"`
-	SuccessCount int                `json:"success_count"`
-	FailureCount int                `json:"failure_count"`
-	Progress     float64            `json:"progress"` // 0-100
-	CreatedAt    int64              `json:"created_at"`
-	StartedAt    int64              `json:"started_at,omitempty"`
-	CompletedAt  int64              `json:"completed_at,omitempty"`
-	Error        string             `json:"error,omitempty"`
-	Results      []BatchItemResult  `json:"results,omitempty"`
+	ID             string             `json:"id"`
+	Type           BatchOperationType `json:"type"`
+	Status         BatchJobStatus     `json:"status"`
+	Pubkey         string             `json:"pubkey"`
+	TotalItems     int                `json:"total_items"`
+	ProcessedItems int                `json:"processed_items"`
+	SuccessCount   int                `json:"success_count"`
+	FailureCount   int                `json:"failure_count"`
+	Progress       float64            `json:"progress"` // 0-100
+	CreatedAt      int64              `json:"created_at"`
+	StartedAt      int64              `json:"started_at,omitempty"`
+	CompletedAt    int64              `json:"completed_at,omitempty"`
+	Error          string             `json:"error,omitempty"`
+	Results        []BatchItemResult  `json:"results,omitempty"`
 }
 
 // BatchItemResult represents the result of a single item in a batch operation.
@@ -59,6 +59,9 @@ type BatchItemResult struct {
 
 // BatchUploadRequest represents a request to upload multiple files.
 type BatchUploadRequest struct {
+	// AllowedHashes, when non-nil, lists the hashes the auth token names (its
+	// x tags); a file whose hash is not listed is refused.
+	AllowedHashes  []string          `json:"-"`
 	Pubkey         string            `json:"pubkey"`
 	Files          []BatchUploadFile `json:"-"` // Files are handled separately in multipart
 	EncryptionMode string            `json:"encryption_mode,omitempty"`
@@ -84,9 +87,9 @@ type BatchUploadResponse struct {
 
 // BatchDownloadRequest represents a request to download multiple files.
 type BatchDownloadRequest struct {
-	Hashes     []string `json:"hashes"`
-	Format     string   `json:"format,omitempty"` // "zip" (default), "tar", "tar.gz"
-	Flatten    bool     `json:"flatten,omitempty"` // Don't preserve directory structure
+	Hashes  []string `json:"hashes"`
+	Format  string   `json:"format,omitempty"`  // "zip" (default), "tar", "tar.gz"
+	Flatten bool     `json:"flatten,omitempty"` // Don't preserve directory structure
 }
 
 // BatchDownloadResponse contains metadata about the download.
@@ -135,13 +138,14 @@ type BatchStatusResponse struct {
 
 // BatchConfig contains configuration for batch operations.
 type BatchConfig struct {
-	MaxUploadFiles     int           `yaml:"max_upload_files"`     // Max files per upload batch
-	MaxDownloadFiles   int           `yaml:"max_download_files"`   // Max files per download batch
-	MaxDeleteFiles     int           `yaml:"max_delete_files"`     // Max files per delete batch
+	MaxUploadFiles     int           `yaml:"max_upload_files"`      // Max files per upload batch
+	MaxDownloadFiles   int           `yaml:"max_download_files"`    // Max files per download batch
+	MaxDeleteFiles     int           `yaml:"max_delete_files"`      // Max files per delete batch
 	MaxUploadSizeBytes int64         `yaml:"max_upload_size_bytes"` // Max total size for batch upload
-	AsyncThreshold     int           `yaml:"async_threshold"`      // Switch to async processing above this count
-	WorkerCount        int           `yaml:"worker_count"`         // Number of parallel workers
-	JobTTL             time.Duration `yaml:"job_ttl"`              // How long to keep job results
+	MaxFileSizeBytes   int64         `yaml:"-"`                     // Max size of each file (the server's max_upload_size_bytes); 0 = no per-file cap
+	AsyncThreshold     int           `yaml:"async_threshold"`       // Switch to async processing above this count
+	WorkerCount        int           `yaml:"worker_count"`          // Number of parallel workers
+	JobTTL             time.Duration `yaml:"job_ttl"`               // How long to keep job results
 }
 
 // DefaultBatchConfig returns sensible defaults.

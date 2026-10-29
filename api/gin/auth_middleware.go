@@ -51,6 +51,12 @@ func reject(c *gin.Context, log *zap.Logger, reason string) {
 	c.AbortWithStatus(http.StatusUnauthorized)
 }
 
+// ctxPubkey is the context key nostrAuthMiddleware stores the verified
+// signer's pubkey under. Handlers must read it through this constant: the tus
+// and batch handlers once read "pubkey", which nothing set, and answered 401
+// to every caller.
+const ctxPubkey = "pk"
+
 func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -102,6 +108,7 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 		expirationTagValue := ""
 		tTagValue := ""
 		xTagValue := ""
+		var xTagValues []string
 
 		for i := range ev.Tags {
 			if ev.Tags[i][0] == "expiration" && len(ev.Tags[i]) == 2 {
@@ -110,6 +117,7 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 				tTagValue = ev.Tags[i][1]
 			} else if ev.Tags[i][0] == "x" && len(ev.Tags[i]) == 2 {
 				xTagValue = ev.Tags[i][1]
+				xTagValues = append(xTagValues, xTagValue)
 			}
 		}
 		if expirationTagValue == "" || tTagValue == "" {
@@ -154,8 +162,10 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 			}
 		}
 
-		c.Set("pk", ev.PubKey)
+		c.Set(ctxPubkey, ev.PubKey)
 		c.Set("x", xTagValue)
+		// Every x tag: batch endpoints act only on hashes the token names.
+		c.Set("xs", xTagValues)
 
 		c.Next()
 	}

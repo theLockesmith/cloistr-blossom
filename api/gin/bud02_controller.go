@@ -21,13 +21,8 @@ func uploadBlob(
 	return func(ctx *gin.Context) {
 		// Check if pubkey is blocked
 		pubkey := ctx.GetString("pk")
-		if pubkey != "" {
-			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
-			if err == nil && isBlocked {
-				metrics.BlockedUploadsTotal.Inc()
-				clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
-				return
-			}
+		if pubkey != "" && refuseBlockedUploader(ctx, services.Moderation(), pubkey) {
+			return
 		}
 
 		// Pre-flight size check: reject based on Content-Length BEFORE buffering

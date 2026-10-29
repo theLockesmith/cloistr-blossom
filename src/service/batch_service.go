@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,8 +17,8 @@ import (
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
-	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
 
 type batchService struct {
@@ -112,6 +113,14 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			continue
 		}
 
+		if s.config.MaxFileSizeBytes > 0 && int64(len(data)) > s.config.MaxFileSizeBytes {
+			result.Success = false
+			result.Error = core.ErrFileSizeLimit.Error()
+			response.FailureCount++
+			response.Results[i] = result
+			continue
+		}
+
 		storedType := mimetypes.Resolve(data, file.MimeType)
 		if s.limits != nil {
 			if err := s.limits.CheckUpload(ctx, req.Pubkey, storedType, len(data)); err != nil {
@@ -133,6 +142,14 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			continue
 		}
 		result.Hash = hash
+
+		if req.AllowedHashes != nil && !slices.Contains(req.AllowedHashes, hash) {
+			result.Success = false
+			result.Error = "auth token does not authorize uploading this file"
+			response.FailureCount++
+			response.Results[i] = result
+			continue
+		}
 
 		// Save blob with deduplication
 		blob, _, err := s.blobStorage.SaveWithDedup(
@@ -611,23 +628,23 @@ func (s *batchService) CleanupExpiredJobs(ctx context.Context) (int, error) {
 // addExtension adds a file extension based on MIME type.
 func (s *batchService) addExtension(filename, mimeType string) string {
 	extensions := map[string]string{
-		"image/jpeg":      ".jpg",
-		"image/png":       ".png",
-		"image/gif":       ".gif",
-		"image/webp":      ".webp",
-		"image/svg+xml":   ".svg",
-		"video/mp4":       ".mp4",
-		"video/webm":      ".webm",
-		"video/quicktime": ".mov",
-		"audio/mpeg":      ".mp3",
-		"audio/wav":       ".wav",
-		"audio/ogg":       ".ogg",
-		"application/pdf": ".pdf",
-		"text/plain":      ".txt",
-		"text/html":       ".html",
-		"text/css":        ".css",
+		"image/jpeg":       ".jpg",
+		"image/png":        ".png",
+		"image/gif":        ".gif",
+		"image/webp":       ".webp",
+		"image/svg+xml":    ".svg",
+		"video/mp4":        ".mp4",
+		"video/webm":       ".webm",
+		"video/quicktime":  ".mov",
+		"audio/mpeg":       ".mp3",
+		"audio/wav":        ".wav",
+		"audio/ogg":        ".ogg",
+		"application/pdf":  ".pdf",
+		"text/plain":       ".txt",
+		"text/html":        ".html",
+		"text/css":         ".css",
 		"application/json": ".json",
-		"application/xml": ".xml",
+		"application/xml":  ".xml",
 	}
 
 	if ext, ok := extensions[mimeType]; ok {

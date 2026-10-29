@@ -266,13 +266,15 @@ func New(
 	var replicationService core.ReplicationService
 
 	// Initialize batch service
+	batchConfig := core.DefaultBatchConfig()
+	batchConfig.MaxFileSizeBytes = int64(conf.MaxUploadSizeBytes)
 	batchService, err := NewBatchService(
 		blobService,
 		storageBackend,
 		quotaService,
 		uploadLimitsService,
 		expirationService,
-		core.DefaultBatchConfig(),
+		batchConfig,
 		conf.CdnUrl,
 		log,
 	)

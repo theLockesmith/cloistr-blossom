@@ -42,9 +42,11 @@ type TusHandler struct {
 	blobService  core.BlobStorage
 	quotaService core.QuotaService
 	moderation   core.ModerationService   // nil means no blocklist check
+	acr          core.ACRStorage          // nil means no platform access check
 	limits       core.UploadLimitsService // nil means no tier limits
 	tempDir      string
 	cdnBaseURL   string
+	maxFileBytes int64
 	log          *zap.Logger
 }
 
@@ -52,6 +54,9 @@ type TusHandler struct {
 type TusConfig struct {
 	TempDir    string
 	CDNBaseURL string
+	// MaxFileBytes caps a single upload, as max_upload_size_bytes does on the
+	// other upload paths. 0 falls back to tusMaxSize.
+	MaxFileBytes int64
 }
 
 // NewTusHandler creates a new tus protocol handler.
@@ -59,6 +64,7 @@ func NewTusHandler(
 	blobSvc core.BlobStorage,
 	quotaSvc core.QuotaService,
 	moderation core.ModerationService,
+	acr core.ACRStorage,
 	limits core.UploadLimitsService,
 	config TusConfig,
 	log *zap.Logger,
@@ -77,9 +83,11 @@ func NewTusHandler(
 		blobService:  blobSvc,
 		quotaService: quotaSvc,
 		moderation:   moderation,
+		acr:          acr,
 		limits:       limits,
 		tempDir:      tempDir,
 		cdnBaseURL:   config.CDNBaseURL,
+		maxFileBytes: config.MaxFileBytes,
 		log:          log,
 	}, nil
 }
@@ -100,7 +108,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 		h.setTusHeaders(ctx)
 
 		// Get pubkey from auth
-		pubkey, ok := ctx.Get("pubkey")
+		pubkey, ok := ctx.Get(ctxPubkey)
 		if !ok {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusUnauthorized, "authentication required")
@@ -109,10 +117,19 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 
 		// Refuse a blocklisted key before any upload exists, as the other
 		// upload paths do.
-		if h.isBlocked(ctx, pubkey.(string)) {
+		if blocked, err := h.blocklistCheck(ctx, pubkey.(string)); err != nil {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
+			return
+		} else if blocked {
 			metrics.BlockedUploadsTotal.Inc()
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusForbidden, tusBlockedMessage)
+			return
+		}
+		if !h.accessAllowed(ctx, pubkey.(string)) {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusAccessDeniedMessage)
 			return
 		}
 
@@ -131,7 +148,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			return
 		}
 
-		if uploadLength > tusMaxSize {
+		if uploadLength > h.maxSize() {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusRequestEntityTooLarge, "upload too large")
 			return
@@ -235,8 +252,8 @@ func (h *TusHandler) tusHead() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Status(http.StatusNotFound)
 			return
 		}
@@ -268,8 +285,8 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusNotFound, "upload not found")
 			return
@@ -321,6 +338,20 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 			return
 		}
 
+		// The key may have been blocklisted since the last chunk; stop it here
+		// rather than accept the rest of the upload.
+		if blocked, err := h.blocklistCheck(ctx, info.Pubkey); err != nil {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
+			return
+		} else if blocked {
+			_ = h.deleteUpload(uploadID)
+			metrics.BlockedUploadsTotal.Inc()
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusBlockedMessage)
+			return
+		}
+
 		// Handle checksum if provided
 		checksumHeader := ctx.GetHeader("Upload-Checksum")
 		var expectedChecksum string
@@ -360,6 +391,26 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 				ctx.String(http.StatusForbidden, tusBlockedMessage)
 				return
 			}
+			if errors.Is(err, errTusBlocklistUnavailable) {
+				// Keep the upload: the client can retry the last chunk.
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
+				return
+			}
+			if errors.Is(err, errTusAccessDenied) {
+				// Lost access after the upload was created; it can never finish.
+				_ = h.deleteUpload(uploadID)
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusForbidden, tusAccessDeniedMessage)
+				return
+			}
+			if errors.Is(err, core.ErrFileSizeLimit) {
+				// Over the current cap; it can never finish.
+				_ = h.deleteUpload(uploadID)
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusRequestEntityTooLarge, "upload too large")
+				return
+			}
 			if err != nil {
 				h.log.Error("finalize upload failed", zap.Error(err))
 				ctx.Header("Content-Type", "text/plain")
@@ -383,9 +434,20 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		h.setTusHeaders(ctx)
 
-		uploadID := ctx.Param("id")
-		if uploadID == "" {
+		uploadID, ok := uploadIDParam(ctx)
+		if !ok {
 			ctx.Status(http.StatusNotFound)
+			return
+		}
+
+		info, err := h.loadUploadInfo(uploadID)
+		if err != nil {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		if caller := ctx.GetString(ctxPubkey); caller == "" || caller != info.Pubkey {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, "not your upload")
 			return
 		}
 
@@ -405,12 +467,33 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 	}
 }
 
+// uploadIDParam returns the :id parameter if it is an id this server could
+// have issued (a canonical UUID). The id names a directory under the temp dir,
+// and gin passes ".." and "." through as ids, so anything else is refused
+// before it reaches the filesystem.
+func uploadIDParam(ctx *gin.Context) (string, bool) {
+	id := ctx.Param("id")
+	u, err := uuid.Parse(id)
+	if err != nil || u.String() != id {
+		return "", false
+	}
+	return id, true
+}
+
+// maxSize is the largest single upload accepted.
+func (h *TusHandler) maxSize() int64 {
+	if h.maxFileBytes > 0 {
+		return h.maxFileBytes
+	}
+	return tusMaxSize
+}
+
 // setTusHeaders sets standard tus protocol headers.
 func (h *TusHandler) setTusHeaders(ctx *gin.Context) {
 	ctx.Header("Tus-Resumable", tusVersion)
 	ctx.Header("Tus-Version", tusVersion)
 	ctx.Header("Tus-Extension", tusExtensions)
-	ctx.Header("Tus-Max-Size", strconv.FormatInt(tusMaxSize, 10))
+	ctx.Header("Tus-Max-Size", strconv.FormatInt(h.maxSize(), 10))
 	ctx.Header("Tus-Checksum-Algorithm", tusChecksumAlgorithms)
 }
 
@@ -538,23 +621,47 @@ func (h *TusHandler) handleChunkUpload(ctx *gin.Context, uploadID string, offset
 }
 
 // tusBlockedMessage matches what the other upload paths tell a blocked key.
-const tusBlockedMessage = "your account has been blocked due to terms of service violation"
+const tusBlockedMessage = blockedUploaderMessage
 
-// isBlocked reports whether pubkey is on the blocklist. A lookup error lets
-// the upload through, as on the other upload paths.
-func (h *TusHandler) isBlocked(ctx *gin.Context, pubkey string) bool {
+// errTusBlocklistUnavailable means the blocklist could not be checked.
+var errTusBlocklistUnavailable = errors.New(blocklistUnavailableMessage)
+
+// blocklistCheck reports whether pubkey is on the blocklist. A lookup error is
+// returned, not swallowed: callers refuse (503) rather than let the upload
+// through, as on every other upload path.
+func (h *TusHandler) blocklistCheck(ctx *gin.Context, pubkey string) (bool, error) {
 	if h.moderation == nil {
-		return false
+		return false, nil
 	}
-	blocked, err := h.moderation.IsBlocked(ctx.Request.Context(), pubkey)
-	return err == nil && blocked
+	return h.moderation.IsBlocked(ctx.Request.Context(), pubkey)
+}
+
+// tusAccessDeniedMessage is sent when the platform access rule refuses a key.
+const tusAccessDeniedMessage = "upload not allowed for this key"
+
+var errTusAccessDenied = errors.New(tusAccessDeniedMessage)
+
+// accessAllowed applies the platform access rule PUT /upload applies (it
+// refuses e.g. a disabled platform account). The rule itself refuses on a
+// lookup error.
+func (h *TusHandler) accessAllowed(ctx *gin.Context, pubkey string) bool {
+	if h.acr == nil {
+		return true
+	}
+	return h.acr.Validate(ctx.Request.Context(), pubkey, core.ResourceUpload) == nil
 }
 
 // finalizeUpload completes the upload and creates the blob.
 func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tusUploadInfo, expectedChecksum string) (*core.Blob, error) {
-	// The key may have been blocklisted since the upload was created.
-	if h.isBlocked(ctx, info.Pubkey) {
+	// The key may have been blocklisted or lost access since the upload was
+	// created.
+	if blocked, err := h.blocklistCheck(ctx, info.Pubkey); err != nil {
+		return nil, errTusBlocklistUnavailable
+	} else if blocked {
 		return nil, core.ErrPubkeyBlocked
+	}
+	if !h.accessAllowed(ctx, info.Pubkey) {
+		return nil, errTusAccessDenied
 	}
 
 	dataPath := filepath.Join(h.tempDir, uploadID, "data")
@@ -563,6 +670,11 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 	data, err := os.ReadFile(dataPath)
 	if err != nil {
 		return nil, fmt.Errorf("read data file: %w", err)
+	}
+
+	// The cap may have been lowered since the upload was created.
+	if int64(len(data)) > h.maxSize() {
+		return nil, core.ErrFileSizeLimit
 	}
 
 	// Calculate hash

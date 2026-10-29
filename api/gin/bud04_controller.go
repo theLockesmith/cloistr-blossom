@@ -20,12 +20,8 @@ func mirrorBlob(
 		authSha256 := ctx.GetString("x")
 
 		// Check if pubkey is blocked
-		if pubkey != "" {
-			isBlocked, err := services.Moderation().IsBlocked(ctx.Request.Context(), pubkey)
-			if err == nil && isBlocked {
-				clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
-				return
-			}
+		if pubkey != "" && refuseBlockedUploader(ctx, services.Moderation(), pubkey) {
+			return
 		}
 
 		if pubkey == "" {

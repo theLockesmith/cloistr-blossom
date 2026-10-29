@@ -7,25 +7,33 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 type BatchController struct {
-	batch core.BatchService
+	batch      core.BatchService
+	moderation core.ModerationService // nil means no blocklist check
+	acr        core.ACRStorage        // nil means no platform access check
 }
 
-func NewBatchController(batch core.BatchService) *BatchController {
-	return &BatchController{batch: batch}
+func NewBatchController(batch core.BatchService, moderation core.ModerationService, acr core.ACRStorage) *BatchController {
+	return &BatchController{batch: batch, moderation: moderation, acr: acr}
 }
 
 // BatchUpload handles multi-file uploads via multipart form.
 // POST /batch/upload
 func (c *BatchController) BatchUpload(ctx *gin.Context) {
-	pubkey, exists := ctx.Get("pubkey")
+	pubkey, exists := ctx.Get(ctxPubkey)
 	if !exists {
 		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
+		return
+	}
+
+	// Same checks as PUT /upload, before the body is read.
+	if !c.mayUpload(ctx, pubkey.(string)) {
 		return
 	}
 
@@ -47,6 +55,7 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 		Pubkey:         pubkey.(string),
 		Files:          make([]core.BatchUploadFile, 0, len(files)),
 		EncryptionMode: ctx.PostForm("encryption_mode"),
+		AllowedHashes:  tokenHashes(ctx),
 	}
 
 	// Parse expires_in if provided
@@ -99,6 +108,32 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
+// tokenHashes returns the hashes the auth token names (its x tags), never nil,
+// so a request without them is limited to nothing rather than unrestricted.
+func tokenHashes(ctx *gin.Context) []string {
+	hashes := ctx.GetStringSlice("xs")
+	if hashes == nil {
+		hashes = []string{}
+	}
+	return hashes
+}
+
+// mayUpload refuses a blocklisted key or one the platform access rule denies
+// (e.g. a disabled account). A blocklist lookup error refuses too: a refused
+// upload can be retried, a banned key's stored content cannot be taken back.
+func (c *BatchController) mayUpload(ctx *gin.Context, pubkey string) bool {
+	if refuseBlockedUploader(ctx, c.moderation, pubkey) {
+		return false
+	}
+	if c.acr != nil {
+		if err := c.acr.Validate(ctx.Request.Context(), pubkey, core.ResourceUpload); err != nil {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "upload not allowed for this key").Abort(ctx)
+			return false
+		}
+	}
+	return true
+}
+
 // BatchDownload creates an archive of multiple blobs.
 // POST /batch/download
 func (c *BatchController) BatchDownload(ctx *gin.Context) {
@@ -137,7 +172,7 @@ func (c *BatchController) BatchDownload(ctx *gin.Context) {
 // BatchDelete deletes multiple blobs.
 // DELETE /batch
 func (c *BatchController) BatchDelete(ctx *gin.Context) {
-	pubkey, exists := ctx.Get("pubkey")
+	pubkey, exists := ctx.Get(ctxPubkey)
 	if !exists {
 		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 		return
@@ -152,6 +187,19 @@ func (c *BatchController) BatchDelete(ctx *gin.Context) {
 	if len(req.Hashes) == 0 {
 		clerrors.BadRequest(clerrors.CodeInvalidInput, "no hashes provided").Abort(ctx)
 		return
+	}
+
+	// The token must name every hash, as DELETE /:hash requires x == hash;
+	// otherwise a token signed for one blob deletes them all.
+	named := make(map[string]bool)
+	for _, h := range tokenHashes(ctx) {
+		named[h] = true
+	}
+	for _, h := range req.Hashes {
+		if !named[h] {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, fmt.Sprintf("auth token does not authorize deleting %s", h)).Abort(ctx)
+			return
+		}
 	}
 
 	response, err := c.batch.Delete(ctx.Request.Context(), pubkey.(string), &req)
@@ -238,4 +286,26 @@ func (r *bytesReader) Read(p []byte) (n int, err error) {
 	n = copy(p, r.data[r.offset:])
 	r.offset += n
 	return n, nil
+}
+
+// RegisterBatchRoutes registers the /batch routes.
+func RegisterBatchRoutes(r *gin.Engine, c *BatchController, log *zap.Logger) {
+	batch := r.Group("/batch")
+	{
+		// Upload requires auth
+		batch.POST("/upload", nostrAuthMiddleware("upload", log), c.BatchUpload)
+
+		// Download can be done without auth (public blobs) or with auth
+		batch.POST("/download", c.BatchDownload)
+
+		// Delete requires auth
+		batch.DELETE("", nostrAuthMiddleware("delete", log), c.BatchDelete)
+
+		// Status check doesn't require auth
+		batch.POST("/status", c.BatchStatus)
+
+		// Job management
+		batch.GET("/jobs/:job_id", c.GetBatchJob)
+		batch.DELETE("/jobs/:job_id", nostrAuthMiddleware("delete", log), c.CancelBatchJob)
+	}
 }

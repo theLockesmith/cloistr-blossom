@@ -1422,3 +1422,54 @@ func (f *failReader) Read(p []byte) (n int, err error) {
 	}
 	return 0, io.EOF
 }
+
+// TestBatchUpload_PerFileSizeCap: each file in a batch is held to the server's
+// max_upload_size_bytes, as a single upload is; only the batch total was
+// checked before.
+func TestBatchUpload_PerFileSizeCap(t *testing.T) {
+	svc, blobStorage, _, _, _ := setupBatchTest(t)
+	svc.config.MaxFileSizeBytes = 10
+	ctx := context.Background()
+
+	small := []byte("12345")
+	large := []byte("12345678901")
+	req := &core.BatchUploadRequest{
+		Pubkey: "testpubkey",
+		Files: []core.BatchUploadFile{
+			{Filename: "small.txt", MimeType: "text/plain", Size: int64(len(small)), Reader: bytes.NewReader(small)},
+			{Filename: "large.txt", MimeType: "text/plain", Size: int64(len(large)), Reader: bytes.NewReader(large)},
+		},
+	}
+
+	resp, err := svc.Upload(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, resp.Results[0].Success, "a file under the cap is stored")
+	assert.False(t, resp.Results[1].Success, "a file over the cap is refused")
+	exists, _ := blobStorage.Exists(ctx, hashData(large))
+	assert.False(t, exists, "the over-cap file must not be stored")
+}
+
+// TestBatchUpload_OnlyHashesTheTokenNames: a file whose hash the auth token
+// does not name is refused and not stored.
+func TestBatchUpload_OnlyHashesTheTokenNames(t *testing.T) {
+	svc, blobStorage, _, _, _ := setupBatchTest(t)
+	ctx := context.Background()
+
+	named := []byte("named in the token")
+	other := []byte("not named in the token")
+	req := &core.BatchUploadRequest{
+		Pubkey:        "testpubkey",
+		AllowedHashes: []string{hashData(named)},
+		Files: []core.BatchUploadFile{
+			{Filename: "named.txt", MimeType: "text/plain", Size: int64(len(named)), Reader: bytes.NewReader(named)},
+			{Filename: "other.txt", MimeType: "text/plain", Size: int64(len(other)), Reader: bytes.NewReader(other)},
+		},
+	}
+
+	resp, err := svc.Upload(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, resp.Results[0].Success, "the named file is stored")
+	assert.False(t, resp.Results[1].Success, "a file the token does not name is refused")
+	exists, _ := blobStorage.Exists(ctx, hashData(other))
+	assert.False(t, exists, "the unnamed file must not be stored")
+}
