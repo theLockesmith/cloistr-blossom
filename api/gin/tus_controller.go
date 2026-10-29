@@ -1,6 +1,7 @@
 package gin
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -8,10 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -44,15 +44,20 @@ type TusHandler struct {
 	moderation   core.ModerationService   // nil means no blocklist check
 	acr          core.ACRStorage          // nil means no platform access check
 	limits       core.UploadLimitsService // nil means no tier limits
-	tempDir      string
+	store        core.TusUploadStore
 	cdnBaseURL   string
 	maxFileBytes int64
 	log          *zap.Logger
+
+	sweepMu   sync.Mutex
+	lastSweep time.Time
 }
 
 // TusConfig contains configuration for the tus handler.
 type TusConfig struct {
-	TempDir    string
+	// Store holds uploads where every replica can see them. Required: the
+	// replicas do not pin a client, so any request may land on any of them.
+	Store      core.TusUploadStore
 	CDNBaseURL string
 	// MaxFileBytes caps a single upload, as max_upload_size_bytes does on the
 	// other upload paths. 0 falls back to tusMaxSize.
@@ -69,14 +74,8 @@ func NewTusHandler(
 	config TusConfig,
 	log *zap.Logger,
 ) (*TusHandler, error) {
-	tempDir := config.TempDir
-	if tempDir == "" {
-		tempDir = "/tmp/blossom-tus"
-	}
-
-	// Ensure temp directory exists
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return nil, fmt.Errorf("create temp dir: %w", err)
+	if config.Store == nil {
+		return nil, errors.New("tus needs an upload store")
 	}
 
 	return &TusHandler{
@@ -85,7 +84,7 @@ func NewTusHandler(
 		moderation:   moderation,
 		acr:          acr,
 		limits:       limits,
-		tempDir:      tempDir,
+		store:        config.Store,
 		cdnBaseURL:   config.CDNBaseURL,
 		maxFileBytes: config.MaxFileBytes,
 		log:          log,
@@ -176,20 +175,12 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 		// Parse Upload-Metadata header (optional)
 		metadata := h.parseMetadata(ctx.GetHeader("Upload-Metadata"))
 
+		h.maybeSweepExpired()
+
 		// Generate upload ID
 		uploadID := uuid.New().String()
 
-		// Create upload directory
-		uploadDir := filepath.Join(h.tempDir, uploadID)
-		if err := os.MkdirAll(uploadDir, 0755); err != nil {
-			h.log.Error("failed to create upload directory", zap.Error(err))
-			ctx.Header("Content-Type", "text/plain")
-			ctx.String(http.StatusInternalServerError, "failed to create upload")
-			return
-		}
-
-		// Create info file
-		info := tusUploadInfo{
+		info := core.TusUpload{
 			ID:        uploadID,
 			Pubkey:    pubkey.(string),
 			Size:      uploadLength,
@@ -199,35 +190,22 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 		}
 
-		if err := h.saveUploadInfo(uploadID, &info); err != nil {
+		if err := h.store.Create(ctx.Request.Context(), &info); err != nil {
 			h.log.Error("failed to save upload info", zap.Error(err))
-			_ = os.RemoveAll(uploadDir)
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusInternalServerError, "failed to create upload")
 			return
 		}
-
-		// Create empty data file
-		dataPath := filepath.Join(uploadDir, "data")
-		f, err := os.Create(dataPath)
-		if err != nil {
-			h.log.Error("failed to create data file", zap.Error(err))
-			_ = os.RemoveAll(uploadDir)
-			ctx.Header("Content-Type", "text/plain")
-			ctx.String(http.StatusInternalServerError, "failed to create upload")
-			return
-		}
-		f.Close()
 
 		// Handle creation-with-upload extension
 		if ctx.Request.ContentLength > 0 {
 			// Client is sending data with the creation request
-			chunk, err := h.handleChunkUpload(ctx, uploadID, 0, uploadLength)
+			chunk, err := h.appendBody(ctx, &info, 0)
 			if err != nil {
 				h.log.Error("creation-with-upload failed", zap.Error(err))
-				_ = os.RemoveAll(uploadDir)
+				_ = h.deleteUpload(uploadID)
 				ctx.Header("Content-Type", "text/plain")
-				ctx.String(http.StatusInternalServerError, err.Error())
+				ctx.String(chunkErrorStatus(err), err.Error())
 				return
 			}
 			ctx.Header("Upload-Offset", strconv.FormatInt(chunk, 10))
@@ -258,9 +236,9 @@ func (h *TusHandler) tusHead() gin.HandlerFunc {
 			return
 		}
 
-		info, err := h.loadUploadInfo(uploadID)
+		info, err := h.store.Get(ctx.Request.Context(), uploadID)
 		if err != nil {
-			ctx.Status(http.StatusNotFound)
+			ctx.Status(lookupErrorStatus(err))
 			return
 		}
 
@@ -316,10 +294,10 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 		}
 
 		// Load upload info
-		info, err := h.loadUploadInfo(uploadID)
+		info, err := h.store.Get(ctx.Request.Context(), uploadID)
 		if err != nil {
 			ctx.Header("Content-Type", "text/plain")
-			ctx.String(http.StatusNotFound, "upload not found")
+			ctx.String(lookupErrorStatus(err), "upload not found")
 			return
 		}
 
@@ -362,20 +340,18 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 			}
 		}
 
-		// Write chunk
-		newOffset, err := h.handleChunkUpload(ctx, uploadID, offset, info.Size)
+		// Write chunk. The store refuses it if another request moved the
+		// offset first, so two replicas cannot both write at one offset.
+		newOffset, err := h.appendBody(ctx, info, offset)
 		if err != nil {
-			h.log.Error("chunk upload failed", zap.Error(err))
+			if !errors.Is(err, core.ErrTusOffsetConflict) && !errors.Is(err, errTusChunkTooLarge) {
+				h.log.Error("chunk upload failed", zap.Error(err))
+			}
 			ctx.Header("Content-Type", "text/plain")
-			ctx.String(http.StatusInternalServerError, err.Error())
+			ctx.String(chunkErrorStatus(err), err.Error())
 			return
 		}
-
-		// Update info
 		info.Offset = newOffset
-		if err := h.saveUploadInfo(uploadID, info); err != nil {
-			h.log.Error("failed to update upload info", zap.Error(err))
-		}
 
 		ctx.Header("Upload-Offset", strconv.FormatInt(newOffset, 10))
 
@@ -440,9 +416,9 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 			return
 		}
 
-		info, err := h.loadUploadInfo(uploadID)
+		info, err := h.store.Get(ctx.Request.Context(), uploadID)
 		if err != nil {
-			ctx.Status(http.StatusNotFound)
+			ctx.Status(lookupErrorStatus(err))
 			return
 		}
 		if caller := ctx.GetString(ctxPubkey); caller == "" || caller != info.Pubkey {
@@ -452,7 +428,7 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 		}
 
 		if err := h.deleteUpload(uploadID); err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, core.ErrTusUploadNotFound) {
 				ctx.Status(http.StatusNotFound)
 				return
 			}
@@ -468,9 +444,9 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 }
 
 // uploadIDParam returns the :id parameter if it is an id this server could
-// have issued (a canonical UUID). The id names a directory under the temp dir,
-// and gin passes ".." and "." through as ids, so anything else is refused
-// before it reaches the filesystem.
+// have issued (a canonical UUID). The id once named a directory, and gin
+// passes ".." and "." through as ids, so anything else is refused before it
+// reaches the store.
 func uploadIDParam(ctx *gin.Context) (string, bool) {
 	id := ctx.Param("id")
 	u, err := uuid.Parse(id)
@@ -522,102 +498,68 @@ func (h *TusHandler) parseMetadata(header string) map[string]string {
 	return metadata
 }
 
-// tusUploadInfo stores metadata about an upload.
-type tusUploadInfo struct {
-	ID        string            `json:"id"`
-	Pubkey    string            `json:"pubkey"`
-	Size      int64             `json:"size"`
-	Offset    int64             `json:"offset"`
-	Metadata  map[string]string `json:"metadata"`
-	CreatedAt int64             `json:"created_at"`
-	ExpiresAt int64             `json:"expires_at"`
+// errTusChunkTooLarge means a chunk ran past the declared Upload-Length.
+var errTusChunkTooLarge = errors.New("chunk exceeds Upload-Length")
+
+// appendBody stores the request body as the chunk at offset and returns the
+// new offset. A body longer than the bytes left in the upload is refused
+// whole rather than truncated.
+func (h *TusHandler) appendBody(ctx *gin.Context, info *core.TusUpload, offset int64) (int64, error) {
+	remaining := info.Size - offset
+	data, err := io.ReadAll(io.LimitReader(ctx.Request.Body, remaining+1))
+	if err != nil {
+		return offset, fmt.Errorf("read chunk: %w", err)
+	}
+	if int64(len(data)) > remaining {
+		return offset, errTusChunkTooLarge
+	}
+	return h.store.AppendChunk(ctx.Request.Context(), info.ID, offset, data)
 }
 
-// saveUploadInfo saves upload info to disk.
-func (h *TusHandler) saveUploadInfo(uploadID string, info *tusUploadInfo) error {
-	infoPath := filepath.Join(h.tempDir, uploadID, "info.json")
-	data := fmt.Sprintf(`{"id":"%s","pubkey":"%s","size":%d,"offset":%d,"created_at":%d,"expires_at":%d}`,
-		info.ID, info.Pubkey, info.Size, info.Offset, info.CreatedAt, info.ExpiresAt)
-	return os.WriteFile(infoPath, []byte(data), 0644)
+// chunkErrorStatus maps a failed chunk write to its response status.
+func chunkErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, core.ErrTusOffsetConflict):
+		return http.StatusConflict
+	case errors.Is(err, errTusChunkTooLarge):
+		return http.StatusRequestEntityTooLarge
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
-// loadUploadInfo loads upload info from disk.
-func (h *TusHandler) loadUploadInfo(uploadID string) (*tusUploadInfo, error) {
-	infoPath := filepath.Join(h.tempDir, uploadID, "info.json")
-	data, err := os.ReadFile(infoPath)
-	if err != nil {
-		return nil, err
+// lookupErrorStatus maps a failed upload lookup to its response status: 404
+// for no such upload, 500 when the store could not be read.
+func lookupErrorStatus(err error) int {
+	if errors.Is(err, core.ErrTusUploadNotFound) {
+		return http.StatusNotFound
 	}
-
-	// Simple parsing (in production, use proper JSON)
-	info := &tusUploadInfo{ID: uploadID}
-
-	// Parse fields manually to avoid import overhead
-	str := string(data)
-	if idx := strings.Index(str, `"pubkey":"`); idx >= 0 {
-		end := strings.Index(str[idx+10:], `"`)
-		if end >= 0 {
-			info.Pubkey = str[idx+10 : idx+10+end]
-		}
-	}
-	if idx := strings.Index(str, `"size":`); idx >= 0 {
-		end := strings.IndexAny(str[idx+7:], ",}")
-		if end >= 0 {
-			info.Size, _ = strconv.ParseInt(str[idx+7:idx+7+end], 10, 64)
-		}
-	}
-	if idx := strings.Index(str, `"offset":`); idx >= 0 {
-		end := strings.IndexAny(str[idx+9:], ",}")
-		if end >= 0 {
-			info.Offset, _ = strconv.ParseInt(str[idx+9:idx+9+end], 10, 64)
-		}
-	}
-	if idx := strings.Index(str, `"created_at":`); idx >= 0 {
-		end := strings.IndexAny(str[idx+13:], ",}")
-		if end >= 0 {
-			info.CreatedAt, _ = strconv.ParseInt(str[idx+13:idx+13+end], 10, 64)
-		}
-	}
-	if idx := strings.Index(str, `"expires_at":`); idx >= 0 {
-		end := strings.IndexAny(str[idx+13:], ",}")
-		if end >= 0 {
-			info.ExpiresAt, _ = strconv.ParseInt(str[idx+13:idx+13+end], 10, 64)
-		}
-	}
-
-	return info, nil
+	return http.StatusInternalServerError
 }
 
-// handleChunkUpload handles writing a chunk to the data file.
-func (h *TusHandler) handleChunkUpload(ctx *gin.Context, uploadID string, offset, totalSize int64) (int64, error) {
-	dataPath := filepath.Join(h.tempDir, uploadID, "data")
+// tusSweepInterval is how often an upload creation also removes expired
+// uploads, so abandoned ones do not pile up in the store.
+const tusSweepInterval = time.Hour
 
-	// Open file for appending
-	f, err := os.OpenFile(dataPath, os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return offset, fmt.Errorf("open data file: %w", err)
+func (h *TusHandler) maybeSweepExpired() {
+	h.sweepMu.Lock()
+	if time.Since(h.lastSweep) < tusSweepInterval {
+		h.sweepMu.Unlock()
+		return
 	}
-	defer f.Close()
+	h.lastSweep = time.Now()
+	h.sweepMu.Unlock()
 
-	// Seek to offset
-	if _, err := f.Seek(offset, 0); err != nil {
-		return offset, fmt.Errorf("seek to offset: %w", err)
-	}
-
-	// Copy data from request body
-	written, err := io.Copy(f, ctx.Request.Body)
-	if err != nil {
-		return offset, fmt.Errorf("write data: %w", err)
-	}
-
-	newOffset := offset + written
-
-	// Don't exceed total size
-	if newOffset > totalSize {
-		return totalSize, nil
-	}
-
-	return newOffset, nil
+	go func() {
+		n, err := h.store.DeleteExpired(context.Background(), time.Now().Unix())
+		if err != nil {
+			h.log.Warn("failed to remove expired tus uploads", zap.Error(err))
+			return
+		}
+		if n > 0 {
+			h.log.Info("removed expired tus uploads", zap.Int("count", n))
+		}
+	}()
 }
 
 // tusBlockedMessage matches what the other upload paths tell a blocked key.
@@ -652,7 +594,7 @@ func (h *TusHandler) accessAllowed(ctx *gin.Context, pubkey string) bool {
 }
 
 // finalizeUpload completes the upload and creates the blob.
-func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tusUploadInfo, expectedChecksum string) (*core.Blob, error) {
+func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *core.TusUpload, expectedChecksum string) (*core.Blob, error) {
 	// The key may have been blocklisted or lost access since the upload was
 	// created.
 	if blocked, err := h.blocklistCheck(ctx, info.Pubkey); err != nil {
@@ -664,12 +606,9 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		return nil, errTusAccessDenied
 	}
 
-	dataPath := filepath.Join(h.tempDir, uploadID, "data")
-
-	// Read the complete file
-	data, err := os.ReadFile(dataPath)
+	data, err := h.store.ReadAll(ctx.Request.Context(), uploadID)
 	if err != nil {
-		return nil, fmt.Errorf("read data file: %w", err)
+		return nil, fmt.Errorf("read upload: %w", err)
 	}
 
 	// The cap may have been lowered since the upload was created.
@@ -738,10 +677,10 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 	return blob, nil
 }
 
-// deleteUpload removes an upload and its files.
+// deleteUpload removes an upload and its bytes. It does not use the request
+// context, so a client hanging up cannot leave half an upload behind.
 func (h *TusHandler) deleteUpload(uploadID string) error {
-	uploadDir := filepath.Join(h.tempDir, uploadID)
-	return os.RemoveAll(uploadDir)
+	return h.store.Delete(context.Background(), uploadID)
 }
 
 // RegisterTusRoutes registers tus protocol routes.

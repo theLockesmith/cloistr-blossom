@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -45,15 +43,14 @@ func TestMediaUpload_QuotaRefusalDoesNotUseDailySlot(t *testing.T) {
 
 // The tus finaliser must check the type it stores, not the sniffed one.
 func TestTusUpload_ChecksStoredType(t *testing.T) {
-	dir := t.TempDir()
-	h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 1<<20, "text/plain"), TusConfig{TempDir: dir}, zap.NewNop())
+	store := newTusTestStore(t)
+	h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 1<<20, "text/plain"), TusConfig{Store: store}, zap.NewNop())
 	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "u1"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "u1", "data"), []byte("console.log('hello')"), 0o644))
+	seedTusUpload(t, store, "u1", []byte("console.log('hello')"))
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPatch, "/files/u1", nil)
 	// blobService is nil, so reaching the save would panic.
-	_, err = h.finalizeUpload(c, "u1", &tusUploadInfo{ID: "u1", Pubkey: "0000000000000000000000000000000000000000000000000000000000000001", Metadata: map[string]string{"filetype": "text/javascript"}}, "")
+	_, err = h.finalizeUpload(c, "u1", &core.TusUpload{ID: "u1", Pubkey: "0000000000000000000000000000000000000000000000000000000000000001", Metadata: map[string]string{"filetype": "text/javascript"}}, "")
 	assert.ErrorIs(t, err, core.ErrUploadMimeTypeNotAllowed)
 }

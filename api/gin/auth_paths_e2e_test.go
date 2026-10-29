@@ -58,7 +58,7 @@ func newE2EEnv(t *testing.T) e2eEnv {
 	require.NoError(t, err)
 	batch, err := service.NewBatchService(blobs, store, nil, nil, nil, core.DefaultBatchConfig(), "http://test.invalid", log)
 	require.NoError(t, err)
-	tus, err := NewTusHandler(blobs, nil, &fakeBlocklist{}, &fakeACR{}, nil, TusConfig{TempDir: t.TempDir(), CDNBaseURL: "http://test.invalid"}, log)
+	tus, err := NewTusHandler(blobs, nil, &fakeBlocklist{}, &fakeACR{}, nil, TusConfig{Store: service.NewTusStore(database, queries, store, log), CDNBaseURL: "http://test.invalid"}, log)
 	require.NoError(t, err)
 
 	r := gin.New()

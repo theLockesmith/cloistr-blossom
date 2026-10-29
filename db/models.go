@@ -169,6 +169,23 @@ type TransparencyStat struct {
 	LastUpdated      int64
 }
 
+type TusUpload struct {
+	ID           string
+	Pubkey       string
+	Size         int64
+	UploadOffset int64
+	Metadata     string
+	CreatedAt    int64
+	ExpiresAt    int64
+}
+
+type TusUploadChunk struct {
+	UploadID    string
+	ChunkOffset int64
+	Size        int64
+	ObjectKey   string
+}
+
 type UploadChunk struct {
 	SessionID   string
 	ChunkNum    int32

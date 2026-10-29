@@ -3,8 +3,6 @@ package gin
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -46,7 +44,7 @@ func TestTusUpload_AppliesTierLimits(t *testing.T) {
 	pk := "0000000000000000000000000000000000000000000000000000000000000001"
 
 	t.Run("declared length over the tier cap is refused at creation", func(t *testing.T) {
-		h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 8, "image/"), TusConfig{TempDir: t.TempDir()}, zap.NewNop())
+		h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 8, "image/"), TusConfig{Store: newTusTestStore(t)}, zap.NewNop())
 		require.NoError(t, err)
 		r := gin.New()
 		r.POST("/files", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, h.tusCreate())
@@ -60,16 +58,15 @@ func TestTusUpload_AppliesTierLimits(t *testing.T) {
 	})
 
 	t.Run("finished upload of a refused type is not stored", func(t *testing.T) {
-		dir := t.TempDir()
-		h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 1<<20, "image/"), TusConfig{TempDir: dir}, zap.NewNop())
+		store := newTusTestStore(t)
+		h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 1<<20, "image/"), TusConfig{Store: store}, zap.NewNop())
 		require.NoError(t, err)
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "u1"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "u1", "data"), htmlBytes, 0o644))
+		seedTusUpload(t, store, "u1", htmlBytes)
 
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodPatch, "/files/u1", nil)
 		// blobService is nil, so reaching the save would panic.
-		_, err = h.finalizeUpload(c, "u1", &tusUploadInfo{ID: "u1", Pubkey: pk, Metadata: map[string]string{"filetype": "image/png"}}, "")
+		_, err = h.finalizeUpload(c, "u1", &core.TusUpload{ID: "u1", Pubkey: pk, Metadata: map[string]string{"filetype": "image/png"}}, "")
 		assert.ErrorIs(t, err, core.ErrUploadMimeTypeNotAllowed)
 	})
 }

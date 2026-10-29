@@ -229,3 +229,21 @@ CREATE TABLE IF NOT EXISTS mirrored_media (
     fetched_at   BIGINT NOT NULL,
     accessed_at  BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS tus_uploads (
+    id            TEXT PRIMARY KEY,
+    pubkey        TEXT NOT NULL,
+    size          BIGINT NOT NULL,
+    upload_offset BIGINT NOT NULL DEFAULT 0,
+    metadata      TEXT NOT NULL DEFAULT '{}',
+    created_at    BIGINT NOT NULL,
+    expires_at    BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tus_upload_chunks (
+    upload_id    TEXT NOT NULL,
+    chunk_offset BIGINT NOT NULL,
+    size         BIGINT NOT NULL,
+    object_key   TEXT NOT NULL,
+    PRIMARY KEY (upload_id, chunk_offset)
+);
