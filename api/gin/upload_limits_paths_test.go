@@ -49,7 +49,7 @@ func TestTusUpload_AppliesTierLimits(t *testing.T) {
 		h, err := NewTusHandler(nil, nil, nil, nil, tierLimits(t, 8, "image/"), TusConfig{TempDir: t.TempDir()}, zap.NewNop())
 		require.NoError(t, err)
 		r := gin.New()
-		r.POST("/files", func(c *gin.Context) { c.Set("pubkey", pk) }, h.tusCreate())
+		r.POST("/files", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, h.tusCreate())
 
 		req := httptest.NewRequest(http.MethodPost, "/files", nil)
 		req.Header.Set("Tus-Resumable", "1.0.0")

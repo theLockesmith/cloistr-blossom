@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
@@ -25,7 +26,7 @@ func NewBatchController(batch core.BatchService, moderation core.ModerationServi
 // BatchUpload handles multi-file uploads via multipart form.
 // POST /batch/upload
 func (c *BatchController) BatchUpload(ctx *gin.Context) {
-	pubkey, exists := ctx.Get(handlerPubkeyKey)
+	pubkey, exists := ctx.Get(ctxPubkey)
 	if !exists {
 		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 		return
@@ -171,7 +172,7 @@ func (c *BatchController) BatchDownload(ctx *gin.Context) {
 // BatchDelete deletes multiple blobs.
 // DELETE /batch
 func (c *BatchController) BatchDelete(ctx *gin.Context) {
-	pubkey, exists := ctx.Get("pubkey")
+	pubkey, exists := ctx.Get(ctxPubkey)
 	if !exists {
 		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
 		return
@@ -285,4 +286,26 @@ func (r *bytesReader) Read(p []byte) (n int, err error) {
 	n = copy(p, r.data[r.offset:])
 	r.offset += n
 	return n, nil
+}
+
+// RegisterBatchRoutes registers the /batch routes.
+func RegisterBatchRoutes(r *gin.Engine, c *BatchController, log *zap.Logger) {
+	batch := r.Group("/batch")
+	{
+		// Upload requires auth
+		batch.POST("/upload", nostrAuthMiddleware("upload", log), c.BatchUpload)
+
+		// Download can be done without auth (public blobs) or with auth
+		batch.POST("/download", c.BatchDownload)
+
+		// Delete requires auth
+		batch.DELETE("", nostrAuthMiddleware("delete", log), c.BatchDelete)
+
+		// Status check doesn't require auth
+		batch.POST("/status", c.BatchStatus)
+
+		// Job management
+		batch.GET("/jobs/:job_id", c.GetBatchJob)
+		batch.DELETE("/jobs/:job_id", nostrAuthMiddleware("delete", log), c.CancelBatchJob)
+	}
 }

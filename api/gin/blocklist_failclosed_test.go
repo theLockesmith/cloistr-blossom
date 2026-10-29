@@ -59,7 +59,7 @@ func tusFailClosedRouter(t *testing.T, dir string, mod core.ModerationService, b
 	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
-	RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(handlerPubkeyKey, failClosedPK) }, zap.NewNop())
+	RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(ctxPubkey, failClosedPK) }, zap.NewNop())
 	return r
 }
 

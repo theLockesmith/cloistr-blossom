@@ -51,11 +51,11 @@ func reject(c *gin.Context, log *zap.Logger, reason string) {
 	c.AbortWithStatus(http.StatusUnauthorized)
 }
 
-// handlerPubkeyKey is the context key the tus, batch and chunked upload
-// handlers read the caller's key from. nostrAuthMiddleware sets "pk", so those
-// handlers answer 401 to every caller until this is switched over, which
-// waits until every check on those paths is in place.
-const handlerPubkeyKey = "pubkey"
+// ctxPubkey is the context key nostrAuthMiddleware stores the verified
+// signer's pubkey under. Handlers must read it through this constant: the tus
+// and batch handlers once read "pubkey", which nothing set, and answered 401
+// to every caller.
+const ctxPubkey = "pk"
 
 func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -162,7 +162,7 @@ func nostrAuthMiddleware(action string, log *zap.Logger) gin.HandlerFunc {
 			}
 		}
 
-		c.Set("pk", ev.PubKey)
+		c.Set(ctxPubkey, ev.PubKey)
 		c.Set("x", xTagValue)
 		// Every x tag: batch endpoints act only on hashes the token names.
 		c.Set("xs", xTagValues)

@@ -108,7 +108,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 		h.setTusHeaders(ctx)
 
 		// Get pubkey from auth
-		pubkey, ok := ctx.Get("pubkey")
+		pubkey, ok := ctx.Get(ctxPubkey)
 		if !ok {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusUnauthorized, "authentication required")
@@ -445,7 +445,7 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 			ctx.Status(http.StatusNotFound)
 			return
 		}
-		if caller := ctx.GetString(handlerPubkeyKey); caller == "" || caller != info.Pubkey {
+		if caller := ctx.GetString(ctxPubkey); caller == "" || caller != info.Pubkey {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusForbidden, "not your upload")
 			return

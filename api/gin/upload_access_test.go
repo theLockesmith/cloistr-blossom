@@ -87,7 +87,7 @@ func TestBatchUpload_AccessChecks(t *testing.T) {
 			batch := &recordingBatch{}
 			c := NewBatchController(batch, tc.mod, tc.acr)
 			r := gin.New()
-			r.POST("/batch/upload", func(c *gin.Context) { c.Set(handlerPubkeyKey, pk) }, c.BatchUpload)
+			r.POST("/batch/upload", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, c.BatchUpload)
 
 			body, ct := batchUploadBody(t)
 			req := httptest.NewRequest(http.MethodPost, "/batch/upload", body)
@@ -109,7 +109,7 @@ func TestTusUpload_PlatformAccessRule(t *testing.T) {
 		h, err := NewTusHandler(blobs, nil, nil, acr, nil, TusConfig{TempDir: dir}, zap.NewNop())
 		require.NoError(t, err)
 		r := gin.New()
-		RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(handlerPubkeyKey, tusOwnerPK) }, zap.NewNop())
+		RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(ctxPubkey, tusOwnerPK) }, zap.NewNop())
 		return r
 	}
 

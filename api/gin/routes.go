@@ -320,25 +320,7 @@ func SetupRoutes(
 
 	// Batch operations endpoints
 	if services.Batch() != nil {
-		batchController := NewBatchController(services.Batch(), services.Moderation(), services.ACR())
-		batch := r.Group("/batch")
-		{
-			// Upload requires auth
-			batch.POST("/upload", nostrAuthMiddleware("upload", log), batchController.BatchUpload)
-
-			// Download can be done without auth (public blobs) or with auth
-			batch.POST("/download", batchController.BatchDownload)
-
-			// Delete requires auth
-			batch.DELETE("", nostrAuthMiddleware("delete", log), batchController.BatchDelete)
-
-			// Status check doesn't require auth
-			batch.POST("/status", batchController.BatchStatus)
-
-			// Job management
-			batch.GET("/jobs/:job_id", batchController.GetBatchJob)
-			batch.DELETE("/jobs/:job_id", nostrAuthMiddleware("delete", log), batchController.CancelBatchJob)
-		}
+		RegisterBatchRoutes(r, NewBatchController(services.Batch(), services.Moderation(), services.ACR()), log)
 		log.Info("batch operation routes registered")
 	}
 

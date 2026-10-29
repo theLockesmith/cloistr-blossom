@@ -33,7 +33,12 @@ const (
 // per hash.
 func signedToken(t *testing.T, verb string, hashes ...string) string {
 	t.Helper()
-	sk := nostr.GeneratePrivateKey()
+	return signedTokenAs(t, nostr.GeneratePrivateKey(), verb, hashes...)
+}
+
+// signedTokenAs is signedToken for a given secret key.
+func signedTokenAs(t *testing.T, sk string, verb string, hashes ...string) string {
+	t.Helper()
 	pk, _ := nostr.GetPublicKey(sk)
 	ev := &nostr.Event{
 		PubKey:    pk,
@@ -52,9 +57,6 @@ func signedToken(t *testing.T, verb string, hashes ...string) string {
 	require.NoError(t, err)
 	return "Nostr " + enc
 }
-
-// copyPK hands the verified key to the batch handlers under the key they read.
-func copyPK(c *gin.Context) { c.Set(handlerPubkeyKey, c.GetString("pk")) }
 
 type deleteRecordingBatch struct {
 	core.BatchService
@@ -89,7 +91,7 @@ func TestBatchDelete_TokenMustNameEveryHash(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			batch := &deleteRecordingBatch{}
 			r := gin.New()
-			r.DELETE("/batch", nostrAuthMiddleware("delete", log), copyPK, NewBatchController(batch, nil, nil).BatchDelete)
+			r.DELETE("/batch", nostrAuthMiddleware("delete", log), NewBatchController(batch, nil, nil).BatchDelete)
 
 			body, _ := json.Marshal(core.BatchDeleteRequest{Hashes: []string{xHashA, xHashB}})
 			req := httptest.NewRequest(http.MethodDelete, "/batch", bytes.NewReader(body))
@@ -112,7 +114,7 @@ func TestBatchUpload_PassesTokenHashesToService(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	batch := &deleteRecordingBatch{}
 	r := gin.New()
-	r.POST("/batch/upload", nostrAuthMiddleware("upload", zap.NewNop()), copyPK, NewBatchController(batch, nil, nil).BatchUpload)
+	r.POST("/batch/upload", nostrAuthMiddleware("upload", zap.NewNop()), NewBatchController(batch, nil, nil).BatchUpload)
 
 	body, ct := batchUploadBody(t)
 	req := httptest.NewRequest(http.MethodPost, "/batch/upload", body)

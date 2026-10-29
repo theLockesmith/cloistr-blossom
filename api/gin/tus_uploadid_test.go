@@ -32,7 +32,7 @@ func tusIDRouter(t *testing.T, dir string) *gin.Engine {
 	h, err := NewTusHandler(nil, nil, nil, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
-	auth := func(c *gin.Context) { c.Set(handlerPubkeyKey, c.GetHeader("X-Test-Caller")) }
+	auth := func(c *gin.Context) { c.Set(ctxPubkey, c.GetHeader("X-Test-Caller")) }
 	RegisterTusRoutes(r, h, auth, zap.NewNop())
 	return r
 }

@@ -23,7 +23,7 @@ func tusSizeCapRouter(t *testing.T, dir string, maxFile int64, blobs *tusSaveRec
 	h, err := NewTusHandler(blobs, nil, nil, nil, nil, TusConfig{TempDir: dir, MaxFileBytes: maxFile}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
-	auth := func(c *gin.Context) { c.Set(handlerPubkeyKey, tusOwnerPK) }
+	auth := func(c *gin.Context) { c.Set(ctxPubkey, tusOwnerPK) }
 	RegisterTusRoutes(r, h, auth, zap.NewNop())
 	return r
 }
