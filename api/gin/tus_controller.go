@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
 
 const (
@@ -38,6 +39,7 @@ const (
 type TusHandler struct {
 	blobService   core.BlobStorage
 	quotaService  core.QuotaService
+	limits        core.UploadLimitsService // nil means no tier limits
 	tempDir       string
 	cdnBaseURL    string
 	log           *zap.Logger
@@ -53,6 +55,7 @@ type TusConfig struct {
 func NewTusHandler(
 	blobSvc core.BlobStorage,
 	quotaSvc core.QuotaService,
+	limits core.UploadLimitsService,
 	config TusConfig,
 	log *zap.Logger,
 ) (*TusHandler, error) {
@@ -69,6 +72,7 @@ func NewTusHandler(
 	return &TusHandler{
 		blobService:  blobSvc,
 		quotaService: quotaSvc,
+		limits:       limits,
 		tempDir:      tempDir,
 		cdnBaseURL:   config.CDNBaseURL,
 		log:          log,
@@ -124,6 +128,16 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			if err := h.quotaService.CheckQuota(ctx, pubkey.(string), uploadLength); err != nil {
 				ctx.Header("Content-Type", "text/plain")
 				ctx.String(http.StatusForbidden, "quota exceeded")
+				return
+			}
+		}
+
+		// Refuse a declared length over the tier cap before any data is sent;
+		// the full tier check runs again on the finished upload.
+		if h.limits != nil {
+			if err := h.limits.ValidateFileSize(ctx, pubkey.(string), int(uploadLength)); err != nil {
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusRequestEntityTooLarge, err.Error())
 				return
 			}
 		}
@@ -532,6 +546,13 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		mimeType = "application/octet-stream"
 	}
 
+	storedType := mimetypes.Resolve(data, mimeType)
+	if h.limits != nil {
+		if err := h.limits.CheckUpload(ctx, info.Pubkey, storedType, len(data)); err != nil {
+			return nil, err
+		}
+	}
+
 	// Save blob
 	url := fmt.Sprintf("%s/%s", h.cdnBaseURL, hashStr)
 	blob, _, err := h.blobService.SaveWithDedup(
@@ -540,13 +561,16 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		hashStr,
 		url,
 		int64(len(data)),
-		mimeType,
+		storedType,
 		data,
 		time.Now().Unix(),
 		core.EncryptionModeNone,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)
+	}
+	if h.limits != nil {
+		h.limits.RecordUpload(ctx, info.Pubkey)
 	}
 
 	// Update quota

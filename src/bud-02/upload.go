@@ -41,19 +41,20 @@ func UploadBlob(
 	// the stored type may be upgraded from declaredType for allowlisted text
 	// formats the sniffer cannot recognise (see mimetypes.Resolve).
 	mimeType := mimetype.Detect(blobBytes)
+	storedType := mimetypes.Resolve(blobBytes, declaredType)
 
 	// Tier-aware enforcement when upload_limits.enabled is true.
 	// When disabled, fall back to the existing global checks so behaviour is
 	// identical to the pre-enforcement baseline for self-hosters.
-	if ul := services.UploadLimits(); ul.IsEnabled() {
-		if err := ul.ValidateMimeType(ctx, pubkey, mimeType.String()); err != nil {
-			return nil, fmt.Errorf("mime type %s not allowed for your tier", mimeType.String())
-		}
-		if err := ul.ValidateFileSize(ctx, pubkey, len(blobBytes)); err != nil {
-			return nil, fmt.Errorf("file size: %w", err)
-		}
-		if err := ul.TrackAndCheckDailyUploads(ctx, pubkey); err != nil {
-			return nil, fmt.Errorf("daily upload limit: %w", err)
+	// The tier check sees the type that will be stored, which Resolve may
+	// have upgraded from the sniffed one.
+	ul := services.UploadLimits()
+	if ul.IsEnabled() {
+		if err := ul.CheckUpload(ctx, pubkey, storedType, len(blobBytes)); err != nil {
+			if errors.Is(err, core.ErrUploadMimeTypeNotAllowed) {
+				return nil, fmt.Errorf("mime type %s not allowed for your tier", storedType)
+			}
+			return nil, fmt.Errorf("upload limits: %w", err)
 		}
 	} else {
 		if err := mimes.IsAllowed(ctx, mimeType.String()); err != nil {
@@ -101,7 +102,7 @@ func UploadBlob(
 		hash,
 		url,
 		int64(len(blobBytes)),
-		mimetypes.Resolve(blobBytes, declaredType),
+		storedType,
 		blobBytes,
 		time.Now().Unix(),
 		encryptionMode,
@@ -109,6 +110,7 @@ func UploadBlob(
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)
 	}
+	ul.RecordUpload(ctx, pubkey)
 
 	// Update quota usage - count the blob size for this user regardless of dedup
 	// Each user's quota reflects their "ownership" of blob references

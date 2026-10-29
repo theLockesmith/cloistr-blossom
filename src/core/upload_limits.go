@@ -37,9 +37,17 @@ type UploadLimitsService interface {
 	// ValidateFileSize checks the upload byte count against the per-tier cap.
 	ValidateFileSize(ctx context.Context, pubkey string, sizeBytes int) error
 
-	// TrackAndCheckDailyUploads atomically increments the per-pubkey daily
-	// upload counter and returns ErrDailyUploadLimitReached if the tier cap
-	// is exceeded. The counter window is a 24-hour sliding window.
-	// Returns nil when UploadsPerDay is 0 (no cap configured for this tier).
-	TrackAndCheckDailyUploads(ctx context.Context, pubkey string) error
+	// CheckUpload applies every tier limit to one finished upload before it
+	// is stored: mimeType (the type that will be stored), its size, and
+	// whether today's upload count has room. It does not use up a slot; call
+	// RecordUpload once the upload is stored. Returns nil when upload_limits
+	// is disabled.
+	CheckUpload(ctx context.Context, pubkey string, mimeType string, sizeBytes int) error
+
+	// RecordUpload counts one stored upload against the tier's daily cap. It
+	// is called only after a successful save, so an upload refused at any
+	// later step (quota, hash, storage) does not use up one of the day's
+	// uploads. Concurrent uploads that all passed CheckUpload can overshoot
+	// the cap by the number in flight.
+	RecordUpload(ctx context.Context, pubkey string)
 }

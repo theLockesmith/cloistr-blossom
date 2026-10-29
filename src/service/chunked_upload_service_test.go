@@ -74,6 +74,7 @@ func TestChunkedUpload_StoredType(t *testing.T) {
 				nil,
 				blobs,
 				nil,
+				nil,
 				&config.ChunkedUploadConfig{
 					DefaultChunkSize: 1024,
 					MinChunkSize:     1,

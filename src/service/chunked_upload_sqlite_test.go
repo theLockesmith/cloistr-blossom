@@ -54,6 +54,7 @@ func TestChunkedUpload_SQLiteEndToEnd(t *testing.T) {
 		nil,
 		blobs,
 		nil,
+		nil,
 		&config.ChunkedUploadConfig{
 			DefaultChunkSize: 4,
 			MinChunkSize:     1,

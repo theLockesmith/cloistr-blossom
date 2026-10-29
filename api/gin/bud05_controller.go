@@ -63,6 +63,13 @@ func uploadMedia(
 			return
 		}
 
+		// Tier limits apply to the bytes the user sent, before processing.
+		// The daily count is taken only after the save below succeeds.
+		if err := services.UploadLimits().CheckUpload(ctx.Request.Context(), pubkey, mimetype.Detect(bodyBytes).String(), len(bodyBytes)); err != nil {
+			clerrors.BadRequest(clerrors.CodeUploadFailed, err.Error()).Abort(ctx)
+			return
+		}
+
 		// Detect MIME type from content
 		mtype := mimetype.Detect(bodyBytes)
 		contentType := mtype.String()
@@ -148,6 +155,8 @@ func uploadMedia(
 			clerrors.InternalError(clerrors.CodeInternalError, fmt.Sprintf("failed to save processed media: %s", err.Error())).Abort(ctx)
 			return
 		}
+
+		services.UploadLimits().RecordUpload(ctx.Request.Context(), pubkey)
 
 		// Honor the requested expiration (best-effort; blob is already stored).
 		applyUploadExpiration(ctx, services, result.Hash, expiresAt, hasExpiration)
