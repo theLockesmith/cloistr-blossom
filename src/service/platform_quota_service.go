@@ -150,12 +150,9 @@ func (s *platformQuotaService) DecrementUsage(ctx context.Context, pubkey string
 }
 
 func (s *platformQuotaService) SetQuota(ctx context.Context, pubkey string, quotaBytes int64) error {
-	// Platform mode: quotas are managed centrally via admin UI
-	// This operation is not supported in platform mode
-	s.log.Warn("SetQuota called in platform mode - quotas are managed centrally",
-		zap.String("pubkey", pubkey),
-		zap.Int64("requested_quota", quotaBytes))
-	return nil
+	// Platform mode: quotas are held by cloistr-me, so a local write would
+	// silently do nothing. Refuse instead of reporting success.
+	return core.ErrQuotaManagedCentrally
 }
 
 func (s *platformQuotaService) BanUser(ctx context.Context, pubkey string) error {

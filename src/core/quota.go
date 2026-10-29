@@ -12,6 +12,9 @@ var (
 	ErrUserBanned = errors.New("user is banned")
 	// ErrUserNotFound is returned when a user does not exist.
 	ErrUserNotFound = errors.New("user not found")
+	// ErrQuotaManagedCentrally is returned by SetQuota when quotas are held
+	// by the platform (cloistr-me) rather than by this server.
+	ErrQuotaManagedCentrally = errors.New("quotas are managed by cloistr-me in platform mode; set them with POST /admin/v1/quotas")
 )
 
 // User represents a user with quota information.
