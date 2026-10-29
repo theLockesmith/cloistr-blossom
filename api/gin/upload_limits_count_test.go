@@ -46,7 +46,7 @@ func TestMediaUpload_QuotaRefusalDoesNotUseDailySlot(t *testing.T) {
 // The tus finaliser must check the type it stores, not the sniffed one.
 func TestTusUpload_ChecksStoredType(t *testing.T) {
 	dir := t.TempDir()
-	h, err := NewTusHandler(nil, nil, tierLimits(t, 1<<20, "text/plain"), TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(nil, nil, nil, tierLimits(t, 1<<20, "text/plain"), TusConfig{TempDir: dir}, zap.NewNop())
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "u1"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "u1", "data"), []byte("console.log('hello')"), 0o644))

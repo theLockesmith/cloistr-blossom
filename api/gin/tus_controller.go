@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
@@ -37,12 +39,13 @@ const (
 
 // TusHandler implements the tus resumable upload protocol.
 type TusHandler struct {
-	blobService   core.BlobStorage
-	quotaService  core.QuotaService
-	limits        core.UploadLimitsService // nil means no tier limits
-	tempDir       string
-	cdnBaseURL    string
-	log           *zap.Logger
+	blobService  core.BlobStorage
+	quotaService core.QuotaService
+	moderation   core.ModerationService   // nil means no blocklist check
+	limits       core.UploadLimitsService // nil means no tier limits
+	tempDir      string
+	cdnBaseURL   string
+	log          *zap.Logger
 }
 
 // TusConfig contains configuration for the tus handler.
@@ -55,6 +58,7 @@ type TusConfig struct {
 func NewTusHandler(
 	blobSvc core.BlobStorage,
 	quotaSvc core.QuotaService,
+	moderation core.ModerationService,
 	limits core.UploadLimitsService,
 	config TusConfig,
 	log *zap.Logger,
@@ -72,6 +76,7 @@ func NewTusHandler(
 	return &TusHandler{
 		blobService:  blobSvc,
 		quotaService: quotaSvc,
+		moderation:   moderation,
 		limits:       limits,
 		tempDir:      tempDir,
 		cdnBaseURL:   config.CDNBaseURL,
@@ -99,6 +104,15 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 		if !ok {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusUnauthorized, "authentication required")
+			return
+		}
+
+		// Refuse a blocklisted key before any upload exists, as the other
+		// upload paths do.
+		if h.isBlocked(ctx, pubkey.(string)) {
+			metrics.BlockedUploadsTotal.Inc()
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusBlockedMessage)
 			return
 		}
 
@@ -159,13 +173,13 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 
 		// Create info file
 		info := tusUploadInfo{
-			ID:           uploadID,
-			Pubkey:       pubkey.(string),
-			Size:         uploadLength,
-			Offset:       0,
-			Metadata:     metadata,
-			CreatedAt:    time.Now().Unix(),
-			ExpiresAt:    time.Now().Add(24 * time.Hour).Unix(),
+			ID:        uploadID,
+			Pubkey:    pubkey.(string),
+			Size:      uploadLength,
+			Offset:    0,
+			Metadata:  metadata,
+			CreatedAt: time.Now().Unix(),
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 		}
 
 		if err := h.saveUploadInfo(uploadID, &info); err != nil {
@@ -338,6 +352,14 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 		if newOffset >= info.Size {
 			// Finalize upload
 			blob, err := h.finalizeUpload(ctx, uploadID, info, expectedChecksum)
+			if errors.Is(err, core.ErrPubkeyBlocked) {
+				// Blocked after the upload was created; it can never finish.
+				_ = h.deleteUpload(uploadID)
+				metrics.BlockedUploadsTotal.Inc()
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusForbidden, tusBlockedMessage)
+				return
+			}
 			if err != nil {
 				h.log.Error("finalize upload failed", zap.Error(err))
 				ctx.Header("Content-Type", "text/plain")
@@ -515,8 +537,26 @@ func (h *TusHandler) handleChunkUpload(ctx *gin.Context, uploadID string, offset
 	return newOffset, nil
 }
 
+// tusBlockedMessage matches what the other upload paths tell a blocked key.
+const tusBlockedMessage = "your account has been blocked due to terms of service violation"
+
+// isBlocked reports whether pubkey is on the blocklist. A lookup error lets
+// the upload through, as on the other upload paths.
+func (h *TusHandler) isBlocked(ctx *gin.Context, pubkey string) bool {
+	if h.moderation == nil {
+		return false
+	}
+	blocked, err := h.moderation.IsBlocked(ctx.Request.Context(), pubkey)
+	return err == nil && blocked
+}
+
 // finalizeUpload completes the upload and creates the blob.
 func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tusUploadInfo, expectedChecksum string) (*core.Blob, error) {
+	// The key may have been blocklisted since the upload was created.
+	if h.isBlocked(ctx, info.Pubkey) {
+		return nil, core.ErrPubkeyBlocked
+	}
+
 	dataPath := filepath.Join(h.tempDir, uploadID, "data")
 
 	// Read the complete file
