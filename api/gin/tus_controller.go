@@ -1,6 +1,7 @@
 package gin
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -309,8 +310,12 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 			return
 		}
 
-		// Verify offset matches current position
-		if offset != info.Offset {
+		// Verify offset matches current position. Once every byte is stored
+		// but finalize failed (e.g. 503), a client retrying its last chunk
+		// sends an earlier offset; that retry is checked against the stored
+		// bytes instead of written.
+		finalizeRetry := offset < info.Offset && info.Offset >= info.Size
+		if offset != info.Offset && !finalizeRetry {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusConflict, fmt.Sprintf("offset mismatch: expected %d, got %d", info.Offset, offset))
 			return
@@ -342,7 +347,12 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 
 		// Write chunk. The store refuses it if another request moved the
 		// offset first, so two replicas cannot both write at one offset.
-		newOffset, err := h.appendBody(ctx, info, offset)
+		var newOffset int64
+		if finalizeRetry {
+			newOffset, err = h.matchStoredTail(ctx, info, offset)
+		} else {
+			newOffset, err = h.appendBody(ctx, info, offset)
+		}
 		if err != nil {
 			if !errors.Is(err, core.ErrTusOffsetConflict) && !errors.Is(err, errTusChunkTooLarge) {
 				h.log.Error("chunk upload failed", zap.Error(err))
@@ -514,6 +524,26 @@ func (h *TusHandler) appendBody(ctx *gin.Context, info *core.TusUpload, offset i
 		return offset, errTusChunkTooLarge
 	}
 	return h.store.AppendChunk(ctx.Request.Context(), info.ID, offset, data)
+}
+
+// matchStoredTail checks a retried last chunk against the bytes already
+// stored: it must run from offset to the end and match them exactly. It
+// returns the upload's end offset, or ErrTusOffsetConflict if it does not
+// match.
+func (h *TusHandler) matchStoredTail(ctx *gin.Context, info *core.TusUpload, offset int64) (int64, error) {
+	remaining := info.Size - offset
+	data, err := io.ReadAll(io.LimitReader(ctx.Request.Body, remaining+1))
+	if err != nil {
+		return offset, fmt.Errorf("read chunk: %w", err)
+	}
+	stored, err := h.store.ReadAll(ctx.Request.Context(), info.ID)
+	if err != nil {
+		return offset, fmt.Errorf("read upload: %w", err)
+	}
+	if int64(len(stored)) != info.Size || !bytes.Equal(data, stored[offset:]) {
+		return offset, fmt.Errorf("%w: retried chunk does not match the stored upload", core.ErrTusOffsetConflict)
+	}
+	return info.Size, nil
 }
 
 // chunkErrorStatus maps a failed chunk write to its response status.
