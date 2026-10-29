@@ -243,13 +243,32 @@ func (c *BatchController) GetBatchJob(ctx *gin.Context) {
 		return
 	}
 
-	job, err := c.batch.GetJob(ctx.Request.Context(), jobID)
-	if err != nil {
-		clerrors.NotFound(clerrors.CodeResourceNotFound, err.Error()).Abort(ctx)
+	job, ok := c.ownedJob(ctx, jobID)
+	if !ok {
 		return
 	}
 
 	ctx.JSON(http.StatusOK, job)
+}
+
+// ownedJob loads a job for the signed caller: 404 if unknown, 403 if another
+// key created it. It answers the request itself when it returns false.
+func (c *BatchController) ownedJob(ctx *gin.Context, jobID string) (*core.BatchJob, bool) {
+	caller := ctx.GetString(ctxPubkey)
+	if caller == "" {
+		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
+		return nil, false
+	}
+	job, err := c.batch.GetJob(ctx.Request.Context(), jobID)
+	if err != nil || job == nil {
+		clerrors.NotFound(clerrors.CodeResourceNotFound, "job not found").Abort(ctx)
+		return nil, false
+	}
+	if job.Pubkey != caller {
+		clerrors.Forbidden(clerrors.CodeAccessDenied, "not your job").Abort(ctx)
+		return nil, false
+	}
+	return job, true
 }
 
 // CancelBatchJob cancels a batch job.
@@ -258,6 +277,10 @@ func (c *BatchController) CancelBatchJob(ctx *gin.Context) {
 	jobID := ctx.Param("job_id")
 	if jobID == "" {
 		clerrors.BadRequest(clerrors.CodeInvalidInput, "job_id required").Abort(ctx)
+		return
+	}
+
+	if _, ok := c.ownedJob(ctx, jobID); !ok {
 		return
 	}
 
@@ -305,7 +328,7 @@ func RegisterBatchRoutes(r *gin.Engine, c *BatchController, log *zap.Logger) {
 		batch.POST("/status", c.BatchStatus)
 
 		// Job management
-		batch.GET("/jobs/:job_id", c.GetBatchJob)
+		batch.GET("/jobs/:job_id", nostrAuthMiddleware("get", log), c.GetBatchJob)
 		batch.DELETE("/jobs/:job_id", nostrAuthMiddleware("delete", log), c.CancelBatchJob)
 	}
 }
