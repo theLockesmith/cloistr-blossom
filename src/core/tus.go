@@ -44,6 +44,10 @@ type TusUploadStore interface {
 	// ReadAll returns the upload's bytes, in order.
 	ReadAll(ctx context.Context, id string) ([]byte, error)
 
+	// ReadFrom returns the upload's bytes from offset from to the end,
+	// fetching only the chunks that hold them.
+	ReadFrom(ctx context.Context, id string, from int64) ([]byte, error)
+
 	// Delete removes the upload and its bytes. It returns
 	// ErrTusUploadNotFound if there is no such upload.
 	Delete(ctx context.Context, id string) error

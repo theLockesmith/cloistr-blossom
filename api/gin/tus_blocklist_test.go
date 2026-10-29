@@ -44,7 +44,7 @@ func tusBlocklistRouter(t *testing.T, mod core.ModerationService, blobs core.Blo
 	require.NoError(t, err)
 	r := gin.New()
 	r.POST("/files", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, h.tusCreate())
-	r.PATCH("/files/:id", h.tusPatch())
+	r.PATCH("/files/:id", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, h.tusPatch())
 	return r
 }
 

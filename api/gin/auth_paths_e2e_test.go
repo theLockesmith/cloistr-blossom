@@ -94,14 +94,34 @@ func TestTusPaths_RealAuth(t *testing.T) {
 	require.Equal(t, http.StatusCreated, created.Code, "signed create, body %s", created.Body)
 	id := path.Base(created.Header().Get("Location"))
 
-	// PATCH carries no auth by design: the unguessable upload id is the
-	// capability, as in tus. The checks run against the creating key.
-	w := env.do(func() *http.Request {
+	// PATCH and HEAD need the creator's signature, as DELETE does: holding
+	// the upload id is not enough.
+	patch := func(auth string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPatch, "/files/"+id, bytes.NewReader(data))
 		req.Header.Set("Content-Type", "application/offset+octet-stream")
 		req.Header.Set("Upload-Offset", "0")
-		return req
-	}())
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		return env.do(req)
+	}
+	head := func(auth string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodHead, "/files/"+id, nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		return env.do(req)
+	}
+	other := signedTokenAs(t, nostr.GeneratePrivateKey(), "upload", sha256Hex(data))
+	owner := signedTokenAs(t, sk, "upload", sha256Hex(data))
+
+	assert.Equal(t, http.StatusUnauthorized, head("").Code, "unsigned HEAD")
+	assert.Equal(t, http.StatusForbidden, head(other).Code, "HEAD by another key")
+	assert.Equal(t, http.StatusOK, head(owner).Code, "HEAD by the creator")
+	assert.Equal(t, http.StatusUnauthorized, patch("").Code, "unsigned PATCH")
+	assert.Equal(t, http.StatusForbidden, patch(other).Code, "PATCH by another key")
+
+	w := patch(owner)
 	require.Equal(t, http.StatusNoContent, w.Code, "body %s", w.Body)
 
 	has, err := env.blobs.HasReference(context.Background(), pk, sha256Hex(data))

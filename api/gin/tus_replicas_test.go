@@ -101,7 +101,12 @@ func tusCreateOn(t *testing.T, r *gin.Engine, length int) string {
 }
 
 func tusPatchOn(r *gin.Engine, id string, offset int, data []byte) *httptest.ResponseRecorder {
+	return tusPatchAs(r, tusOwnerPK, id, offset, data)
+}
+
+func tusPatchAs(r *gin.Engine, caller, id string, offset int, data []byte) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPatch, "/files/"+id, bytes.NewReader(data))
+	req.Header.Set("X-Test-Caller", caller)
 	req.Header.Set("Content-Type", "application/offset+octet-stream")
 	req.Header.Set("Upload-Offset", strconv.Itoa(offset))
 	w := httptest.NewRecorder()
@@ -110,8 +115,14 @@ func tusPatchOn(r *gin.Engine, id string, offset int, data []byte) *httptest.Res
 }
 
 func tusHeadOn(r *gin.Engine, id string) *httptest.ResponseRecorder {
+	return tusHeadAs(r, tusOwnerPK, id)
+}
+
+func tusHeadAs(r *gin.Engine, caller, id string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodHead, "/files/"+id, nil)
+	req.Header.Set("X-Test-Caller", caller)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodHead, "/files/"+id, nil))
+	r.ServeHTTP(w, req)
 	return w
 }
 
