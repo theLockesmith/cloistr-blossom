@@ -105,8 +105,8 @@ func TestBatchUpload_AccessChecks(t *testing.T) {
 
 func TestTusUpload_PlatformAccessRule(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := func(t *testing.T, dir string, acr core.ACRStorage, blobs core.BlobStorage) *gin.Engine {
-		h, err := NewTusHandler(blobs, nil, nil, acr, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	router := func(t *testing.T, store core.TusUploadStore, acr core.ACRStorage, blobs core.BlobStorage) *gin.Engine {
+		h, err := NewTusHandler(blobs, nil, nil, acr, nil, TusConfig{Store: store}, zap.NewNop())
 		require.NoError(t, err)
 		r := gin.New()
 		RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(ctxPubkey, tusOwnerPK) }, zap.NewNop())
@@ -114,15 +114,15 @@ func TestTusUpload_PlatformAccessRule(t *testing.T) {
 	}
 
 	t.Run("a denied key cannot start an upload", func(t *testing.T) {
-		w := tusCreateRequest(router(t, t.TempDir(), &fakeACR{denied: map[string]bool{tusOwnerPK: true}}, nil), "5")
+		w := tusCreateRequest(router(t, newTusTestStore(t), &fakeACR{denied: map[string]bool{tusOwnerPK: true}}, nil), "5")
 		assert.Equal(t, http.StatusForbidden, w.Code, "body %s", w.Body)
 	})
 
 	t.Run("a key denied mid-upload cannot finish", func(t *testing.T) {
-		dir := t.TempDir()
+		store := newTusTestStore(t)
 		acr := &fakeACR{denied: map[string]bool{}}
 		blobs := &tusSaveRecorder{}
-		r := router(t, dir, acr, blobs)
+		r := router(t, store, acr, blobs)
 
 		created := tusCreateRequest(r, "5")
 		require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)

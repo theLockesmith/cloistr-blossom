@@ -299,7 +299,7 @@ func SetupRoutes(
 		services.ACR(),
 		services.UploadLimits(),
 		TusConfig{
-			TempDir:      conf.ChunkedUpload.TempDir,
+			Store:        services.TusUploads(),
 			CDNBaseURL:   cdnBaseUrl,
 			MaxFileBytes: int64(services.Settings().GetMaxUploadSizeBytes()),
 		},

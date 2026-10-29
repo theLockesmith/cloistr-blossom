@@ -45,6 +45,7 @@ type services struct {
 	payment       core.PaymentService
 	uploadLimits  core.UploadLimitsService
 	mediaMirror   core.MediaMirrorService
+	tusUploads    core.TusUploadStore
 	cache         cache.Cache
 	conf          *config.Config
 }
@@ -401,6 +402,7 @@ func New(
 		payment:       paymentService,
 		uploadLimits:  uploadLimitsService,
 		mediaMirror:   mediaMirrorService,
+		tusUploads:    NewTusStore(database, queries, storageBackend, log),
 		cache:         appCache,
 		conf:          conf,
 	}
@@ -500,6 +502,10 @@ func (s *services) Cache() cache.Cache {
 
 func (s *services) UploadLimits() core.UploadLimitsService {
 	return s.uploadLimits
+}
+
+func (s *services) TusUploads() core.TusUploadStore {
+	return s.tusUploads
 }
 
 func (s *services) MediaMirror() core.MediaMirrorService {

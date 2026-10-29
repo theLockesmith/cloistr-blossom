@@ -2,12 +2,11 @@ package gin
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -53,10 +52,10 @@ func TestUploadPaths_BlocklistLookupErrorRefuses(t *testing.T) {
 	}
 }
 
-func tusFailClosedRouter(t *testing.T, dir string, mod core.ModerationService, blobs core.BlobStorage) *gin.Engine {
+func tusFailClosedRouter(t *testing.T, store core.TusUploadStore, mod core.ModerationService, blobs core.BlobStorage) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{Store: store}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	RegisterTusRoutes(r, h, func(c *gin.Context) { c.Set(ctxPubkey, failClosedPK) }, zap.NewNop())
@@ -75,15 +74,15 @@ func tusPatch(r *gin.Engine, id string, offset int, chunk string) *httptest.Resp
 func TestTusUpload_BlocklistFailsClosed(t *testing.T) {
 	t.Run("create refuses on a lookup error", func(t *testing.T) {
 		mod := &fakeBlocklist{err: errors.New("blocklist unavailable")}
-		w := tusCreateRequest(tusFailClosedRouter(t, t.TempDir(), mod, nil), "5")
+		w := tusCreateRequest(tusFailClosedRouter(t, newTusTestStore(t), mod, nil), "5")
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code, "body %s", w.Body)
 	})
 
 	t.Run("finish refuses on a lookup error and keeps the upload to retry", func(t *testing.T) {
-		dir := t.TempDir()
+		store := newTusTestStore(t)
 		mod := &fakeBlocklist{}
 		blobs := &tusSaveRecorder{}
-		r := tusFailClosedRouter(t, dir, mod, blobs)
+		r := tusFailClosedRouter(t, store, mod, blobs)
 		created := tusCreateRequest(r, "5")
 		require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
 		id := path.Base(created.Header().Get("Location"))
@@ -92,14 +91,14 @@ func TestTusUpload_BlocklistFailsClosed(t *testing.T) {
 		w := tusPatch(r, id, 0, "hello")
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code, "body %s", w.Body)
 		assert.False(t, blobs.saved, "nothing may be stored while the blocklist is unknown")
-		_, err := os.Stat(filepath.Join(dir, id))
+		_, err := store.Get(context.Background(), id)
 		assert.NoError(t, err, "the upload is kept so the client can retry")
 	})
 
 	t.Run("a key blocked mid-upload is stopped at the next chunk", func(t *testing.T) {
-		dir := t.TempDir()
+		store := newTusTestStore(t)
 		mod := &fakeBlocklist{blocked: map[string]bool{}}
-		r := tusFailClosedRouter(t, dir, mod, &tusSaveRecorder{})
+		r := tusFailClosedRouter(t, store, mod, &tusSaveRecorder{})
 		created := tusCreateRequest(r, "15")
 		require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
 		id := path.Base(created.Header().Get("Location"))
@@ -109,14 +108,14 @@ func TestTusUpload_BlocklistFailsClosed(t *testing.T) {
 		mod.blocked[failClosedPK] = true
 		w := tusPatch(r, id, 5, "67890")
 		assert.Equal(t, http.StatusForbidden, w.Code, "body %s", w.Body)
-		_, err := os.Stat(filepath.Join(dir, id))
-		assert.True(t, os.IsNotExist(err), "a blocked key's partial upload is removed")
+		_, err := store.Get(context.Background(), id)
+		assert.ErrorIs(t, err, core.ErrTusUploadNotFound, "a blocked key's partial upload is removed")
 	})
 
 	t.Run("a lookup error mid-upload refuses the chunk", func(t *testing.T) {
-		dir := t.TempDir()
+		store := newTusTestStore(t)
 		mod := &fakeBlocklist{}
-		r := tusFailClosedRouter(t, dir, mod, &tusSaveRecorder{})
+		r := tusFailClosedRouter(t, store, mod, &tusSaveRecorder{})
 		created := tusCreateRequest(r, "15")
 		require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
 		id := path.Base(created.Header().Get("Location"))

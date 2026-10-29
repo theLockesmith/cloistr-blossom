@@ -1,17 +1,18 @@
 package gin
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
 // The upload id names a directory under the tus temp dir. gin hands ".." and
@@ -26,10 +27,10 @@ const (
 
 // tusIDRouter registers the tus routes with a stand-in for auth that sets the
 // caller from the X-Test-Caller header.
-func tusIDRouter(t *testing.T, dir string) *gin.Engine {
+func tusIDRouter(t *testing.T, store core.TusUploadStore) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(nil, nil, nil, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(nil, nil, nil, nil, nil, TusConfig{Store: store}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	auth := func(c *gin.Context) { c.Set(ctxPubkey, c.GetHeader("X-Test-Caller")) }
@@ -55,12 +56,8 @@ func tusDo(r *gin.Engine, method, target, caller string) *httptest.ResponseRecor
 }
 
 func TestTusUploadID_DotSegmentsAreNotUploads(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "tus")
-	sentinel := filepath.Join(root, "sentinel")
-	require.NoError(t, os.WriteFile(sentinel, []byte("keep"), 0o600))
-
-	r := tusIDRouter(t, dir)
+	store := newTusTestStore(t)
+	r := tusIDRouter(t, store)
 	created := tusDo(r, http.MethodPost, "/files", tusOwnerPK)
 	require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
 	id := path.Base(created.Header().Get("Location"))
@@ -72,15 +69,13 @@ func TestTusUploadID_DotSegmentsAreNotUploads(t *testing.T) {
 		}
 	}
 
-	_, err := os.Stat(sentinel)
-	assert.NoError(t, err, "DELETE /files/.. must not remove the temp dir's parent")
-	_, err = os.Stat(filepath.Join(dir, id))
+	_, err := store.Get(context.Background(), id)
 	assert.NoError(t, err, "DELETE /files/. must not remove other uploads")
 }
 
 func TestTusDelete_OnlyTheOwnerCanTerminate(t *testing.T) {
-	dir := t.TempDir()
-	r := tusIDRouter(t, dir)
+	store := newTusTestStore(t)
+	r := tusIDRouter(t, store)
 
 	created := tusDo(r, http.MethodPost, "/files", tusOwnerPK)
 	require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
@@ -88,11 +83,11 @@ func TestTusDelete_OnlyTheOwnerCanTerminate(t *testing.T) {
 
 	w := tusDo(r, http.MethodDelete, "/files/"+id, tusOtherPK)
 	assert.Equal(t, http.StatusForbidden, w.Code, "another key must not terminate the upload")
-	_, err := os.Stat(filepath.Join(dir, id))
+	_, err := store.Get(context.Background(), id)
 	require.NoError(t, err, "the upload must survive another key's DELETE")
 
 	w = tusDo(r, http.MethodDelete, "/files/"+id, tusOwnerPK)
 	assert.Equal(t, http.StatusNoContent, w.Code, "body %s", w.Body)
-	_, err = os.Stat(filepath.Join(dir, id))
-	assert.True(t, os.IsNotExist(err), "the owner's DELETE removes the upload")
+	_, err = store.Get(context.Background(), id)
+	assert.ErrorIs(t, err, core.ErrTusUploadNotFound, "the owner's DELETE removes the upload")
 }

@@ -5,9 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -39,10 +37,10 @@ func (s *tusSaveRecorder) SaveWithDedup(_ context.Context, pk, hash, url string,
 	return &core.Blob{Pubkey: pk, Sha256: hash, Url: url, Size: size, Type: mime, Uploaded: created}, true, nil
 }
 
-func tusBlocklistRouter(t *testing.T, mod core.ModerationService, blobs core.BlobStorage, dir, pk string) *gin.Engine {
+func tusBlocklistRouter(t *testing.T, mod core.ModerationService, blobs core.BlobStorage, store core.TusUploadStore, pk string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{Store: store}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	r.POST("/files", func(c *gin.Context) { c.Set(ctxPubkey, pk) }, h.tusCreate())
@@ -62,25 +60,24 @@ func TestTusUpload_RefusesBlocklistedKey(t *testing.T) {
 	const pk = "b10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10cb10c"
 
 	t.Run("a blocklisted key cannot start an upload", func(t *testing.T) {
-		dir := t.TempDir()
 		mod := &tusBlocklist{blocked: map[string]bool{pk: true}}
-		w := tusCreateRequest(tusBlocklistRouter(t, mod, nil, dir, pk), "5")
+		store := &countingTusStore{TusUploadStore: newTusTestStore(t)}
+		w := tusCreateRequest(tusBlocklistRouter(t, mod, nil, store, pk), "5")
 		assert.Equal(t, http.StatusForbidden, w.Code, "body %s", w.Body)
-		entries, _ := os.ReadDir(dir)
-		assert.Empty(t, entries, "no upload should be created")
+		assert.Zero(t, store.creates, "no upload should be created")
 	})
 
 	t.Run("an unblocked key still can", func(t *testing.T) {
 		mod := &tusBlocklist{blocked: map[string]bool{}}
-		w := tusCreateRequest(tusBlocklistRouter(t, mod, nil, t.TempDir(), pk), "5")
+		w := tusCreateRequest(tusBlocklistRouter(t, mod, nil, newTusTestStore(t), pk), "5")
 		assert.Equal(t, http.StatusCreated, w.Code, "body %s", w.Body)
 	})
 
 	t.Run("an upload started before the block cannot be finished", func(t *testing.T) {
-		dir := t.TempDir()
+		store := newTusTestStore(t)
 		mod := &tusBlocklist{blocked: map[string]bool{}}
 		blobs := &tusSaveRecorder{}
-		r := tusBlocklistRouter(t, mod, blobs, dir, pk)
+		r := tusBlocklistRouter(t, mod, blobs, store, pk)
 
 		created := tusCreateRequest(r, "5")
 		require.Equal(t, http.StatusCreated, created.Code, "body %s", created.Body)
@@ -96,7 +93,7 @@ func TestTusUpload_RefusesBlocklistedKey(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, w.Code, "body %s", w.Body)
 		assert.False(t, blobs.saved, "a blocklisted key's upload must not reach storage")
-		_, err := os.Stat(filepath.Join(dir, id))
-		assert.True(t, os.IsNotExist(err), "the abandoned upload should be removed")
+		_, err := store.Get(context.Background(), id)
+		assert.ErrorIs(t, err, core.ErrTusUploadNotFound, "the abandoned upload should be removed")
 	})
 }

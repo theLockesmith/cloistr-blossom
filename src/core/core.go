@@ -35,6 +35,7 @@ type Services interface {
 	Cache() cache.Cache
 	UploadLimits() UploadLimitsService
 	MediaMirror() MediaMirrorService
+	TusUploads() TusUploadStore
 }
 
 // CDNService handles content delivery network integration for blob serving.
