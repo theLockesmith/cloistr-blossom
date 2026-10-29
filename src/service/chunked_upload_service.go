@@ -404,7 +404,7 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 	now := time.Now().Unix()
 	url := fmt.Sprintf("%s/%s", s.cdnBaseURL, finalHash)
 
-	blob, _, err := s.blobSvc.SaveWithDedup(
+	blob, newReference, err := s.blobSvc.SaveWithDedup(
 		ctx,
 		dbSession.Pubkey,
 		finalHash,
@@ -422,8 +422,8 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 		s.limits.RecordUpload(ctx, dbSession.Pubkey)
 	}
 
-	// Update quota
-	if s.quotaSvc != nil {
+	// Charge once per blob the key owns (not again for a re-upload).
+	if s.quotaSvc != nil && newReference {
 		if err := s.quotaSvc.IncrementUsage(ctx, dbSession.Pubkey, int64(assembledData.Len())); err != nil {
 			s.log.Warn("failed to update quota", zap.Error(err))
 		}

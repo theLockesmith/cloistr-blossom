@@ -96,6 +96,7 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 	}
 
 	now := time.Now().Unix()
+	var chargeSize int64
 
 	for i, file := range req.Files {
 		result := core.BatchItemResult{
@@ -152,7 +153,7 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 		}
 
 		// Save blob with deduplication
-		blob, _, err := s.blobStorage.SaveWithDedup(
+		blob, newReference, err := s.blobStorage.SaveWithDedup(
 			ctx,
 			req.Pubkey,
 			hash,
@@ -180,6 +181,10 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 		result.MimeType = blob.Type
 		result.URL = blob.Url
 		response.SuccessCount++
+		// Charge once per blob the key owns (not again for a re-upload).
+		if newReference {
+			chargeSize += blob.Size
+		}
 
 		// Apply expiration if requested
 		if req.ExpiresIn > 0 && s.expiration != nil {
@@ -193,14 +198,8 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 	}
 
 	// Update quota if successful
-	if s.quota != nil && s.quota.IsEnabled() && response.SuccessCount > 0 {
-		var successSize int64
-		for _, r := range response.Results {
-			if r.Success {
-				successSize += r.Size
-			}
-		}
-		if err := s.quota.IncrementUsage(ctx, req.Pubkey, successSize); err != nil {
+	if s.quota != nil && s.quota.IsEnabled() && chargeSize > 0 {
+		if err := s.quota.IncrementUsage(ctx, req.Pubkey, chargeSize); err != nil {
 			s.log.Warn("failed to update quota", zap.Error(err))
 		}
 	}
