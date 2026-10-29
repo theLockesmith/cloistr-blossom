@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/db"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/safefetch"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
@@ -629,6 +630,14 @@ func (s *federationService) MirrorBlob(ctx context.Context, hash string) error {
 	return fmt.Errorf("all mirror attempts failed: %w", lastErr)
 }
 
+// federationFetchPolicy is the safefetch policy for every outbound request
+// federation makes. Blob URLs and server URLs come from other people's nostr
+// events, so they must not reach the server's own network.
+var federationFetchPolicy = safefetch.Policy{
+	MaxRedirects: 3,
+	Timeout:      30 * time.Second,
+}
+
 func (s *federationService) downloadAndStore(ctx context.Context, hash, url string, expectedSize int64) error {
 	// Download
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -636,7 +645,11 @@ func (s *federationService) downloadAndStore(ctx context.Context, hash, url stri
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client, err := safefetch.NewClient(federationFetchPolicy)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -646,8 +659,13 @@ func (s *federationService) downloadAndStore(ctx context.Context, hash, url stri
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Read body
-	data, err := io.ReadAll(resp.Body)
+	// Read body, stopping one byte past the announced size so a source that
+	// sends more cannot make us buffer it all.
+	var body io.Reader = resp.Body
+	if expectedSize > 0 {
+		body = io.LimitReader(resp.Body, expectedSize+1)
+	}
+	data, err := io.ReadAll(body)
 	if err != nil {
 		return err
 	}
@@ -733,7 +751,11 @@ func (s *federationService) CheckServerHealth(ctx context.Context, serverURL str
 		return false, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client, err := safefetch.NewClient(federationFetchPolicy)
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil // Not healthy
 	}

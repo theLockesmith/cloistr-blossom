@@ -14,15 +14,11 @@ import (
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 )
 
-var (
-	// ErrSourceNotPermitted is returned when the mirror source resolves to a
-	// private, loopback, link-local or otherwise non-public address.
-	ErrSourceNotPermitted = errors.New("mirror source address is not permitted")
-	// ErrSourceFetch is returned when the source could not be fetched. Its
-	// message never carries the transport error, which can name internal
-	// hosts.
-	ErrSourceFetch = errors.New("could not fetch blob from mirror source")
-)
+// ErrSourceFetch is returned for every source that could not be fetched:
+// refused by the address policy, unresolvable, unreachable, or answering an
+// error. One message for all of them, so a caller cannot probe which
+// internal names exist by comparing errors.
+var ErrSourceFetch = errors.New("could not fetch blob from mirror source")
 
 // fetchPolicy is the safefetch policy for mirror sources. The URL is chosen
 // by the caller, so the fetch must not reach the server's own network.
@@ -34,7 +30,9 @@ var fetchPolicy = safefetch.Policy{
 // MirrorBlob fetches a blob from blobUrl and stores it for pubkey. Once the
 // bytes are in hand it goes through the same path as PUT /upload, so access
 // rules, tier limits, quota, the removed-hash list and usage accounting all
-// apply to a mirror exactly as to an upload.
+// apply to a mirror exactly as to an upload. Access and quota are also
+// checked before the source is contacted, so a refused key cannot make the
+// server fetch anything.
 func MirrorBlob(
 	ctx context.Context,
 	services core.Services,
@@ -44,6 +42,16 @@ func MirrorBlob(
 	blobUrl url.URL,
 	encryptionMode core.EncryptionMode,
 ) (*core.Blob, error) {
+	if err := services.ACR().Validate(ctx, pubkey, core.ResourceUpload); err != nil {
+		return nil, err
+	}
+	// One byte: a key that is banned, or whose quota has no room for any
+	// non-empty blob, is refused before the fetch. The real size is checked
+	// by UploadBlob once the bytes are in hand.
+	if err := services.Quota().CheckQuota(ctx, pubkey, 1); err != nil {
+		return nil, fmt.Errorf("quota check: %w", err)
+	}
+
 	var blobBytes []byte
 	if blob, err := services.Blob().GetFromHash(ctx, authHash); err == nil && (len(blob.Blob) > 0 || blob.Size == 0) {
 		// Already stored: reference it for this user without refetching.
@@ -63,10 +71,11 @@ func MirrorBlob(
 
 // fetchSource GETs blobUrl through safefetch and reads at most maxBytes+1
 // bytes, so an oversized source fails the upload size check without being
-// buffered whole.
+// buffered whole. A max of 0 admits no non-empty upload, so it reads one
+// byte, never an unbounded body.
 func fetchSource(ctx context.Context, blobUrl url.URL, maxBytes int) ([]byte, error) {
 	if blobUrl.Scheme != "http" && blobUrl.Scheme != "https" {
-		return nil, fmt.Errorf("%w: URL must be http or https", ErrSourceFetch)
+		return nil, ErrSourceFetch
 	}
 	client, err := safefetch.NewClient(fetchPolicy)
 	if err != nil {
@@ -74,28 +83,18 @@ func fetchSource(ctx context.Context, blobUrl url.URL, maxBytes int) ([]byte, er
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobUrl.String(), http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid URL", ErrSourceFetch)
+		return nil, ErrSourceFetch
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		if safefetch.IsBlocked(err) {
-			return nil, ErrSourceNotPermitted
-		}
-		if safefetch.IsTooManyRedirects(err) {
-			return nil, fmt.Errorf("%w: too many redirects", ErrSourceFetch)
-		}
 		return nil, ErrSourceFetch
 	}
 	defer res.Body.Close()
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("%w: source answered HTTP %d", ErrSourceFetch, res.StatusCode)
+		return nil, ErrSourceFetch
 	}
 
-	limit := int64(maxBytes) + 1
-	if maxBytes <= 0 {
-		limit = 1 << 62
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, limit))
+	body, err := io.ReadAll(io.LimitReader(res.Body, int64(max(maxBytes, 0))+1))
 	if err != nil {
 		return nil, ErrSourceFetch
 	}

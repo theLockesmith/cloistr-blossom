@@ -76,10 +76,13 @@ var blockedCIDRs = []string{
 	// IPv6
 	"::/128",             // unspecified
 	"::1/128",            // loopback
+	"::/96",              // IPv4-compatible (deprecated) — embeds an IPv4 destination
 	"64:ff9b::/96",       // NAT64 — embeds an IPv4 destination
 	"64:ff9b:1::/48",     // local-use NAT64
 	"100::/64",           // discard-only
+	"2001::/32",          // Teredo — embeds an IPv4 server and client
 	"2001:db8::/32",      // documentation
+	"2002::/16",          // 6to4 — embeds an IPv4 destination
 	"fc00::/7",           // unique-local
 	"fe80::/10",          // link-local
 	"ff00::/8",           // multicast
