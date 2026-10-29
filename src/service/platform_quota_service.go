@@ -156,17 +156,13 @@ func (s *platformQuotaService) SetQuota(ctx context.Context, pubkey string, quot
 }
 
 func (s *platformQuotaService) BanUser(ctx context.Context, pubkey string) error {
-	// Platform mode: bans are managed centrally via admin UI
-	s.log.Warn("BanUser called in platform mode - bans are managed centrally",
-		zap.String("pubkey", pubkey))
-	return nil
+	// Platform mode: there is no per-user ban here. Refuse instead of
+	// reporting success; the blossom blocklist is what blocks a key.
+	return core.ErrBanNotInPlatformMode
 }
 
 func (s *platformQuotaService) UnbanUser(ctx context.Context, pubkey string) error {
-	// Platform mode: bans are managed centrally via admin UI
-	s.log.Warn("UnbanUser called in platform mode - bans are managed centrally",
-		zap.String("pubkey", pubkey))
-	return nil
+	return core.ErrBanNotInPlatformMode
 }
 
 func (s *platformQuotaService) ListUsers(ctx context.Context, limit, offset int64) ([]*core.User, error) {
@@ -182,9 +178,7 @@ func (s *platformQuotaService) GetUserCount(ctx context.Context) (int64, error) 
 }
 
 func (s *platformQuotaService) RecalculateUsage(ctx context.Context, pubkey string) error {
-	// In platform mode, we'd need to recalculate from blob references
-	// This is a complex operation that should be done via admin tools
-	s.log.Warn("RecalculateUsage called in platform mode",
-		zap.String("pubkey", pubkey))
-	return nil
+	// Platform mode: usage lives in the platform database and nothing
+	// recomputes it from blob references. Refuse instead of reporting success.
+	return core.ErrRecalculateNotInPlatformMode
 }

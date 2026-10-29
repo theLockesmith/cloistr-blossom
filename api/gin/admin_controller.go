@@ -184,6 +184,19 @@ func getAdminUser(services core.Services) gin.HandlerFunc {
 	}
 }
 
+// abortQuotaAdminError answers a failed quota admin write. Writes that cannot
+// take effect in platform mode get 501 with the error naming where the change
+// is really made; anything else is a 500.
+func abortQuotaAdminError(ctx *gin.Context, err error) {
+	if errors.Is(err, core.ErrQuotaManagedCentrally) ||
+		errors.Is(err, core.ErrBanNotInPlatformMode) ||
+		errors.Is(err, core.ErrRecalculateNotInPlatformMode) {
+		clerrors.New(clerrors.CodeNotImplemented, err.Error(), http.StatusNotImplemented).Abort(ctx)
+		return
+	}
+	clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
+}
+
 // setUserQuota sets a user's storage quota.
 func setUserQuota(services core.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -196,11 +209,7 @@ func setUserQuota(services core.Services) gin.HandlerFunc {
 		}
 
 		if err := services.Quota().SetQuota(ctx.Request.Context(), pubkey, req.QuotaBytes); err != nil {
-			if errors.Is(err, core.ErrQuotaManagedCentrally) {
-				clerrors.New(clerrors.CodeNotImplemented, err.Error(), http.StatusNotImplemented).Abort(ctx)
-				return
-			}
-			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
+			abortQuotaAdminError(ctx, err)
 			return
 		}
 
@@ -214,7 +223,7 @@ func banUser(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().BanUser(ctx.Request.Context(), pubkey); err != nil {
-			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
+			abortQuotaAdminError(ctx, err)
 			return
 		}
 
@@ -228,7 +237,7 @@ func unbanUser(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().UnbanUser(ctx.Request.Context(), pubkey); err != nil {
-			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
+			abortQuotaAdminError(ctx, err)
 			return
 		}
 
@@ -242,7 +251,7 @@ func recalculateUserUsage(services core.Services) gin.HandlerFunc {
 		pubkey := ctx.Param("pubkey")
 
 		if err := services.Quota().RecalculateUsage(ctx.Request.Context(), pubkey); err != nil {
-			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
+			abortQuotaAdminError(ctx, err)
 			return
 		}
 
