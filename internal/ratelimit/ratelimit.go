@@ -7,7 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/cache"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 )
 
 // RateLimiter provides rate limiting functionality.
@@ -55,11 +58,64 @@ type Config struct {
 	WhitelistedPubkeys []string
 }
 
+// Option configures a limiter.
+type Option func(*failOpen)
+
+// WithLogger sets the logger for fail-open warnings. The default is a no-op.
+func WithLogger(log *zap.Logger) Option {
+	return func(f *failOpen) { f.log = log }
+}
+
+// WithName sets the limiter label on the fail-open metric and log.
+func WithName(name string) Option {
+	return func(f *failOpen) { f.name = name }
+}
+
+// failOpen records requests a limiter allowed because its cache failed.
+// Every one is counted in metrics.RateLimiterFailOpenTotal; the warning is
+// logged once per window, so a cache outage cannot flood the log.
+type failOpen struct {
+	name string
+	log  *zap.Logger
+
+	mu     sync.Mutex
+	logged map[time.Duration]time.Time // window length -> start of the last window logged
+}
+
+func newFailOpen(name string, opts []Option) *failOpen {
+	f := &failOpen{name: name, log: zap.NewNop(), logged: make(map[time.Duration]time.Time)}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
+}
+
+func (f *failOpen) record(err error, window time.Duration, resetAt time.Time) {
+	metrics.RateLimiterFailOpenTotal.WithLabelValues(f.name).Inc()
+
+	windowStart := resetAt.Add(-window)
+	f.mu.Lock()
+	last, seen := f.logged[window]
+	first := !seen || windowStart.After(last)
+	if first {
+		f.logged[window] = windowStart
+	}
+	f.mu.Unlock()
+
+	if first {
+		f.log.Warn("rate limiter cache failed, allowing requests without a limit check; further failures this window are counted in rate_limiter_fail_open_total",
+			zap.String("limiter", f.name),
+			zap.Duration("window", window),
+			zap.Error(err))
+	}
+}
+
 // slidingWindowLimiter implements RateLimiter using sliding window counters.
 type slidingWindowLimiter struct {
-	cache cache.Cache
-	mu    sync.Mutex // For local fallback when cache is nil
-	local map[string]*localBucket
+	cache    cache.Cache
+	failOpen *failOpen
+	mu       sync.Mutex // For local fallback when cache is nil
+	local    map[string]*localBucket
 }
 
 type localBucket struct {
@@ -74,10 +130,11 @@ type cacheEntry struct {
 
 // NewRateLimiter creates a new rate limiter.
 // If cache is nil, uses in-memory storage (not distributed).
-func NewRateLimiter(c cache.Cache) RateLimiter {
+func NewRateLimiter(c cache.Cache, opts ...Option) RateLimiter {
 	r := &slidingWindowLimiter{
-		cache: c,
-		local: make(map[string]*localBucket),
+		cache:    c,
+		failOpen: newFailOpen("requests", opts),
+		local:    make(map[string]*localBucket),
 	}
 	// Start background cleanup to prevent memory leaks
 	go r.cleanupLoop()
@@ -137,6 +194,7 @@ func (r *slidingWindowLimiter) AllowN(ctx context.Context, key string, n int, li
 func (r *slidingWindowLimiter) allowWithCounter(ctx context.Context, counter cache.Counter, cacheKey string, n int, limit int, window time.Duration, resetAt time.Time) (bool, int, time.Time) {
 	count, err := counter.IncrBy(ctx, cacheKey, int64(n), window+time.Second)
 	if err != nil {
+		r.failOpen.record(err, window, resetAt)
 		return true, limit, resetAt
 	}
 	remaining := limit - int(count)
@@ -167,7 +225,9 @@ func (r *slidingWindowLimiter) allowWithCache(ctx context.Context, cacheKey stri
 	entry.Count = newCount
 	entry.WindowAt = resetAt.Unix()
 	data, _ := json.Marshal(entry)
-	_ = r.cache.Set(ctx, cacheKey, data, window+time.Second) // TTL slightly longer than window
+	if err := r.cache.Set(ctx, cacheKey, data, window+time.Second); err != nil { // TTL slightly longer than window
+		r.failOpen.record(err, window, resetAt)
+	}
 
 	remaining := limit - newCount
 	return true, remaining, resetAt
@@ -211,9 +271,10 @@ type BandwidthLimiter interface {
 
 // bandwidthLimiter implements BandwidthLimiter.
 type bandwidthLimiter struct {
-	cache cache.Cache
-	mu    sync.Mutex
-	local map[string]*localBandwidthBucket
+	cache    cache.Cache
+	failOpen *failOpen
+	mu       sync.Mutex
+	local    map[string]*localBandwidthBucket
 }
 
 type localBandwidthBucket struct {
@@ -227,10 +288,11 @@ type bandwidthCacheEntry struct {
 }
 
 // NewBandwidthLimiter creates a new bandwidth limiter.
-func NewBandwidthLimiter(c cache.Cache) BandwidthLimiter {
+func NewBandwidthLimiter(c cache.Cache, opts ...Option) BandwidthLimiter {
 	b := &bandwidthLimiter{
-		cache: c,
-		local: make(map[string]*localBandwidthBucket),
+		cache:    c,
+		failOpen: newFailOpen("bandwidth", opts),
+		local:    make(map[string]*localBandwidthBucket),
 	}
 	// Start background cleanup to prevent memory leaks
 	go b.cleanupLoop()
@@ -282,6 +344,7 @@ func (b *bandwidthLimiter) AllowBytes(ctx context.Context, key string, bytes int
 func (b *bandwidthLimiter) allowWithCounter(ctx context.Context, counter cache.Counter, cacheKey string, bytes int64, limitBytes int64, window time.Duration, resetAt time.Time) (bool, int64, time.Time) {
 	total, err := counter.IncrBy(ctx, cacheKey, bytes, window+time.Second)
 	if err != nil {
+		b.failOpen.record(err, window, resetAt)
 		return true, limitBytes, resetAt
 	}
 	if total > limitBytes {
@@ -313,7 +376,9 @@ func (b *bandwidthLimiter) allowWithCache(ctx context.Context, cacheKey string, 
 	entry.Bytes = newBytes
 	entry.WindowAt = resetAt.Unix()
 	data, _ := json.Marshal(entry)
-	_ = b.cache.Set(ctx, cacheKey, data, window+time.Second)
+	if err := b.cache.Set(ctx, cacheKey, data, window+time.Second); err != nil {
+		b.failOpen.record(err, window, resetAt)
+	}
 
 	remaining := limitBytes - newBytes
 	return true, remaining, resetAt

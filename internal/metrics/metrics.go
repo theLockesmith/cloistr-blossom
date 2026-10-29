@@ -134,6 +134,17 @@ var (
 		[]string{"type"},
 	)
 
+	// RateLimiterFailOpenTotal counts requests a limiter let through because
+	// its cache failed. Limits are not enforced while this is rising.
+	RateLimiterFailOpenTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "rate_limiter_fail_open_total",
+			Help:      "Requests allowed without a limit check because the limiter's cache failed",
+		},
+		[]string{"limiter"},
+	)
+
 	// Payment metrics (BUD-07)
 
 	// PaymentRequestsTotal counts payment requests by method.
