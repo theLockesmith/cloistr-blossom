@@ -314,7 +314,7 @@ func SetupRoutes(
 	// WebSocket real-time notifications
 	if services.Notifications() != nil {
 		wsHandler := NewWebSocketHandler(services.Notifications(), log)
-		RegisterWebSocketRoutes(r, wsHandler, nostrAuthMiddleware("upload", log))
+		RegisterWebSocketRoutes(r, wsHandler, nostrAuthMiddleware(wsAuthAction, log))
 		log.Info("websocket notification routes registered")
 	}
 

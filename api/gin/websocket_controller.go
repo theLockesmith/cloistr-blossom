@@ -32,14 +32,15 @@ func NewWebSocketHandler(notificationSvc core.NotificationService, log *zap.Logg
 // Upgrades HTTP connection to WebSocket for real-time notifications.
 func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		// Get pubkey from auth (optional - can be set via query param for read-only)
-		pubkey := ctx.Query("pubkey")
-		if pk, ok := ctx.Get("pubkey"); ok {
-			pubkey = pk.(string)
-		}
-
+		// Subscribe only the key that signed the auth event. ?pubkey= used to
+		// pick the key with no auth at all, so anyone could follow anyone.
+		pubkey := ctx.GetString("pk")
 		if pubkey == "" {
-			clerrors.BadRequest(clerrors.CodeInvalidInput, "pubkey required").Abort(ctx)
+			clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
+			return
+		}
+		if q := ctx.Query("pubkey"); q != "" && q != pubkey {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "can only subscribe to your own notifications").Abort(ctx)
 			return
 		}
 
@@ -197,10 +198,16 @@ func (h *WebSocketHandler) wsStatus() gin.HandlerFunc {
 	}
 }
 
-// RegisterWebSocketRoutes registers WebSocket routes.
+// wsAuthAction is the t-tag verb a /ws auth event must carry. It is not one of
+// the BUD verbs, so a token signed for another endpoint cannot open a feed.
+const wsAuthAction = "subscribe"
+
+// RegisterWebSocketRoutes registers WebSocket routes. authMiddleware must be
+// nostrAuthMiddleware(wsAuthAction, ...). Browsers cannot set headers on a
+// WebSocket handshake, so a browser client will need another way to present
+// the auth event; nothing publishes notifications yet, so none exists.
 func RegisterWebSocketRoutes(r *gin.Engine, handler *WebSocketHandler, authMiddleware gin.HandlerFunc) {
-	// WebSocket endpoint - supports both authenticated and pubkey query param
-	r.GET("/ws", handler.wsConnect())
+	r.GET("/ws", authMiddleware, handler.wsConnect())
 
 	// Status endpoint
 	r.GET("/ws/status", handler.wsStatus())
