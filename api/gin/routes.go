@@ -296,6 +296,7 @@ func SetupRoutes(
 		services.Blob(),
 		services.Quota(),
 		services.Moderation(),
+		services.ACR(),
 		services.UploadLimits(),
 		TusConfig{
 			TempDir:      conf.ChunkedUpload.TempDir,
@@ -319,7 +320,7 @@ func SetupRoutes(
 
 	// Batch operations endpoints
 	if services.Batch() != nil {
-		batchController := NewBatchController(services.Batch())
+		batchController := NewBatchController(services.Batch(), services.Moderation(), services.ACR())
 		batch := r.Group("/batch")
 		{
 			// Upload requires auth

@@ -8,24 +8,32 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
 
 type BatchController struct {
-	batch core.BatchService
+	batch      core.BatchService
+	moderation core.ModerationService // nil means no blocklist check
+	acr        core.ACRStorage        // nil means no platform access check
 }
 
-func NewBatchController(batch core.BatchService) *BatchController {
-	return &BatchController{batch: batch}
+func NewBatchController(batch core.BatchService, moderation core.ModerationService, acr core.ACRStorage) *BatchController {
+	return &BatchController{batch: batch, moderation: moderation, acr: acr}
 }
 
 // BatchUpload handles multi-file uploads via multipart form.
 // POST /batch/upload
 func (c *BatchController) BatchUpload(ctx *gin.Context) {
-	pubkey, exists := ctx.Get("pubkey")
+	pubkey, exists := ctx.Get(handlerPubkeyKey)
 	if !exists {
 		clerrors.Unauthorized(clerrors.CodeAuthRequired, "authentication required").Abort(ctx)
+		return
+	}
+
+	// Same checks as PUT /upload, before the body is read.
+	if !c.mayUpload(ctx, pubkey.(string)) {
 		return
 	}
 
@@ -97,6 +105,31 @@ func (c *BatchController) BatchUpload(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response)
+}
+
+// mayUpload refuses a blocklisted key or one the platform access rule denies
+// (e.g. a disabled account). A blocklist lookup error refuses too: a refused
+// upload can be retried, a banned key's stored content cannot be taken back.
+func (c *BatchController) mayUpload(ctx *gin.Context, pubkey string) bool {
+	if c.moderation != nil {
+		blocked, err := c.moderation.IsBlocked(ctx.Request.Context(), pubkey)
+		if err != nil {
+			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "could not check the blocklist; try again", 30).Abort(ctx)
+			return false
+		}
+		if blocked {
+			metrics.BlockedUploadsTotal.Inc()
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
+			return false
+		}
+	}
+	if c.acr != nil {
+		if err := c.acr.Validate(ctx.Request.Context(), pubkey, core.ResourceUpload); err != nil {
+			clerrors.Forbidden(clerrors.CodeAccessDenied, "upload not allowed for this key").Abort(ctx)
+			return false
+		}
+	}
+	return true
 }
 
 // BatchDownload creates an archive of multiple blobs.

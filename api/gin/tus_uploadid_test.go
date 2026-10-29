@@ -29,7 +29,7 @@ const (
 func tusIDRouter(t *testing.T, dir string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(nil, nil, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(nil, nil, nil, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	auth := func(c *gin.Context) { c.Set(handlerPubkeyKey, c.GetHeader("X-Test-Caller")) }

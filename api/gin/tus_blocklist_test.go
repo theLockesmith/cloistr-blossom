@@ -42,7 +42,7 @@ func (s *tusSaveRecorder) SaveWithDedup(_ context.Context, pk, hash, url string,
 func tusBlocklistRouter(t *testing.T, mod core.ModerationService, blobs core.BlobStorage, dir, pk string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(blobs, nil, mod, nil, TusConfig{TempDir: dir}, zap.NewNop())
+	h, err := NewTusHandler(blobs, nil, mod, nil, nil, TusConfig{TempDir: dir}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	r.POST("/files", func(c *gin.Context) { c.Set("pubkey", pk) }, h.tusCreate())

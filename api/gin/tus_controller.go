@@ -42,6 +42,7 @@ type TusHandler struct {
 	blobService  core.BlobStorage
 	quotaService core.QuotaService
 	moderation   core.ModerationService   // nil means no blocklist check
+	acr          core.ACRStorage          // nil means no platform access check
 	limits       core.UploadLimitsService // nil means no tier limits
 	tempDir      string
 	cdnBaseURL   string
@@ -63,6 +64,7 @@ func NewTusHandler(
 	blobSvc core.BlobStorage,
 	quotaSvc core.QuotaService,
 	moderation core.ModerationService,
+	acr core.ACRStorage,
 	limits core.UploadLimitsService,
 	config TusConfig,
 	log *zap.Logger,
@@ -81,6 +83,7 @@ func NewTusHandler(
 		blobService:  blobSvc,
 		quotaService: quotaSvc,
 		moderation:   moderation,
+		acr:          acr,
 		limits:       limits,
 		tempDir:      tempDir,
 		cdnBaseURL:   config.CDNBaseURL,
@@ -118,6 +121,11 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			metrics.BlockedUploadsTotal.Inc()
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusForbidden, tusBlockedMessage)
+			return
+		}
+		if !h.accessAllowed(ctx, pubkey.(string)) {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusAccessDeniedMessage)
 			return
 		}
 
@@ -365,6 +373,13 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 				ctx.String(http.StatusForbidden, tusBlockedMessage)
 				return
 			}
+			if errors.Is(err, errTusAccessDenied) {
+				// Lost access after the upload was created; it can never finish.
+				_ = h.deleteUpload(uploadID)
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusForbidden, tusAccessDeniedMessage)
+				return
+			}
 			if errors.Is(err, core.ErrFileSizeLimit) {
 				// Over the current cap; it can never finish.
 				_ = h.deleteUpload(uploadID)
@@ -594,11 +609,30 @@ func (h *TusHandler) isBlocked(ctx *gin.Context, pubkey string) bool {
 	return err == nil && blocked
 }
 
+// tusAccessDeniedMessage is sent when the platform access rule refuses a key.
+const tusAccessDeniedMessage = "upload not allowed for this key"
+
+var errTusAccessDenied = errors.New(tusAccessDeniedMessage)
+
+// accessAllowed applies the platform access rule PUT /upload applies (it
+// refuses e.g. a disabled platform account). The rule itself refuses on a
+// lookup error.
+func (h *TusHandler) accessAllowed(ctx *gin.Context, pubkey string) bool {
+	if h.acr == nil {
+		return true
+	}
+	return h.acr.Validate(ctx.Request.Context(), pubkey, core.ResourceUpload) == nil
+}
+
 // finalizeUpload completes the upload and creates the blob.
 func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tusUploadInfo, expectedChecksum string) (*core.Blob, error) {
-	// The key may have been blocklisted since the upload was created.
+	// The key may have been blocklisted or lost access since the upload was
+	// created.
 	if h.isBlocked(ctx, info.Pubkey) {
 		return nil, core.ErrPubkeyBlocked
+	}
+	if !h.accessAllowed(ctx, info.Pubkey) {
+		return nil, errTusAccessDenied
 	}
 
 	dataPath := filepath.Join(h.tempDir, uploadID, "data")

@@ -20,7 +20,7 @@ import (
 func tusSizeCapRouter(t *testing.T, dir string, maxFile int64, blobs *tusSaveRecorder) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h, err := NewTusHandler(blobs, nil, nil, nil, TusConfig{TempDir: dir, MaxFileBytes: maxFile}, zap.NewNop())
+	h, err := NewTusHandler(blobs, nil, nil, nil, nil, TusConfig{TempDir: dir, MaxFileBytes: maxFile}, zap.NewNop())
 	require.NoError(t, err)
 	r := gin.New()
 	auth := func(c *gin.Context) { c.Set(handlerPubkeyKey, tusOwnerPK) }
