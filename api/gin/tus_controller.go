@@ -117,7 +117,11 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 
 		// Refuse a blocklisted key before any upload exists, as the other
 		// upload paths do.
-		if h.isBlocked(ctx, pubkey.(string)) {
+		if blocked, err := h.blocklistCheck(ctx, pubkey.(string)); err != nil {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
+			return
+		} else if blocked {
 			metrics.BlockedUploadsTotal.Inc()
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusForbidden, tusBlockedMessage)
@@ -334,6 +338,20 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 			return
 		}
 
+		// The key may have been blocklisted since the last chunk; stop it here
+		// rather than accept the rest of the upload.
+		if blocked, err := h.blocklistCheck(ctx, info.Pubkey); err != nil {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
+			return
+		} else if blocked {
+			_ = h.deleteUpload(uploadID)
+			metrics.BlockedUploadsTotal.Inc()
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusBlockedMessage)
+			return
+		}
+
 		// Handle checksum if provided
 		checksumHeader := ctx.GetHeader("Upload-Checksum")
 		var expectedChecksum string
@@ -371,6 +389,12 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 				metrics.BlockedUploadsTotal.Inc()
 				ctx.Header("Content-Type", "text/plain")
 				ctx.String(http.StatusForbidden, tusBlockedMessage)
+				return
+			}
+			if errors.Is(err, errTusBlocklistUnavailable) {
+				// Keep the upload: the client can retry the last chunk.
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusServiceUnavailable, blocklistUnavailableMessage)
 				return
 			}
 			if errors.Is(err, errTusAccessDenied) {
@@ -597,16 +621,19 @@ func (h *TusHandler) handleChunkUpload(ctx *gin.Context, uploadID string, offset
 }
 
 // tusBlockedMessage matches what the other upload paths tell a blocked key.
-const tusBlockedMessage = "your account has been blocked due to terms of service violation"
+const tusBlockedMessage = blockedUploaderMessage
 
-// isBlocked reports whether pubkey is on the blocklist. A lookup error lets
-// the upload through, as on the other upload paths.
-func (h *TusHandler) isBlocked(ctx *gin.Context, pubkey string) bool {
+// errTusBlocklistUnavailable means the blocklist could not be checked.
+var errTusBlocklistUnavailable = errors.New(blocklistUnavailableMessage)
+
+// blocklistCheck reports whether pubkey is on the blocklist. A lookup error is
+// returned, not swallowed: callers refuse (503) rather than let the upload
+// through, as on every other upload path.
+func (h *TusHandler) blocklistCheck(ctx *gin.Context, pubkey string) (bool, error) {
 	if h.moderation == nil {
-		return false
+		return false, nil
 	}
-	blocked, err := h.moderation.IsBlocked(ctx.Request.Context(), pubkey)
-	return err == nil && blocked
+	return h.moderation.IsBlocked(ctx.Request.Context(), pubkey)
 }
 
 // tusAccessDeniedMessage is sent when the platform access rule refuses a key.
@@ -628,7 +655,9 @@ func (h *TusHandler) accessAllowed(ctx *gin.Context, pubkey string) bool {
 func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tusUploadInfo, expectedChecksum string) (*core.Blob, error) {
 	// The key may have been blocklisted or lost access since the upload was
 	// created.
-	if h.isBlocked(ctx, info.Pubkey) {
+	if blocked, err := h.blocklistCheck(ctx, info.Pubkey); err != nil {
+		return nil, errTusBlocklistUnavailable
+	} else if blocked {
 		return nil, core.ErrPubkeyBlocked
 	}
 	if !h.accessAllowed(ctx, info.Pubkey) {

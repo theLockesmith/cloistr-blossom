@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/metrics"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
 	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 )
@@ -122,17 +121,8 @@ func tokenHashes(ctx *gin.Context) []string {
 // (e.g. a disabled account). A blocklist lookup error refuses too: a refused
 // upload can be retried, a banned key's stored content cannot be taken back.
 func (c *BatchController) mayUpload(ctx *gin.Context, pubkey string) bool {
-	if c.moderation != nil {
-		blocked, err := c.moderation.IsBlocked(ctx.Request.Context(), pubkey)
-		if err != nil {
-			clerrors.ServiceUnavailable(clerrors.CodeServiceUnavailable, "could not check the blocklist; try again", 30).Abort(ctx)
-			return false
-		}
-		if blocked {
-			metrics.BlockedUploadsTotal.Inc()
-			clerrors.Forbidden(clerrors.CodeAccessDenied, "your account has been blocked due to terms of service violation").Abort(ctx)
-			return false
-		}
+	if refuseBlockedUploader(ctx, c.moderation, pubkey) {
+		return false
 	}
 	if c.acr != nil {
 		if err := c.acr.Validate(ctx.Request.Context(), pubkey, core.ResourceUpload); err != nil {
