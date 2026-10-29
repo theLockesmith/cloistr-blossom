@@ -38,6 +38,11 @@ func TestGuardBlocksNonPublicRanges(t *testing.T) {
 		"::ffff:127.0.0.1":      "IPv4-mapped loopback — must normalize to IPv4 before checking",
 		"::ffff:169.254.169.254": "IPv4-mapped metadata address",
 		"64:ff9b::7f00:1":       "NAT64-embedded 127.0.0.1",
+		"::7f00:1":              "IPv4-compatible 127.0.0.1",
+		"::a9fe:a9fe":           "IPv4-compatible 169.254.169.254",
+		"2002:7f00:1::1":        "6to4 wrapping 127.0.0.1",
+		"2002:a9fe:a9fe::1":     "6to4 wrapping 169.254.169.254",
+		"2001:0:4136:e378::1":   "Teredo, embeds an IPv4 server and client",
 	}
 	for addr, why := range blocked {
 		ip := net.ParseIP(addr)
