@@ -42,7 +42,7 @@ func (q *Queries) CreateBlobReference(ctx context.Context, arg CreateBlobReferen
 	return i, err
 }
 
-const deleteBlobReference = `-- name: DeleteBlobReference :exec
+const deleteBlobReference = `-- name: DeleteBlobReference :execrows
 DELETE FROM blob_references
 WHERE pubkey = $1 AND hash = $2
 `
@@ -52,9 +52,12 @@ type DeleteBlobReferenceParams struct {
 	Hash   string
 }
 
-func (q *Queries) DeleteBlobReference(ctx context.Context, arg DeleteBlobReferenceParams) error {
-	_, err := q.db.ExecContext(ctx, deleteBlobReference, arg.Pubkey, arg.Hash)
-	return err
+func (q *Queries) DeleteBlobReference(ctx context.Context, arg DeleteBlobReferenceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteBlobReference, arg.Pubkey, arg.Hash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const getBlobReference = `-- name: GetBlobReference :one

@@ -585,8 +585,11 @@ func (r *blobService) SaveWithDedup(
 	// As above, no rows means the reference was already there, which is the
 	// desired end state rather than a problem worth logging.
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		r.log.Warn("failed to create blob reference for original uploader", zap.Error(err))
-		// Don't fail - blob is saved, reference is a bonus
+		// Fail the upload: without a reference the key would be charged for
+		// a blob it can never delete. The stored blob is ownerless and the GC
+		// reconcile reclaims it.
+		r.log.Error("failed to create blob reference for original uploader", zap.Error(err))
+		return nil, false, fmt.Errorf("create reference: %w", err)
 	}
 
 	r.log.Info("new blob saved with dedup tracking",
@@ -626,21 +629,19 @@ func (r *blobService) ListReferenceOwners(ctx context.Context, sha256 string) ([
 // DeleteReference removes a user's reference to a blob.
 // If this was the last reference, the actual blob is deleted.
 func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {
-	// Check if reference exists
-	hasRef, err := r.HasReference(ctx, pubkey, sha256)
-	if err != nil {
-		return false, fmt.Errorf("check reference: %w", err)
-	}
-	if !hasRef {
-		return false, fmt.Errorf("no reference found for pubkey %s and hash %s", pubkey, sha256)
-	}
-
-	// Delete the reference
-	if err := r.queries.DeleteBlobReference(ctx, db.DeleteBlobReferenceParams{
+	// The DELETE decides. A separate existence check let two concurrent
+	// deletes both pass it, both credit the key and both decrement ref_count,
+	// which could delete the bytes while another key still owned them. Only
+	// the call that actually removed the row goes on.
+	removed, err := r.queries.DeleteBlobReference(ctx, db.DeleteBlobReferenceParams{
 		Pubkey: pubkey,
 		Hash:   sha256,
-	}); err != nil {
+	})
+	if err != nil {
 		return false, fmt.Errorf("delete reference: %w", err)
+	}
+	if removed == 0 {
+		return false, core.ErrReferenceNotFound
 	}
 
 	// Decrement reference count and check if this was the last reference
@@ -661,10 +662,12 @@ func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256
 			zap.String("hash", sha256))
 
 		if err := r.DeleteFromHash(ctx, sha256); err != nil {
+			// The reference is gone, so the caller still owes the credit (a
+			// nil error says so). The blob is now ownerless and the GC
+			// reconcile reclaims it.
 			r.log.Error("failed to delete blob after last reference removed",
 				zap.String("hash", sha256),
 				zap.Error(err))
-			return true, fmt.Errorf("delete blob: %w", err)
 		}
 		return true, nil
 	}

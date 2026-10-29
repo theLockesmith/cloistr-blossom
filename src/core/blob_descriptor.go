@@ -7,6 +7,10 @@ import (
 
 var (
 	ErrBlobNotFound = errors.New("blob not found")
+	// ErrReferenceNotFound: DeleteReference removed nothing, because the key
+	// had no reference or a concurrent delete removed it first. The caller
+	// must not credit usage.
+	ErrReferenceNotFound = errors.New("blob reference not found")
 )
 
 // BlobFilter defines filtering options for listing blobs.
@@ -135,7 +139,9 @@ type BlobStorage interface {
 
 	// DeleteReference removes a user's reference to a blob.
 	// If this was the last reference, the actual blob is deleted from storage.
-	// Returns (wasLastReference, error).
+	// Returns (wasLastReference, error). A nil error means THIS call removed
+	// the reference, so the caller credits usage exactly once; otherwise it
+	// returns ErrReferenceNotFound (or a database error) and nothing is owed.
 	DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error)
 
 	// ListReferenceOwners returns every pubkey holding a reference to a blob.

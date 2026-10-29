@@ -43,7 +43,12 @@ func DeleteBlob(
 
 	// Delete the user's reference to this blob
 	// If this was the last reference, the actual blob is deleted
+	// A nil error means this call removed the reference; a concurrent delete
+	// that got there first gets ErrReferenceNotFound and credits nothing.
 	_, err = blobs.DeleteReference(ctx, pubkey, hash)
+	if errors.Is(err, core.ErrReferenceNotFound) {
+		return core.ErrBlobNotFound
+	}
 	if err != nil {
 		return err
 	}
