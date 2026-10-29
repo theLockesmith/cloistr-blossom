@@ -537,37 +537,25 @@ func (r *blobService) SaveWithDedup(
 			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
 		}
 
-		// Create reference for this user.
-		_, err = r.queries.CreateBlobReference(ctx, db.CreateBlobReferenceParams{
-			Pubkey:  pubkey,
-			Hash:    sha256,
-			Created: created,
-		})
-		// sql.ErrNoRows here is SUCCESS, not failure. The insert is
-		// ON CONFLICT DO NOTHING ... RETURNING, so zero rows means the
-		// reference already existed -- which is precisely the state this call
-		// is trying to reach. Treating it as an error made a concurrent
-		// double-save fail for having done exactly what was asked.
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		// Create reference for this user, under the blob row's lock so it
+		// cannot interleave with the removal of the last other reference.
+		added, gone, err := r.addReference(ctx, pubkey, sha256, created)
+		if err != nil {
 			r.log.Error("failed to create blob reference", zap.Error(err))
 			return nil, false, fmt.Errorf("create reference: %w", err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return r.dbBlobIntoBlobDescriptor(existingBlob), false, nil
+		if !gone {
+			if added {
+				r.log.Info("blob deduplicated - created reference",
+					zap.String("pubkey", pubkey),
+					zap.String("hash", sha256))
+			}
+			// added is false when the reference already existed (a concurrent
+			// save by this key), which is the state this call wants.
+			return r.dbBlobIntoBlobDescriptor(existingBlob), added, nil
 		}
-
-		// Increment reference count
-		if err := r.queries.IncrementBlobRefCount(ctx, sha256); err != nil {
-			r.log.Warn("failed to increment ref count", zap.Error(err))
-		}
-
-		r.log.Info("blob deduplicated - created reference",
-			zap.String("pubkey", pubkey),
-			zap.String("hash", sha256),
-			zap.Int32("ref_count", existingBlob.RefCount+1))
-
-		// A new reference for this key: it now owns the blob.
-		return r.dbBlobIntoBlobDescriptor(existingBlob), true, nil
+		// The last owner removed the blob since we looked it up: store it
+		// again below.
 	}
 
 	// Blob doesn't exist - save normally
@@ -629,11 +617,25 @@ func (r *blobService) ListReferenceOwners(ctx context.Context, sha256 string) ([
 // DeleteReference removes a user's reference to a blob.
 // If this was the last reference, the actual blob is deleted.
 func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256 string) (bool, error) {
-	// The DELETE decides. A separate existence check let two concurrent
-	// deletes both pass it, both credit the key and both decrement ref_count,
-	// which could delete the bytes while another key still owned them. Only
-	// the call that actually removed the row goes on.
-	removed, err := r.queries.DeleteBlobReference(ctx, db.DeleteBlobReferenceParams{
+	// One transaction, taking the blob row's lock first (the same order as
+	// addReference, so the two serialize and cannot deadlock):
+	//   - the reference DELETE decides whether this call removed anything, so
+	//     concurrent deletes credit once;
+	//   - a ref_count error aborts the whole removal instead of being logged
+	//     and leaving a wrong count behind;
+	//   - the blob row goes only if no reference row remains, re-checked by
+	//     the database (DeleteOwnerlessBlob), never because ref_count hit 0.
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+	q := r.queries.WithTx(tx)
+
+	if _, err := q.LockBlobRow(ctx, sha256); err != nil {
+		return false, fmt.Errorf("lock blob: %w", err)
+	}
+	removed, err := q.DeleteBlobReference(ctx, db.DeleteBlobReferenceParams{
 		Pubkey: pubkey,
 		Hash:   sha256,
 	})
@@ -643,34 +645,71 @@ func (r *blobService) DeleteReference(ctx context.Context, pubkey string, sha256
 	if removed == 0 {
 		return false, core.ErrReferenceNotFound
 	}
-
-	// Decrement reference count and check if this was the last reference
-	newRefCount, err := r.queries.DecrementBlobRefCount(ctx, sha256)
-	if err != nil {
-		r.log.Warn("failed to decrement ref count", zap.Error(err))
-		// Continue - reference is deleted
+	if _, err := q.DecrementBlobRefCount(ctx, sha256); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("decrement ref count: %w", err)
+	}
+	_, err = q.DeleteOwnerlessBlob(ctx, sha256)
+	last := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("remove ownerless blob: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit: %w", err)
 	}
 
 	r.log.Info("blob reference deleted",
 		zap.String("pubkey", pubkey),
 		zap.String("hash", sha256),
-		zap.Int32("remaining_refs", newRefCount))
+		zap.Bool("last_reference", last))
 
-	// If no more references, delete the actual blob
-	if newRefCount <= 0 {
-		r.log.Info("last reference removed - deleting blob from storage",
-			zap.String("hash", sha256))
-
-		if err := r.DeleteFromHash(ctx, sha256); err != nil {
-			// The reference is gone, so the caller still owes the credit (a
-			// nil error says so). The blob is now ownerless and the GC
-			// reconcile reclaims it.
-			r.log.Error("failed to delete blob after last reference removed",
+	if last && r.storage != nil {
+		if err := r.storage.Delete(ctx, sha256); err != nil {
+			// The reference and row are gone, so the caller still owes the
+			// credit (nil error). The orphaned bytes are left in storage.
+			r.log.Error("failed to delete blob bytes after last reference removed",
 				zap.String("hash", sha256),
 				zap.Error(err))
 		}
-		return true, nil
 	}
+	return last, nil
+}
 
-	return false, nil
+// addReference gives pubkey a reference to an existing blob, in one
+// transaction under the blob row's lock. added is false when pubkey already
+// had one; gone is true when the blob row no longer exists (its last owner
+// removed it), in which case nothing was written.
+func (r *blobService) addReference(ctx context.Context, pubkey, sha256 string, created int64) (added, gone bool, err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, false, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+	q := r.queries.WithTx(tx)
+
+	locked, err := q.LockBlobRow(ctx, sha256)
+	if err != nil {
+		return false, false, fmt.Errorf("lock blob: %w", err)
+	}
+	if locked == 0 {
+		return false, true, nil
+	}
+	_, err = q.CreateBlobReference(ctx, db.CreateBlobReferenceParams{
+		Pubkey:  pubkey,
+		Hash:    sha256,
+		Created: created,
+	})
+	// No rows: ON CONFLICT DO NOTHING, the reference already existed.
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, false, tx.Commit()
+	}
+	if err != nil {
+		return false, false, err
+	}
+	if err := q.IncrementBlobRefCount(ctx, sha256); err != nil {
+		return false, false, fmt.Errorf("increment ref count: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, false, fmt.Errorf("commit: %w", err)
+	}
+	return true, false, nil
 }
