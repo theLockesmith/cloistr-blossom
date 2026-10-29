@@ -114,11 +114,16 @@ func TestWebSocketAuth_SignedAsAAskingForBIsRefused(t *testing.T) {
 func TestWebSocketAuth_SignedKeyGetsOnlyItsOwnNotifications(t *testing.T) {
 	srv, notifications := startWSTestServer(t)
 
-	ev := createValidAuthEvent(wsAuthAction, "", time.Hour)
-	auth, err := encodeAuthEvent(ev)
-	require.NoError(t, err)
-
-	for _, query := range []string{"", "?pubkey=" + ev.PubKey} {
+	for _, withQuery := range []bool{false, true} {
+		// A fresh key per subtest: the previous subtest's connection may still
+		// be unsubscribing, and would satisfy the wait below for a shared key.
+		ev := createValidAuthEvent(wsAuthAction, "", time.Hour)
+		auth, err := encodeAuthEvent(ev)
+		require.NoError(t, err)
+		query := ""
+		if withQuery {
+			query = "?pubkey=" + ev.PubKey
+		}
 		t.Run("query="+query, func(t *testing.T) {
 			status, read := dialWS(t, srv, auth, query)
 			require.Equal(t, http.StatusSwitchingProtocols, status)

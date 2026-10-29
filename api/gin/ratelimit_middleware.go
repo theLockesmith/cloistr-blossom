@@ -58,16 +58,21 @@ func RateLimitMiddleware(
 			pkLimit, pkWindow = conf.Pubkey.General, pubkeyGeneralWindow
 		}
 
+		// The IP limit comes first and always applies: minting fresh keys from
+		// one address does not buy a fresh budget, and an address over its
+		// limit is refused before any signature check, so junk auth headers
+		// cannot buy Schnorr verifies. A whitelisted key's requests therefore
+		// count toward its address's budget too.
+		if !checkRateLimit(c, limiter, log, "ip:"+ip, requestType, ipLimit, ipWindow) {
+			return
+		}
+
 		// This runs before the per-route auth middleware, so it verifies the
-		// auth header itself; an unverified claim is never trusted. The IP
-		// limit always applies, so minting fresh keys from one address does
-		// not buy a fresh budget; a verified key is also held to its own limit.
+		// auth header itself; an unverified claim is never trusted. A
+		// verified key is also held to its own limit unless whitelisted.
 		pubkey := verifiedPubkey(c)
 		if pubkey != "" && whitelist[pubkey] {
 			c.Next()
-			return
-		}
-		if !checkRateLimit(c, limiter, log, "ip:"+ip, requestType, ipLimit, ipWindow) {
 			return
 		}
 		if pubkey != "" && !checkRateLimit(c, limiter, log, "pk:"+pubkey, requestType, pkLimit, pkWindow) {
@@ -109,18 +114,30 @@ func checkRateLimit(c *gin.Context, limiter ratelimit.RateLimiter, log *zap.Logg
 	return true
 }
 
+// limiterVerify is the signature check the limiters use; tests swap it to
+// count calls.
+var limiterVerify = verifyAuthHeader
+
 // verifiedPubkey returns the signer of a valid kind-24242 Authorization
 // header, or "" when there is none or it does not verify.
+// The result is kept on the request so the bandwidth limiter does not verify
+// the same signature again.
 func verifiedPubkey(c *gin.Context) string {
-	if c.GetHeader("Authorization") == "" {
-		return ""
+	if v, ok := c.Get(ctxLimiterPubkey); ok {
+		return v.(string)
 	}
-	ev, _, reason := verifyAuthHeader(c.GetHeader("Authorization"))
-	if reason != "" {
-		return ""
+	pubkey := ""
+	if h := c.GetHeader("Authorization"); h != "" {
+		if ev, _, reason := limiterVerify(h); reason == "" {
+			pubkey = ev.PubKey
+		}
 	}
-	return ev.PubKey
+	c.Set(ctxLimiterPubkey, pubkey)
+	return pubkey
 }
+
+// ctxLimiterPubkey caches verifiedPubkey's result for the request.
+const ctxLimiterPubkey = "limiter_verified_pk"
 
 // BandwidthLimitMiddleware creates a bandwidth limiting middleware.
 // This should be applied after the response is written to track actual bytes.

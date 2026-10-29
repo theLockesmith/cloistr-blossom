@@ -87,7 +87,9 @@ func TestRateLimit_WhitelistedKeyThroughRealAuth(t *testing.T) {
 	r, rec := limiterRouter(t, pk)
 
 	require.Equal(t, http.StatusOK, putUpload(r, signedTokenAs(t, sk, "upload", xHashA)))
-	assert.Empty(t, rec.seen(), "a validly signed whitelisted key is not limited at all")
+	// The IP limit is checked first (before any signature check); after
+	// that a verified whitelisted key skips its per-key and bandwidth limits.
+	assert.Equal(t, []string{"rate:ip:203.0.113.7"}, rec.seen())
 }
 
 func TestRateLimit_ForgedWhitelistedKeyIsLimited(t *testing.T) {
