@@ -39,9 +39,9 @@ type expirationService struct {
 }
 
 // NewExpirationService creates a new expiration service. rawDB is used to hold a
-// cross-replica advisory lock during cleanup; quota is used to recalculate
-// per-owner usage when an expired blob is deleted (may be nil in tests, in which
-// case quota recalculation is skipped).
+// cross-replica advisory lock during cleanup; quota is used to release each
+// owner's usage when an expired blob is deleted (may be nil in tests, in which
+// case usage is left alone).
 func NewExpirationService(
 	rawDB *sql.DB,
 	queries *db.Queries,
@@ -170,15 +170,15 @@ func (s *expirationService) cleanupExpiredLocked(ctx context.Context) (int, erro
 	}
 
 	deleted := 0
-	affectedOwners := make(map[string]struct{})
+	freedByOwner := make(map[string]int64)
 	for _, blob := range expired {
 		// Capture owners BEFORE deletion: the blob_references FK is ON DELETE
 		// CASCADE, so once the blobs row is gone the ownership rows vanish and
-		// we can no longer tell whose quota to recalculate.
+		// we can no longer tell whose usage to release.
 		owners, err := s.queries.GetBlobOwners(ctx, blob.Hash)
 		if err != nil {
 			// Fall back to the primary uploader pubkey so the common single-owner
-			// case still gets its quota recalculated even when the full owner
+			// case still gets its usage released even when the full owner
 			// lookup fails. The multi-owner dedup case may still be missed here.
 			s.log.Warn("failed to fetch blob owners; falling back to primary pubkey",
 				zap.String("hash", blob.Hash),
@@ -204,20 +204,23 @@ func (s *expirationService) cleanupExpiredLocked(ctx context.Context) (int, erro
 			// Continue: the DB record is already gone.
 		}
 
+		// Every owner was charged the full size on upload (dedup included), so
+		// each gets the full size back, as on the user and admin delete paths.
 		for _, o := range owners {
-			affectedOwners[o] = struct{}{}
+			freedByOwner[o] += blob.Size
 		}
 		deleted++
 	}
 
-	// Recalculate quota usage for every owner that lost a blob. The previous
-	// direct-delete path skipped this, leaving used_bytes permanently inflated
-	// for anyone whose blobs expired.
+	// Release usage by decrementing, not RecalculateUsage: in platform mode
+	// nothing recomputes usage, so a recalculation left expired blobs counted
+	// against their owners forever.
 	if s.quota != nil {
-		for owner := range affectedOwners {
-			if err := s.quota.RecalculateUsage(ctx, owner); err != nil {
-				s.log.Warn("failed to recalculate quota after expiration",
+		for owner, freed := range freedByOwner {
+			if err := s.quota.DecrementUsage(ctx, owner, freed); err != nil {
+				s.log.Warn("failed to release usage after expiration",
 					zap.String("pubkey", owner),
+					zap.Int64("bytes", freed),
 					zap.Error(err))
 			}
 		}
@@ -228,7 +231,7 @@ func (s *expirationService) cleanupExpiredLocked(ctx context.Context) (int, erro
 	if deleted > 0 {
 		s.log.Info("expired blobs cleaned up",
 			zap.Int("count", deleted),
-			zap.Int("owners_recalculated", len(affectedOwners)))
+			zap.Int("owners_released", len(freedByOwner)))
 	}
 
 	return deleted, nil
