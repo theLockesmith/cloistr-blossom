@@ -299,6 +299,7 @@ func New(
 		conf.CdnUrl,
 		queries,
 		storageBackend,
+		conf.MaxUploadSizeBytes,
 		log,
 	)
 	if err != nil {

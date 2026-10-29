@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -51,4 +52,28 @@ func TestFederationHealthCheck_RefusesPrivateServer(t *testing.T) {
 
 	assert.False(t, healthy)
 	assert.Zero(t, hits.Load(), "the private server must never be contacted")
+}
+
+// The announced size comes from the peer's event. When it is 0 or missing the
+// read must still stop at the max upload size.
+func TestFederationDownload_CapsAtMaxUploadWhenSizeUnannounced(t *testing.T) {
+	prev := federationFetchPolicy
+	federationFetchPolicy.AllowPrivateAddresses = true
+	t.Cleanup(func() { federationFetchPolicy = prev })
+	body := bytes.Repeat([]byte("x"), 64)
+	sum := sha256.Sum256(body)
+	hash := hex.EncodeToString(sum[:])
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	store, err := storage.NewLocalStorage(t.TempDir())
+	require.NoError(t, err)
+	s := &federationService{storage: store, maxUploadBytes: 16, log: zap.NewNop()}
+
+	err = s.downloadAndStore(context.Background(), hash, srv.URL+"/"+hash, 0)
+
+	require.Error(t, err)
+	exists, _ := store.Exists(context.Background(), hash)
+	assert.False(t, exists, "a blob over the max upload size must not be stored")
 }
