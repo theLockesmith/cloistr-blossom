@@ -15,6 +15,13 @@ var (
 	// ErrQuotaManagedCentrally is returned by SetQuota when quotas are held
 	// by the platform (cloistr-me) rather than by this server.
 	ErrQuotaManagedCentrally = errors.New("quotas are managed by cloistr-me in platform mode; set them with POST /admin/v1/quotas")
+	// ErrBanNotInPlatformMode is returned by BanUser and UnbanUser in platform
+	// mode, where this server keeps no per-user ban of its own.
+	ErrBanNotInPlatformMode = errors.New("there is no quota ban in platform mode; block the key from blossom with POST /admin/api/blocklist and lift it with DELETE /admin/api/blocklist/:pubkey")
+	// ErrRecalculateNotInPlatformMode is returned by RecalculateUsage in
+	// platform mode, where usage is held by the platform and nothing
+	// recomputes it from stored blobs.
+	ErrRecalculateNotInPlatformMode = errors.New("storage usage is held by the platform in platform mode and cannot be recalculated from blossom; nothing in cloistr-me recomputes it either")
 )
 
 // User represents a user with quota information.
