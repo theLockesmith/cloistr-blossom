@@ -174,7 +174,7 @@ func New(
 	// Upload limits service: tier-aware enforcement of mime, size, and daily caps.
 	// Uses the platform client for tier resolution in platform mode (nil → standalone → TierNamed).
 	// The rate limiter is backed by the same cache as the rest of the service.
-	uploadLimitsRateLimiter := ratelimit.NewRateLimiter(appCache)
+	uploadLimitsRateLimiter := ratelimit.NewRateLimiter(appCache, ratelimit.WithLogger(log), ratelimit.WithName("upload_daily"))
 	uploadLimitsService, err := NewUploadLimitsService(
 		&conf.UploadLimits,
 		platformClient,

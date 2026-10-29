@@ -5,6 +5,7 @@ config.yml
 blossom-server
 src/bud-05/data/
 src/bud-02/data/
+src/bud-04/data/
 CLAUDE.md
 .claude
 .claude/

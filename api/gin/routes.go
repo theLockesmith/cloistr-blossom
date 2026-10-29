@@ -53,8 +53,8 @@ func SetupRoutes(
 
 	// Rate limiting middleware
 	if conf.RateLimiting.Enabled {
-		rateLimiter := ratelimit.NewRateLimiter(appCache)
-		bandwidthLimiter := ratelimit.NewBandwidthLimiter(appCache)
+		rateLimiter := ratelimit.NewRateLimiter(appCache, ratelimit.WithLogger(log), ratelimit.WithName("requests"))
+		bandwidthLimiter := ratelimit.NewBandwidthLimiter(appCache, ratelimit.WithLogger(log), ratelimit.WithName("bandwidth"))
 		r.Use(RateLimitMiddleware(rateLimiter, &conf.RateLimiting, log))
 		r.Use(BandwidthLimitMiddleware(bandwidthLimiter, &conf.RateLimiting, log))
 		log.Info("rate limiting enabled")
