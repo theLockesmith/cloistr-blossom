@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
@@ -138,4 +139,19 @@ func (s *uploadLimitsService) TrackAndCheckDailyUploads(ctx context.Context, pub
 		return core.ErrDailyUploadLimitReached
 	}
 	return nil
+}
+
+// CheckUpload runs the type, size and daily checks in that order, so a
+// refused type or size does not use up one of the day's uploads.
+func (s *uploadLimitsService) CheckUpload(ctx context.Context, pubkey string, data []byte) error {
+	if !s.conf.Enabled {
+		return nil
+	}
+	if err := s.ValidateMimeType(ctx, pubkey, mimetype.Detect(data).String()); err != nil {
+		return err
+	}
+	if err := s.ValidateFileSize(ctx, pubkey, len(data)); err != nil {
+		return err
+	}
+	return s.TrackAndCheckDailyUploads(ctx, pubkey)
 }

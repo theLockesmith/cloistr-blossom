@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 )
 
 // mockBlobStorage is a mock implementation of core.BlobStorage for testing
@@ -418,7 +419,7 @@ func TestBatchUpload_SingleFile(t *testing.T) {
 	assert.Equal(t, hash, result.Hash)
 	assert.Equal(t, "test.txt", result.Filename)
 	assert.Equal(t, int64(len(content)), result.Size)
-	assert.Equal(t, "text/plain", result.MimeType)
+	assert.Equal(t, "text/plain; charset=utf-8", result.MimeType, "stored type is sniffed from the bytes")
 }
 
 // TestBatchUpload_MultipleFiles tests uploading multiple files
@@ -465,7 +466,7 @@ func TestBatchUpload_MultipleFiles(t *testing.T) {
 		assert.True(t, result.Success)
 		assert.Equal(t, f.name, result.Filename)
 		assert.Equal(t, hashData(f.content), result.Hash)
-		assert.Equal(t, f.mime, result.MimeType)
+		assert.Equal(t, mimetypes.Resolve(f.content, f.mime), result.MimeType, "stored type is sniffed from the bytes")
 	}
 }
 
@@ -1308,6 +1309,7 @@ func TestNewBatchService(t *testing.T) {
 		blobStorage,
 		storageBackend,
 		quotaService,
+		nil,
 		expirationService,
 		config,
 		"https://files.cloistr.xyz",

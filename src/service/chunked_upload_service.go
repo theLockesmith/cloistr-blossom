@@ -28,6 +28,7 @@ type chunkedUploadService struct {
 	storage    storage.StorageBackend
 	blobSvc    core.BlobStorage
 	quotaSvc   core.QuotaService
+	limits     core.UploadLimitsService // nil means no tier limits
 	config     *config.ChunkedUploadConfig
 	cdnBaseURL string
 	tempDir    string
@@ -41,6 +42,7 @@ func NewChunkedUploadService(
 	storageBackend storage.StorageBackend,
 	blobSvc core.BlobStorage,
 	quotaSvc core.QuotaService,
+	limits core.UploadLimitsService,
 	conf *config.ChunkedUploadConfig,
 	cdnBaseURL string,
 	log *zap.Logger,
@@ -61,6 +63,7 @@ func NewChunkedUploadService(
 		storage:    storageBackend,
 		blobSvc:    blobSvc,
 		quotaSvc:   quotaSvc,
+		limits:     limits,
 		config:     conf,
 		cdnBaseURL: cdnBaseURL,
 		tempDir:    tempDir,
@@ -115,6 +118,14 @@ func (s *chunkedUploadService) CreateSession(ctx context.Context, req *core.Crea
 	if s.quotaSvc != nil {
 		if err := s.quotaSvc.CheckQuota(ctx, req.Pubkey, req.TotalSize); err != nil {
 			return nil, fmt.Errorf("quota check failed: %w", err)
+		}
+	}
+
+	// Refuse a declared size over the tier cap before any chunk is sent;
+	// the full tier check runs again on the assembled bytes.
+	if s.limits != nil {
+		if err := s.limits.ValidateFileSize(ctx, req.Pubkey, int(req.TotalSize)); err != nil {
+			return nil, err
 		}
 	}
 
@@ -382,6 +393,12 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 	// Sniff the MIME type; the session's declared type only upgrades a
 	// generic sniff for allowlisted text formats.
 	mimeType := mimetypes.Resolve(assembledData.Bytes(), dbSession.MimeType.String)
+
+	if s.limits != nil {
+		if err := s.limits.CheckUpload(ctx, dbSession.Pubkey, assembledData.Bytes()); err != nil {
+			return nil, err
+		}
+	}
 
 	// Save blob using blob service
 	now := time.Now().Unix()

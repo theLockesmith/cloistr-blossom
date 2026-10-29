@@ -16,6 +16,7 @@ import (
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/storage"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/mimetypes"
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/hashing"
 )
 
@@ -24,6 +25,7 @@ type batchService struct {
 	blobStorage core.BlobStorage
 	storage     storage.StorageBackend
 	quota       core.QuotaService
+	limits      core.UploadLimitsService // nil means no tier limits
 	expiration  core.ExpirationService
 	cdnBaseURL  string
 	jobs        sync.Map // jobID -> *core.BatchJob
@@ -35,6 +37,7 @@ func NewBatchService(
 	blobStorage core.BlobStorage,
 	storageBackend storage.StorageBackend,
 	quota core.QuotaService,
+	limits core.UploadLimitsService,
 	expiration core.ExpirationService,
 	config core.BatchConfig,
 	cdnBaseURL string,
@@ -45,6 +48,7 @@ func NewBatchService(
 		blobStorage: blobStorage,
 		storage:     storageBackend,
 		quota:       quota,
+		limits:      limits,
 		expiration:  expiration,
 		cdnBaseURL:  cdnBaseURL,
 		log:         log,
@@ -108,6 +112,16 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			continue
 		}
 
+		if s.limits != nil {
+			if err := s.limits.CheckUpload(ctx, req.Pubkey, data); err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				response.FailureCount++
+				response.Results[i] = result
+				continue
+			}
+		}
+
 		// Calculate hash
 		hash, err := hashing.Hash(data)
 		if err != nil {
@@ -126,7 +140,7 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			hash,
 			fmt.Sprintf("%s/%s", s.cdnBaseURL, hash),
 			int64(len(data)),
-			file.MimeType,
+			mimetypes.Resolve(data, file.MimeType),
 			data,
 			now,
 			encMode,

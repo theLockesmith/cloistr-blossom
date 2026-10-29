@@ -63,6 +63,12 @@ func uploadMedia(
 			return
 		}
 
+		// Tier limits apply to the bytes the user sent, before processing.
+		if err := services.UploadLimits().CheckUpload(ctx.Request.Context(), pubkey, bodyBytes); err != nil {
+			clerrors.BadRequest(clerrors.CodeUploadFailed, err.Error()).Abort(ctx)
+			return
+		}
+
 		// Detect MIME type from content
 		mtype := mimetype.Detect(bodyBytes)
 		contentType := mtype.String()

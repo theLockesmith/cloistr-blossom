@@ -42,4 +42,10 @@ type UploadLimitsService interface {
 	// is exceeded. The counter window is a 24-hour sliding window.
 	// Returns nil when UploadsPerDay is 0 (no cap configured for this tier).
 	TrackAndCheckDailyUploads(ctx context.Context, pubkey string) error
+
+	// CheckUpload applies every tier limit to one finished upload: the type
+	// detected from data, its size, and the daily count (counted on success).
+	// Every upload path other than PUT /upload calls this once before storing.
+	// Returns nil when upload_limits is disabled.
+	CheckUpload(ctx context.Context, pubkey string, data []byte) error
 }
