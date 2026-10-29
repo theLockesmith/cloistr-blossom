@@ -46,7 +46,7 @@ func TestTusUpload_AppliesTierLimits(t *testing.T) {
 	pk := "0000000000000000000000000000000000000000000000000000000000000001"
 
 	t.Run("declared length over the tier cap is refused at creation", func(t *testing.T) {
-		h, err := NewTusHandler(nil, nil, tierLimits(t, 8, "image/"), TusConfig{TempDir: t.TempDir()}, zap.NewNop())
+		h, err := NewTusHandler(nil, nil, nil, tierLimits(t, 8, "image/"), TusConfig{TempDir: t.TempDir()}, zap.NewNop())
 		require.NoError(t, err)
 		r := gin.New()
 		r.POST("/files", func(c *gin.Context) { c.Set("pubkey", pk) }, h.tusCreate())
@@ -61,7 +61,7 @@ func TestTusUpload_AppliesTierLimits(t *testing.T) {
 
 	t.Run("finished upload of a refused type is not stored", func(t *testing.T) {
 		dir := t.TempDir()
-		h, err := NewTusHandler(nil, nil, tierLimits(t, 1<<20, "image/"), TusConfig{TempDir: dir}, zap.NewNop())
+		h, err := NewTusHandler(nil, nil, nil, tierLimits(t, 1<<20, "image/"), TusConfig{TempDir: dir}, zap.NewNop())
 		require.NoError(t, err)
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "u1"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "u1", "data"), htmlBytes, 0o644))

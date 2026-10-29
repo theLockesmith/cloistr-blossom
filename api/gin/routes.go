@@ -295,6 +295,7 @@ func SetupRoutes(
 	tusHandler, err := NewTusHandler(
 		services.Blob(),
 		services.Quota(),
+		services.Moderation(),
 		services.UploadLimits(),
 		TusConfig{
 			TempDir:    conf.ChunkedUpload.TempDir,
