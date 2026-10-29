@@ -1,7 +1,6 @@
 package gin
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,22 +29,15 @@ func tierLimits(t *testing.T, maxBytes int64, prefixes ...string) core.UploadLim
 	return limits
 }
 
-type limitsOnlyServices struct {
-	core.Services // nil: any other service the handler reaches panics the test
-	limits        core.UploadLimitsService
-}
-
-func (s limitsOnlyServices) UploadLimits() core.UploadLimitsService { return s.limits }
-
 func TestMediaUpload_AppliesTierLimits(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.PUT("/media", uploadMedia(limitsOnlyServices{limits: tierLimits(t, 1<<20, "video/")}, "http://localhost"))
+	blobs := &recordingBlobs{}
+	svc := mediaTestServices{acr: &recordingACR{}, blobs: blobs, limits: tierLimits(t, 1<<20, "video/")}
 
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/media", bytes.NewReader(pngBytes)))
+	w := serveMedia(t, svc, "0000000000000000000000000000000000000000000000000000000000000001")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Empty(t, blobs.dedupSaves)
 	assert.Contains(t, w.Body.String(), core.ErrUploadMimeTypeNotAllowed.Error())
 }
 

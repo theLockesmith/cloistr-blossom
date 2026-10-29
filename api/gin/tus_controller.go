@@ -546,8 +546,9 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		mimeType = "application/octet-stream"
 	}
 
+	storedType := mimetypes.Resolve(data, mimeType)
 	if h.limits != nil {
-		if err := h.limits.CheckUpload(ctx, info.Pubkey, data); err != nil {
+		if err := h.limits.CheckUpload(ctx, info.Pubkey, storedType, len(data)); err != nil {
 			return nil, err
 		}
 	}
@@ -560,13 +561,16 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 		hashStr,
 		url,
 		int64(len(data)),
-		mimetypes.Resolve(data, mimeType),
+		storedType,
 		data,
 		time.Now().Unix(),
 		core.EncryptionModeNone,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)
+	}
+	if h.limits != nil {
+		h.limits.RecordUpload(ctx, info.Pubkey)
 	}
 
 	// Update quota

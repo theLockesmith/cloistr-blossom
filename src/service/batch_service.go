@@ -112,8 +112,9 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			continue
 		}
 
+		storedType := mimetypes.Resolve(data, file.MimeType)
 		if s.limits != nil {
-			if err := s.limits.CheckUpload(ctx, req.Pubkey, data); err != nil {
+			if err := s.limits.CheckUpload(ctx, req.Pubkey, storedType, len(data)); err != nil {
 				result.Success = false
 				result.Error = err.Error()
 				response.FailureCount++
@@ -140,7 +141,7 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			hash,
 			fmt.Sprintf("%s/%s", s.cdnBaseURL, hash),
 			int64(len(data)),
-			mimetypes.Resolve(data, file.MimeType),
+			storedType,
 			data,
 			now,
 			encMode,
@@ -151,6 +152,10 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			response.FailureCount++
 			response.Results[i] = result
 			continue
+		}
+
+		if s.limits != nil {
+			s.limits.RecordUpload(ctx, req.Pubkey)
 		}
 
 		result.Success = true

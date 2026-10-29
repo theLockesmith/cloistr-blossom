@@ -11,21 +11,40 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"go.uber.org/zap"
+
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/core"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/pkg/config"
+	"git.aegis-hq.xyz/coldforge/cloistr-blossom/src/service"
 )
 
 type mediaTestServices struct {
 	core.Services
-	acr   *recordingACR
-	blobs *recordingBlobs
+	acr    *recordingACR
+	blobs  *recordingBlobs
+	quota  core.QuotaService        // nil: okQuota
+	limits core.UploadLimitsService // nil: limits disabled
 }
 
 func (s mediaTestServices) ACR() core.ACRStorage                   { return s.acr }
 func (s mediaTestServices) Blob() core.BlobStorage                 { return s.blobs }
 func (s mediaTestServices) Media() core.MediaService               { return fixedMedia{} }
-func (s mediaTestServices) Quota() core.QuotaService               { return okQuota{} }
-func (s mediaTestServices) Moderation() core.ModerationService     { return notBlocked{} }
-func (s mediaTestServices) UploadLimits() core.UploadLimitsService { return noLimits{} }
+func (s mediaTestServices) Moderation() core.ModerationService { return notBlocked{} }
+
+func (s mediaTestServices) Quota() core.QuotaService {
+	if s.quota != nil {
+		return s.quota
+	}
+	return okQuota{}
+}
+
+func (s mediaTestServices) UploadLimits() core.UploadLimitsService {
+	if s.limits != nil {
+		return s.limits
+	}
+	off, _ := service.NewUploadLimitsService(&config.UploadLimitsConfig{}, nil, nil, zap.NewNop())
+	return off
+}
 
 type recordingACR struct {
 	core.ACRStorage
@@ -66,10 +85,6 @@ func (okQuota) IncrementUsage(context.Context, string, int64) error { return nil
 type notBlocked struct{ core.ModerationService }
 
 func (notBlocked) IsBlocked(context.Context, string) (bool, error) { return false, nil }
-
-type noLimits struct{ core.UploadLimitsService }
-
-func (noLimits) IsEnabled() bool { return false }
 
 func serveMedia(t *testing.T, svc mediaTestServices, pubkey string) *httptest.ResponseRecorder {
 	t.Helper()

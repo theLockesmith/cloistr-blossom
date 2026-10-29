@@ -395,7 +395,7 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 	mimeType := mimetypes.Resolve(assembledData.Bytes(), dbSession.MimeType.String)
 
 	if s.limits != nil {
-		if err := s.limits.CheckUpload(ctx, dbSession.Pubkey, assembledData.Bytes()); err != nil {
+		if err := s.limits.CheckUpload(ctx, dbSession.Pubkey, mimeType, assembledData.Len()); err != nil {
 			return nil, err
 		}
 	}
@@ -417,6 +417,9 @@ func (s *chunkedUploadService) CompleteUpload(ctx context.Context, sessionID str
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save blob: %w", err)
+	}
+	if s.limits != nil {
+		s.limits.RecordUpload(ctx, dbSession.Pubkey)
 	}
 
 	// Update quota

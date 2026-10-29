@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabriel-vasile/mimetype"
 	"go.uber.org/zap"
 
 	"git.aegis-hq.xyz/coldforge/cloistr-blossom/internal/ratelimit"
@@ -118,20 +117,21 @@ func (s *uploadLimitsService) ValidateFileSize(ctx context.Context, pubkey strin
 	return nil
 }
 
-// TrackAndCheckDailyUploads uses a 24-hour sliding-window counter to enforce
-// the per-tier UploadsPerDay cap. A value of 0 means no cap.
-func (s *uploadLimitsService) TrackAndCheckDailyUploads(ctx context.Context, pubkey string) error {
-	if !s.conf.Enabled {
-		return nil
-	}
+const dailyUploadWindow = 24 * time.Hour
+
+func dailyUploadKey(pubkey string) string { return "upload_day:" + pubkey }
+
+// checkDailyRoom reports ErrDailyUploadLimitReached when the tier's
+// UploadsPerDay cap is already used up. It reads the counter without
+// adding to it (AllowN with n=0). A value of 0 means no cap.
+func (s *uploadLimitsService) checkDailyRoom(ctx context.Context, pubkey string) error {
 	tier := s.getTier(ctx, pubkey)
 	tc := s.tierConfig(tier)
 	if tc.UploadsPerDay == 0 {
 		return nil // no per-day cap configured for this tier
 	}
-	key := "upload_day:" + pubkey
-	allowed, _, _ := s.limiter.Allow(ctx, key, tc.UploadsPerDay, 24*time.Hour)
-	if !allowed {
+	_, remaining, _ := s.limiter.AllowN(ctx, dailyUploadKey(pubkey), 0, tc.UploadsPerDay, dailyUploadWindow)
+	if remaining <= 0 {
 		s.log.Debug("upload_limits: daily upload limit exceeded",
 			zap.String("pubkey", pubkey),
 			zap.String("tier", string(tier)),
@@ -141,17 +141,27 @@ func (s *uploadLimitsService) TrackAndCheckDailyUploads(ctx context.Context, pub
 	return nil
 }
 
-// CheckUpload runs the type, size and daily checks in that order, so a
-// refused type or size does not use up one of the day's uploads.
-func (s *uploadLimitsService) CheckUpload(ctx context.Context, pubkey string, data []byte) error {
+// CheckUpload runs the type, size and daily-room checks. None of them adds
+// to the daily count; RecordUpload does, after the save.
+func (s *uploadLimitsService) CheckUpload(ctx context.Context, pubkey string, mimeType string, sizeBytes int) error {
 	if !s.conf.Enabled {
 		return nil
 	}
-	if err := s.ValidateMimeType(ctx, pubkey, mimetype.Detect(data).String()); err != nil {
+	if err := s.ValidateMimeType(ctx, pubkey, mimeType); err != nil {
 		return err
 	}
-	if err := s.ValidateFileSize(ctx, pubkey, len(data)); err != nil {
+	if err := s.ValidateFileSize(ctx, pubkey, sizeBytes); err != nil {
 		return err
 	}
-	return s.TrackAndCheckDailyUploads(ctx, pubkey)
+	return s.checkDailyRoom(ctx, pubkey)
+}
+
+// RecordUpload adds one stored upload to the daily count.
+func (s *uploadLimitsService) RecordUpload(ctx context.Context, pubkey string) {
+	if !s.conf.Enabled {
+		return
+	}
+	if tc := s.tierConfig(s.getTier(ctx, pubkey)); tc.UploadsPerDay > 0 {
+		s.limiter.Allow(ctx, dailyUploadKey(pubkey), tc.UploadsPerDay, dailyUploadWindow)
+	}
 }

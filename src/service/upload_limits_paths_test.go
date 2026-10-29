@@ -45,25 +45,28 @@ func TestCheckUpload(t *testing.T) {
 	t.Run("disabled allows anything", func(t *testing.T) {
 		limits, err := NewUploadLimitsService(&config.UploadLimitsConfig{}, nil, nil, zap.NewNop())
 		require.NoError(t, err)
-		assert.NoError(t, limits.CheckUpload(ctx, pk, tierTestText))
+		assert.NoError(t, limits.CheckUpload(ctx, pk, "text/plain", len(tierTestText)))
 	})
 
 	t.Run("refused type", func(t *testing.T) {
 		limits := newImageOnlyLimits(t, 1<<20, 0)
-		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, tierTestText), core.ErrUploadMimeTypeNotAllowed)
+		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, "text/plain", len(tierTestText)), core.ErrUploadMimeTypeNotAllowed)
 	})
 
 	t.Run("refused size", func(t *testing.T) {
 		limits := newImageOnlyLimits(t, 8, 0)
-		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, tierTestPNG), core.ErrUploadFileTooLarge)
+		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, "image/png", len(tierTestPNG)), core.ErrUploadFileTooLarge)
 	})
 
-	t.Run("daily cap, and a refused upload does not count", func(t *testing.T) {
+	t.Run("daily cap counts recorded uploads only", func(t *testing.T) {
 		limits := newImageOnlyLimits(t, 1<<20, 2)
-		require.Error(t, limits.CheckUpload(ctx, pk, tierTestText))
-		require.NoError(t, limits.CheckUpload(ctx, pk, tierTestPNG))
-		require.NoError(t, limits.CheckUpload(ctx, pk, tierTestPNG))
-		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, tierTestPNG), core.ErrDailyUploadLimitReached)
+		for range 3 {
+			require.NoError(t, limits.CheckUpload(ctx, pk, "image/png", len(tierTestPNG)), "a check alone must not use a slot")
+		}
+		limits.RecordUpload(ctx, pk)
+		require.NoError(t, limits.CheckUpload(ctx, pk, "image/png", len(tierTestPNG)))
+		limits.RecordUpload(ctx, pk)
+		assert.ErrorIs(t, limits.CheckUpload(ctx, pk, "image/png", len(tierTestPNG)), core.ErrDailyUploadLimitReached)
 	})
 }
 
