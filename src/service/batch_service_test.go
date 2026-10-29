@@ -1422,3 +1422,29 @@ func (f *failReader) Read(p []byte) (n int, err error) {
 	}
 	return 0, io.EOF
 }
+
+// TestBatchUpload_PerFileSizeCap: each file in a batch is held to the server's
+// max_upload_size_bytes, as a single upload is; only the batch total was
+// checked before.
+func TestBatchUpload_PerFileSizeCap(t *testing.T) {
+	svc, blobStorage, _, _, _ := setupBatchTest(t)
+	svc.config.MaxFileSizeBytes = 10
+	ctx := context.Background()
+
+	small := []byte("12345")
+	large := []byte("12345678901")
+	req := &core.BatchUploadRequest{
+		Pubkey: "testpubkey",
+		Files: []core.BatchUploadFile{
+			{Filename: "small.txt", MimeType: "text/plain", Size: int64(len(small)), Reader: bytes.NewReader(small)},
+			{Filename: "large.txt", MimeType: "text/plain", Size: int64(len(large)), Reader: bytes.NewReader(large)},
+		},
+	}
+
+	resp, err := svc.Upload(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, resp.Results[0].Success, "a file under the cap is stored")
+	assert.False(t, resp.Results[1].Success, "a file over the cap is refused")
+	exists, _ := blobStorage.Exists(ctx, hashData(large))
+	assert.False(t, exists, "the over-cap file must not be stored")
+}

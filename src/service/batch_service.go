@@ -112,6 +112,14 @@ func (s *batchService) Upload(ctx context.Context, req *core.BatchUploadRequest)
 			continue
 		}
 
+		if s.config.MaxFileSizeBytes > 0 && int64(len(data)) > s.config.MaxFileSizeBytes {
+			result.Success = false
+			result.Error = core.ErrFileSizeLimit.Error()
+			response.FailureCount++
+			response.Results[i] = result
+			continue
+		}
+
 		storedType := mimetypes.Resolve(data, file.MimeType)
 		if s.limits != nil {
 			if err := s.limits.CheckUpload(ctx, req.Pubkey, storedType, len(data)); err != nil {

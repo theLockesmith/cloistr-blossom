@@ -45,6 +45,7 @@ type TusHandler struct {
 	limits       core.UploadLimitsService // nil means no tier limits
 	tempDir      string
 	cdnBaseURL   string
+	maxFileBytes int64
 	log          *zap.Logger
 }
 
@@ -52,6 +53,9 @@ type TusHandler struct {
 type TusConfig struct {
 	TempDir    string
 	CDNBaseURL string
+	// MaxFileBytes caps a single upload, as max_upload_size_bytes does on the
+	// other upload paths. 0 falls back to tusMaxSize.
+	MaxFileBytes int64
 }
 
 // NewTusHandler creates a new tus protocol handler.
@@ -80,6 +84,7 @@ func NewTusHandler(
 		limits:       limits,
 		tempDir:      tempDir,
 		cdnBaseURL:   config.CDNBaseURL,
+		maxFileBytes: config.MaxFileBytes,
 		log:          log,
 	}, nil
 }
@@ -131,7 +136,7 @@ func (h *TusHandler) tusCreate() gin.HandlerFunc {
 			return
 		}
 
-		if uploadLength > tusMaxSize {
+		if uploadLength > h.maxSize() {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(http.StatusRequestEntityTooLarge, "upload too large")
 			return
@@ -360,6 +365,13 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 				ctx.String(http.StatusForbidden, tusBlockedMessage)
 				return
 			}
+			if errors.Is(err, core.ErrFileSizeLimit) {
+				// Over the current cap; it can never finish.
+				_ = h.deleteUpload(uploadID)
+				ctx.Header("Content-Type", "text/plain")
+				ctx.String(http.StatusRequestEntityTooLarge, "upload too large")
+				return
+			}
 			if err != nil {
 				h.log.Error("finalize upload failed", zap.Error(err))
 				ctx.Header("Content-Type", "text/plain")
@@ -429,12 +441,20 @@ func uploadIDParam(ctx *gin.Context) (string, bool) {
 	return id, true
 }
 
+// maxSize is the largest single upload accepted.
+func (h *TusHandler) maxSize() int64 {
+	if h.maxFileBytes > 0 {
+		return h.maxFileBytes
+	}
+	return tusMaxSize
+}
+
 // setTusHeaders sets standard tus protocol headers.
 func (h *TusHandler) setTusHeaders(ctx *gin.Context) {
 	ctx.Header("Tus-Resumable", tusVersion)
 	ctx.Header("Tus-Version", tusVersion)
 	ctx.Header("Tus-Extension", tusExtensions)
-	ctx.Header("Tus-Max-Size", strconv.FormatInt(tusMaxSize, 10))
+	ctx.Header("Tus-Max-Size", strconv.FormatInt(h.maxSize(), 10))
 	ctx.Header("Tus-Checksum-Algorithm", tusChecksumAlgorithms)
 }
 
@@ -587,6 +607,11 @@ func (h *TusHandler) finalizeUpload(ctx *gin.Context, uploadID string, info *tus
 	data, err := os.ReadFile(dataPath)
 	if err != nil {
 		return nil, fmt.Errorf("read data file: %w", err)
+	}
+
+	// The cap may have been lowered since the upload was created.
+	if int64(len(data)) > h.maxSize() {
+		return nil, core.ErrFileSizeLimit
 	}
 
 	// Calculate hash
