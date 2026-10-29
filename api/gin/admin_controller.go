@@ -1,6 +1,7 @@
 package gin
 
 import (
+	"errors"
 	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"net/http"
 	"strconv"
@@ -195,6 +196,10 @@ func setUserQuota(services core.Services) gin.HandlerFunc {
 		}
 
 		if err := services.Quota().SetQuota(ctx.Request.Context(), pubkey, req.QuotaBytes); err != nil {
+			if errors.Is(err, core.ErrQuotaManagedCentrally) {
+				clerrors.New(clerrors.CodeNotImplemented, err.Error(), http.StatusNotImplemented).Abort(ctx)
+				return
+			}
 			clerrors.InternalError(clerrors.CodeInternalError, err.Error()).Abort(ctx)
 			return
 		}
