@@ -55,7 +55,7 @@ func TestRateLimitSkipsInternalCallers(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, do(routerAddr, "203.0.113.7"), "public client is limited")
 	assert.Equal(t, http.StatusOK, do("198.51.100.9:1", ""))
 	assert.Equal(t, http.StatusTooManyRequests, do("198.51.100.9:1", ""), "a public peer without the header is still limited")
-	assert.NotContains(t, counts, "ip:10.128.5.182")
+	assert.NotContains(t, counts, "ip:10.128.5.182:general")
 
 	conf.RateLimiting.LimitInternalCallers = true
 	assert.Equal(t, http.StatusOK, do("10.128.5.182:5000", ""))

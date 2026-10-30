@@ -354,6 +354,10 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 			newOffset, err = h.appendBody(ctx, info, offset)
 		}
 		if err != nil {
+			if errors.Is(err, errBandwidthExceeded) {
+				// The bandwidth limiter has already answered 429.
+				return
+			}
 			if !errors.Is(err, core.ErrTusOffsetConflict) && !errors.Is(err, errTusChunkTooLarge) {
 				h.log.Error("chunk upload failed", zap.Error(err))
 			}
