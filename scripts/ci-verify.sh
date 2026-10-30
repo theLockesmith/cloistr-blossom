@@ -27,8 +27,8 @@ echo "==> go vet ./..."
 go vet ./...
 
 if [ "${1:-}" = "--test" ]; then
-  echo "==> go test ./..."
-  go test ./...
+  echo "==> go test -race ./..."
+  go test -race ./...
 fi
 
 echo "==> ci-verify OK"

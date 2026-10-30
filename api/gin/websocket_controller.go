@@ -55,8 +55,13 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 			zap.String("pubkey", pubkey),
 			zap.String("remote_addr", ctx.ClientIP()))
 
+		// gin pools its contexts and reuses this one once the handler returns,
+		// while the goroutines below can still be running. Hand them the
+		// request's own context, never ctx.
+		reqCtx := ctx.Request.Context()
+
 		// Subscribe to notifications
-		notifyCh, unsubscribe := h.notificationService.Subscribe(ctx, pubkey)
+		notifyCh, unsubscribe := h.notificationService.Subscribe(reqCtx, pubkey)
 		defer unsubscribe()
 
 		// Handle connection in separate goroutines
@@ -87,7 +92,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 						return
 					}
 
-				case <-ctx.Done():
+				case <-reqCtx.Done():
 					return
 				}
 			}
@@ -118,7 +123,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 
 				// Handle text messages (commands from client)
 				if op == ws.OpText {
-					h.handleClientMessage(ctx, pubkey, msg)
+					h.handleClientMessage(pubkey, msg)
 				}
 			}
 		}()
@@ -152,7 +157,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 					return
 				}
 
-			case <-ctx.Done():
+			case <-reqCtx.Done():
 				conn.Close()
 				h.log.Info("websocket connection closed by context",
 					zap.String("pubkey", pubkey))
@@ -163,7 +168,7 @@ func (h *WebSocketHandler) wsConnect() gin.HandlerFunc {
 }
 
 // handleClientMessage processes messages from the client.
-func (h *WebSocketHandler) handleClientMessage(ctx *gin.Context, pubkey string, msg []byte) {
+func (h *WebSocketHandler) handleClientMessage(pubkey string, msg []byte) {
 	var cmd struct {
 		Action string `json:"action"`
 		Data   string `json:"data,omitempty"`
