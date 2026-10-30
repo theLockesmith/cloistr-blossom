@@ -242,6 +242,10 @@ func (h *TusHandler) tusHead() gin.HandlerFunc {
 			ctx.Status(lookupErrorStatus(err))
 			return
 		}
+		if !ownsUpload(ctx, info) {
+			ctx.Status(http.StatusForbidden)
+			return
+		}
 
 		// Check expiration
 		if time.Now().Unix() > info.ExpiresAt {
@@ -299,6 +303,11 @@ func (h *TusHandler) tusPatch() gin.HandlerFunc {
 		if err != nil {
 			ctx.Header("Content-Type", "text/plain")
 			ctx.String(lookupErrorStatus(err), "upload not found")
+			return
+		}
+		if !ownsUpload(ctx, info) {
+			ctx.Header("Content-Type", "text/plain")
+			ctx.String(http.StatusForbidden, tusNotOwnerMessage)
 			return
 		}
 
@@ -431,9 +440,9 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 			ctx.Status(lookupErrorStatus(err))
 			return
 		}
-		if caller := ctx.GetString(ctxPubkey); caller == "" || caller != info.Pubkey {
+		if !ownsUpload(ctx, info) {
 			ctx.Header("Content-Type", "text/plain")
-			ctx.String(http.StatusForbidden, "not your upload")
+			ctx.String(http.StatusForbidden, tusNotOwnerMessage)
 			return
 		}
 
@@ -451,6 +460,16 @@ func (h *TusHandler) tusDelete() gin.HandlerFunc {
 		h.log.Info("tus upload terminated", zap.String("upload_id", uploadID))
 		ctx.Status(http.StatusNoContent)
 	}
+}
+
+// tusNotOwnerMessage is sent when the caller did not create the upload.
+const tusNotOwnerMessage = "not your upload"
+
+// ownsUpload reports whether the authenticated caller created the upload.
+// Only the creator may append to, inspect or terminate it.
+func ownsUpload(ctx *gin.Context, info *core.TusUpload) bool {
+	caller := ctx.GetString(ctxPubkey)
+	return caller != "" && caller == info.Pubkey
 }
 
 // uploadIDParam returns the :id parameter if it is an id this server could
@@ -536,11 +555,11 @@ func (h *TusHandler) matchStoredTail(ctx *gin.Context, info *core.TusUpload, off
 	if err != nil {
 		return offset, fmt.Errorf("read chunk: %w", err)
 	}
-	stored, err := h.store.ReadAll(ctx.Request.Context(), info.ID)
+	stored, err := h.store.ReadFrom(ctx.Request.Context(), info.ID, offset)
 	if err != nil {
 		return offset, fmt.Errorf("read upload: %w", err)
 	}
-	if int64(len(stored)) != info.Size || !bytes.Equal(data, stored[offset:]) {
+	if int64(len(stored)) != remaining || !bytes.Equal(data, stored) {
 		return offset, fmt.Errorf("%w: retried chunk does not match the stored upload", core.ErrTusOffsetConflict)
 	}
 	return info.Size, nil
@@ -722,11 +741,11 @@ func RegisterTusRoutes(r *gin.Engine, handler *TusHandler, authMiddleware gin.Ha
 	// POST to create new upload (requires auth)
 	r.POST("/files", authMiddleware, handler.tusCreate())
 
-	// HEAD to get upload status
-	r.HEAD("/files/:id", handler.tusHead())
+	// HEAD to get upload status (creator only)
+	r.HEAD("/files/:id", authMiddleware, handler.tusHead())
 
-	// PATCH to resume upload
-	r.PATCH("/files/:id", handler.tusPatch())
+	// PATCH to resume upload (creator only)
+	r.PATCH("/files/:id", authMiddleware, handler.tusPatch())
 
 	// DELETE to terminate upload (requires auth for security)
 	r.DELETE("/files/:id", authMiddleware, handler.tusDelete())

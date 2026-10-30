@@ -160,3 +160,25 @@ func TestTusStore_DeleteExpiredKeepsLiveUploads(t *testing.T) {
 		t.Fatalf("%d objects left, want only the live upload's chunk", n)
 	}
 }
+
+func TestTusStore_ReadFromReturnsOnlyTheTail(t *testing.T) {
+	store, _ := newSQLiteTusStore(t)
+	ctx := context.Background()
+	createTusUpload(t, store, "tail", 9, time.Now().Unix()+3600)
+	for _, c := range []struct {
+		off  int64
+		data string
+	}{{0, "abc"}, {3, "def"}, {6, "ghi"}} {
+		if _, err := store.AppendChunk(ctx, "tail", c.off, []byte(c.data)); err != nil {
+			t.Fatalf("AppendChunk at %d: %v", c.off, err)
+		}
+	}
+	for from, want := range map[int64]string{0: "abcdefghi", 3: "defghi", 4: "efghi", 8: "i", 9: ""} {
+		if got, err := store.ReadFrom(ctx, "tail", from); err != nil || string(got) != want {
+			t.Errorf("ReadFrom(%d) = %q, %v; want %q", from, got, err, want)
+		}
+	}
+	if _, err := store.ReadFrom(ctx, "tail", 10); err == nil {
+		t.Error("ReadFrom past the end succeeded")
+	}
+}

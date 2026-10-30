@@ -126,29 +126,53 @@ func (s *tusStore) recordChunk(ctx context.Context, id string, offset, newOffset
 }
 
 func (s *tusStore) ReadAll(ctx context.Context, id string) ([]byte, error) {
+	return s.ReadFrom(ctx, id, 0)
+}
+
+func (s *tusStore) ReadFrom(ctx context.Context, id string, from int64) ([]byte, error) {
 	chunks, err := s.queries.GetTusUploadChunks(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
+	pos := int64(0)
 	for _, chunk := range chunks {
-		if chunk.ChunkOffset != int64(buf.Len()) {
-			return nil, fmt.Errorf("chunk at offset %d, expected %d", chunk.ChunkOffset, buf.Len())
+		if chunk.ChunkOffset != pos {
+			return nil, fmt.Errorf("chunk at offset %d, expected %d", chunk.ChunkOffset, pos)
 		}
-		r, err := s.storage.Get(ctx, chunk.ObjectKey)
+		pos += chunk.Size
+		if pos <= from {
+			continue
+		}
+		data, err := s.readChunk(ctx, chunk)
 		if err != nil {
-			return nil, fmt.Errorf("read chunk at offset %d: %w", chunk.ChunkOffset, err)
+			return nil, err
 		}
-		n, err := io.Copy(&buf, r)
-		r.Close()
-		if err != nil {
-			return nil, fmt.Errorf("read chunk at offset %d: %w", chunk.ChunkOffset, err)
+		if skip := from - chunk.ChunkOffset; skip > 0 {
+			data = data[skip:]
 		}
-		if n != chunk.Size {
-			return nil, fmt.Errorf("chunk at offset %d has %d bytes, expected %d", chunk.ChunkOffset, n, chunk.Size)
-		}
+		buf.Write(data)
+	}
+	if from > pos {
+		return nil, fmt.Errorf("offset %d is past the upload's %d bytes", from, pos)
 	}
 	return buf.Bytes(), nil
+}
+
+func (s *tusStore) readChunk(ctx context.Context, chunk db.TusUploadChunk) ([]byte, error) {
+	r, err := s.storage.Get(ctx, chunk.ObjectKey)
+	if err != nil {
+		return nil, fmt.Errorf("read chunk at offset %d: %w", chunk.ChunkOffset, err)
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read chunk at offset %d: %w", chunk.ChunkOffset, err)
+	}
+	if int64(len(data)) != chunk.Size {
+		return nil, fmt.Errorf("chunk at offset %d has %d bytes, expected %d", chunk.ChunkOffset, len(data), chunk.Size)
+	}
+	return data, nil
 }
 
 // Delete removes the upload row first. A chunk racing it either committed
