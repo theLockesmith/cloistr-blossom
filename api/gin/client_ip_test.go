@@ -121,5 +121,5 @@ func TestRateLimitIgnoresForgedForwardedFor(t *testing.T) {
 		last = w.Code
 	}
 	assert.Equal(t, http.StatusTooManyRequests, last, "third request from one client must be limited")
-	assert.Equal(t, map[string]int{"ip:203.0.113.7": 3}, counts)
+	assert.Equal(t, map[string]int{"ip:203.0.113.7:general": 3}, counts)
 }

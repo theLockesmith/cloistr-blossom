@@ -89,7 +89,7 @@ func TestRateLimit_WhitelistedKeyThroughRealAuth(t *testing.T) {
 	require.Equal(t, http.StatusOK, putUpload(r, signedTokenAs(t, sk, "upload", xHashA)))
 	// The IP limit is checked first (before any signature check); after
 	// that a verified whitelisted key skips its per-key and bandwidth limits.
-	assert.Equal(t, []string{"rate:ip:203.0.113.7"}, rec.seen())
+	assert.Equal(t, []string{"rate:ip:203.0.113.7:upload"}, rec.seen())
 }
 
 func TestRateLimit_ForgedWhitelistedKeyIsLimited(t *testing.T) {
@@ -108,14 +108,14 @@ func TestRateLimit_ForgedWhitelistedKeyIsLimited(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusUnauthorized, putUpload(r, "Nostr "+forged))
-	assert.Contains(t, rec.seen(), "rate:ip:203.0.113.7", "a forged claim is limited by IP")
-	assert.NotContains(t, rec.seen(), "rate:pk:"+pk, "and never counted as the claimed key")
+	assert.Contains(t, rec.seen(), "rate:ip:203.0.113.7:upload", "a forged claim is limited by IP")
+	assert.NotContains(t, rec.seen(), "rate:pk:"+pk+":upload", "and never counted as the claimed key")
 }
 
 func TestRateLimit_UnsignedIsLimitedByIP(t *testing.T) {
 	r, rec := limiterRouter(t, "00")
 	assert.Equal(t, http.StatusUnauthorized, putUpload(r, ""))
-	assert.Equal(t, []string{"rate:ip:203.0.113.7", "bw:upload:ip:203.0.113.7"}, rec.seen())
+	assert.Equal(t, []string{"rate:ip:203.0.113.7:upload", "bw:upload:ip:203.0.113.7"}, rec.seen())
 }
 
 func TestRateLimit_SignedKeyIsLimitedByIPAndKey(t *testing.T) {
@@ -126,6 +126,6 @@ func TestRateLimit_SignedKeyIsLimitedByIPAndKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, putUpload(r, signedTokenAs(t, sk, "upload", xHashA)))
 	// The IP limit still applies, so minting fresh keys from one address
 	// does not buy a fresh budget each time.
-	assert.Contains(t, rec.seen(), "rate:ip:203.0.113.7")
-	assert.Contains(t, rec.seen(), "rate:pk:"+pk)
+	assert.Contains(t, rec.seen(), "rate:ip:203.0.113.7:upload")
+	assert.Contains(t, rec.seen(), "rate:pk:"+pk+":upload")
 }

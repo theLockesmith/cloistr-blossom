@@ -286,8 +286,8 @@ func TestRateLimitMiddleware_PerPubkey(t *testing.T) {
 	middleware(c)
 
 	// A verified signer is held to the per-pubkey limit AND the IP limit.
-	assert.Equal(t, 20, limits["pk:"+testPubkey])
-	assert.Equal(t, 30, limits["ip:"+c.ClientIP()])
+	assert.Equal(t, 20, limits["pk:"+testPubkey+":upload"])
+	assert.Equal(t, 30, limits["ip:"+c.ClientIP()+":upload"])
 	assert.False(t, c.IsAborted(), "Authenticated request should not be aborted when within limit")
 }
 
@@ -319,7 +319,7 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 	c.Request = req
 	c.Set("pk", whitelistedPubkey)
 	middleware(c)
-	assert.Equal(t, []string{"ip:" + c.ClientIP()}, keys, "an unsigned request is limited by IP whatever the context says")
+	assert.Equal(t, []string{"ip:" + c.ClientIP() + ":upload"}, keys, "an unsigned request is limited by IP whatever the context says")
 
 	keys = nil
 	req = httptest.NewRequest(http.MethodPut, "/upload", nil)
@@ -329,7 +329,7 @@ func TestRateLimitMiddleware_WhitelistedPubkey(t *testing.T) {
 	c.Request = req
 	middleware(c)
 
-	assert.Equal(t, []string{"ip:" + c.ClientIP()}, keys, "a verified whitelisted key skips its per-pubkey limit")
+	assert.Equal(t, []string{"ip:" + c.ClientIP() + ":upload"}, keys, "a verified whitelisted key skips its per-pubkey limit")
 	assert.False(t, c.IsAborted(), "Whitelisted request should pass through")
 }
 

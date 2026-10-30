@@ -1,11 +1,14 @@
 package gin
 
 import (
-	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
+	"errors"
+	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	clerrors "git.aegis-hq.xyz/coldforge/cloistr-common/errors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -63,7 +66,9 @@ func RateLimitMiddleware(
 		// limit is refused before any signature check, so junk auth headers
 		// cannot buy Schnorr verifies. A whitelisted key's requests therefore
 		// count toward its address's budget too.
-		if !checkRateLimit(c, limiter, log, "ip:"+ip, requestType, ipLimit, ipWindow) {
+		// Each request type has its own counter, so downloads and metadata
+		// polling do not use up an address's upload allowance.
+		if !checkRateLimit(c, limiter, log, "ip:"+ip+":"+requestType, requestType, ipLimit, ipWindow) {
 			return
 		}
 
@@ -75,7 +80,7 @@ func RateLimitMiddleware(
 			c.Next()
 			return
 		}
-		if pubkey != "" && !checkRateLimit(c, limiter, log, "pk:"+pubkey, requestType, pkLimit, pkWindow) {
+		if pubkey != "" && !checkRateLimit(c, limiter, log, "pk:"+pubkey+":"+requestType, requestType, pkLimit, pkWindow) {
 			return
 		}
 
@@ -175,15 +180,19 @@ func BandwidthLimitMiddleware(
 		// For uploads, check bandwidth before processing. PATCH carries tus
 		// chunk bytes.
 		if c.Request.Method == "PUT" || c.Request.Method == "POST" || c.Request.Method == "PATCH" {
-			contentLength := c.Request.ContentLength
-			if contentLength > 0 {
+			// charge counts n upload bytes and, once the address is over its
+			// cap, answers 429 and reports false.
+			charge := func(n int64) bool {
 				allowed, remaining, resetAt := limiter.AllowBytes(
 					c.Request.Context(),
 					"upload:"+key,
-					contentLength,
+					n,
 					uploadLimitBytes,
 					window,
 				)
+				if c.Writer.Written() {
+					return allowed
+				}
 
 				c.Header("X-Bandwidth-Remaining", strconv.FormatInt(remaining, 10))
 				c.Header("X-Bandwidth-Reset", strconv.FormatInt(resetAt.Unix(), 10))
@@ -198,12 +207,38 @@ func BandwidthLimitMiddleware(
 					log.Debug("bandwidth limit exceeded",
 						zap.String("key", key),
 						zap.String("type", "upload"),
-						zap.Int64("bytes", contentLength))
+						zap.Int64("bytes", n))
 
 					metrics.RateLimitedTotal.WithLabelValues("bandwidth_upload").Inc()
 
 					clerrors.TooManyRequests(clerrors.CodeRateLimitExceeded, "bandwidth limit exceeded, please try again later", retryAfter).Abort(c)
+				}
+				return allowed
+			}
+
+			contentLength := c.Request.ContentLength
+			if contentLength > 0 {
+				// net/http stops the body at its Content-Length, so charging
+				// the declared size up front is exact.
+				if !charge(contentLength) {
 					return
+				}
+			} else if contentLength < 0 && c.Request.Body != nil && c.Request.Body != http.NoBody {
+				// No declared size (chunked transfer encoding): charge the
+				// bytes as the handler reads them and cut the body off once
+				// over. The refusal is the response, so whatever the handler
+				// writes after its failed read is dropped.
+				w := &refusableWriter{ResponseWriter: c.Writer}
+				c.Writer = w
+				c.Request.Body = &meteredBody{
+					ReadCloser: c.Request.Body,
+					charge: func(n int64) bool {
+						if charge(n) {
+							return true
+						}
+						w.closed = true
+						return false
+					},
 				}
 			}
 		}
@@ -274,4 +309,70 @@ func parseDuration(s string, defaultVal time.Duration) time.Duration {
 		return defaultVal
 	}
 	return d
+}
+
+// errBandwidthExceeded is what a metered body's Read returns once the address
+// is over its upload cap.
+var errBandwidthExceeded = errors.New("bandwidth limit exceeded")
+
+// meterSlice is how many bytes a metered body reads between charges, so a
+// large upload costs a limiter call per MiB rather than per Read.
+const meterSlice = 1 << 20
+
+// meteredBody charges a request body against the upload cap as it is read.
+type meteredBody struct {
+	io.ReadCloser
+	charge  func(n int64) bool
+	pending int64
+	refused bool
+}
+
+func (m *meteredBody) Read(p []byte) (int, error) {
+	if m.refused {
+		return 0, errBandwidthExceeded
+	}
+	n, err := m.ReadCloser.Read(p)
+	m.pending += int64(n)
+	if m.pending >= meterSlice || (err != nil && m.pending > 0) {
+		if !m.charge(m.pending) {
+			m.refused = true
+			// The bytes just read into p are dropped: reporting 0 keeps them
+			// from the handler.
+			return 0, errBandwidthExceeded
+		}
+		m.pending = 0
+	}
+	return n, err
+}
+
+// refusableWriter drops everything written after the limiter has answered.
+type refusableWriter struct {
+	gin.ResponseWriter
+	closed bool
+}
+
+func (w *refusableWriter) WriteHeader(code int) {
+	if !w.closed {
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (w *refusableWriter) WriteHeaderNow() {
+	if !w.closed {
+		w.ResponseWriter.WriteHeaderNow()
+	}
+}
+
+func (w *refusableWriter) Write(b []byte) (int, error) {
+	if w.closed {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *refusableWriter) WriteString(s string) (int, error) {
+	if w.closed {
+		return len(s), nil
+	}
+	return w.ResponseWriter.WriteString(s)
 }
