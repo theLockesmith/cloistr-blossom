@@ -775,6 +775,30 @@ func TestClassifyRequest(t *testing.T) {
 			path:         "/.well-known/nostr.json",
 			expectedType: "general",
 		},
+		{
+			name:         "tus create",
+			method:       "POST",
+			path:         "/files",
+			expectedType: "upload",
+		},
+		{
+			name:         "tus chunk",
+			method:       "PATCH",
+			path:         "/files/abc123",
+			expectedType: "upload",
+		},
+		{
+			name:         "tus offset check",
+			method:       "HEAD",
+			path:         "/files/abc123",
+			expectedType: "general",
+		},
+		{
+			name:         "tus cancel",
+			method:       "DELETE",
+			path:         "/files/abc123",
+			expectedType: "general",
+		},
 	}
 
 	for _, tt := range tests {

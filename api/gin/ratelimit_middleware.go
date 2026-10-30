@@ -172,8 +172,9 @@ func BandwidthLimitMiddleware(
 		// mint keys for fresh budgets.
 		key := "ip:" + c.ClientIP()
 
-		// For uploads, check bandwidth before processing
-		if c.Request.Method == "PUT" || c.Request.Method == "POST" {
+		// For uploads, check bandwidth before processing. PATCH carries tus
+		// chunk bytes.
+		if c.Request.Method == "PUT" || c.Request.Method == "POST" || c.Request.Method == "PATCH" {
 			contentLength := c.Request.ContentLength
 			if contentLength > 0 {
 				allowed, remaining, resetAt := limiter.AllowBytes(
@@ -241,6 +242,10 @@ func classifyRequest(c *gin.Context) string {
 			strings.Contains(path, "/mirror") || strings.Contains(path, "/transcode") {
 			return "upload"
 		}
+	}
+	// Resumable (tus) uploads: the create and every chunk carry upload bytes.
+	if (method == "POST" && path == "/files") || (method == "PATCH" && strings.HasPrefix(path, "/files/")) {
+		return "upload"
 	}
 
 	// Download requests (blob retrieval)
