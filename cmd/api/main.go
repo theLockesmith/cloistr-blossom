@@ -87,6 +87,12 @@ func main() {
 	// Start background metrics updater
 	go updateMetricsPeriodically(ctx, services)
 
+	// Remove abandoned resumable uploads. Every replica runs it; they share
+	// the store and skip what another already removed.
+	if services.TusUploads() != nil {
+		go service.RunTusExpirySweep(ctx, services.TusUploads(), time.Hour, logger)
+	}
+
 	api := ginApi.SetupRoutes(
 		services,
 		conf.CdnUrl,
