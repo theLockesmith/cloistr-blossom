@@ -46,7 +46,9 @@ RETURNING object_key;
 -- name: GetExpiredTusUploadIDs :many
 SELECT id
 FROM tus_uploads
-WHERE expires_at < $1;
+WHERE expires_at < $1
+ORDER BY id
+LIMIT $2;
 
 -- name: DeleteTusUploadIfExpired :execrows
 DELETE FROM tus_uploads

@@ -160,10 +160,17 @@ const getExpiredTusUploadIDs = `-- name: GetExpiredTusUploadIDs :many
 SELECT id
 FROM tus_uploads
 WHERE expires_at < $1
+ORDER BY id
+LIMIT $2
 `
 
-func (q *Queries) GetExpiredTusUploadIDs(ctx context.Context, expiresAt int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getExpiredTusUploadIDs, expiresAt)
+type GetExpiredTusUploadIDsParams struct {
+	ExpiresAt int64
+	Limit     int32
+}
+
+func (q *Queries) GetExpiredTusUploadIDs(ctx context.Context, arg GetExpiredTusUploadIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getExpiredTusUploadIDs, arg.ExpiresAt, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

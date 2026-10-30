@@ -26,11 +26,13 @@ type tusStore struct {
 	queries *db.Queries
 	storage storage.StorageBackend
 	log     *zap.Logger
+	// sweepBatch is how many expired uploads one sweep query lists.
+	sweepBatch int
 }
 
 // NewTusStore creates a resumable upload store.
 func NewTusStore(database *sql.DB, queries *db.Queries, storageBackend storage.StorageBackend, log *zap.Logger) core.TusUploadStore {
-	return &tusStore{db: database, queries: queries, storage: storageBackend, log: log}
+	return &tusStore{db: database, queries: queries, storage: storageBackend, log: log, sweepBatch: tusSweepBatch}
 }
 
 func (s *tusStore) Create(ctx context.Context, upload *core.TusUpload) error {
@@ -193,25 +195,41 @@ func (s *tusStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteExpired removes every upload whose expiry is before now. Each replica
-// may run it at the same time: an upload removed by one is skipped by the
-// other.
+// tusSweepBatch is how many expired uploads a sweep lists per query, so a
+// large backlog is never read into memory at once.
+const tusSweepBatch = 500
+
+// DeleteExpired removes every upload whose expiry is before now, a batch at a
+// time until a short batch shows none are left. Each replica may run it at
+// the same time: an upload removed by one is skipped by the other. A listed
+// upload is either removed or no longer expired, so no batch repeats.
 func (s *tusStore) DeleteExpired(ctx context.Context, now int64) (int, error) {
-	ids, err := s.queries.GetExpiredTusUploadIDs(ctx, now)
-	if err != nil {
-		return 0, err
+	batch := s.sweepBatch
+	if batch <= 0 {
+		batch = tusSweepBatch
 	}
 	removed := 0
-	for _, id := range ids {
-		ok, err := s.deleteIfExpired(ctx, id, now)
+	for {
+		ids, err := s.queries.GetExpiredTusUploadIDs(ctx, db.GetExpiredTusUploadIDsParams{
+			ExpiresAt: now,
+			Limit:     int32(batch),
+		})
 		if err != nil {
 			return removed, err
 		}
-		if ok {
-			removed++
+		for _, id := range ids {
+			ok, err := s.deleteIfExpired(ctx, id, now)
+			if err != nil {
+				return removed, err
+			}
+			if ok {
+				removed++
+			}
+		}
+		if len(ids) < batch {
+			return removed, nil
 		}
 	}
-	return removed, nil
 }
 
 // deleteIfExpired removes the upload only if it is still expired: a chunk
@@ -256,17 +274,28 @@ func RunTusExpirySweep(ctx context.Context, store core.TusUploadStore, interval 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		n, err := store.DeleteExpired(ctx, time.Now().Unix())
-		if err != nil {
-			log.Warn("failed to remove expired tus uploads", zap.Error(err))
-		} else if n > 0 {
-			log.Info("removed expired tus uploads", zap.Int("count", n))
-		}
+		sweepTusOnce(ctx, store, log)
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// sweepTusOnce runs one sweep. A panic is logged and swallowed, so the next
+// sweep still runs and the API stays up.
+func sweepTusOnce(ctx context.Context, store core.TusUploadStore, log *zap.Logger) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("tus expiry sweep panicked", zap.Any("panic", r), zap.Stack("stack"))
+		}
+	}()
+	n, err := store.DeleteExpired(ctx, time.Now().Unix())
+	if err != nil {
+		log.Warn("failed to remove expired tus uploads", zap.Error(err))
+	} else if n > 0 {
+		log.Info("removed expired tus uploads", zap.Int("count", n))
 	}
 }
 

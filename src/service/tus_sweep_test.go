@@ -95,3 +95,78 @@ func TestTusStore_SweepSparesUploadRefreshedAfterListing(t *testing.T) {
 		t.Fatalf("%d objects left, want the busy upload's chunk", n)
 	}
 }
+
+// panickySweepStore panics on its first sweep and reports each later one.
+type panickySweepStore struct {
+	core.TusUploadStore
+	calls int
+	swept chan struct{}
+}
+
+func (s *panickySweepStore) DeleteExpired(ctx context.Context, now int64) (int, error) {
+	s.calls++
+	if s.calls == 1 {
+		panic("sweep exploded")
+	}
+	select {
+	case s.swept <- struct{}{}:
+	default:
+	}
+	return 0, nil
+}
+
+// A panic in one sweep is logged and the next sweep still runs; it must not
+// take the API down with it.
+func TestTusExpirySweep_SurvivesPanic(t *testing.T) {
+	store := &panickySweepStore{swept: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		RunTusExpirySweep(ctx, store, 10*time.Millisecond, zap.NewNop())
+	}()
+
+	select {
+	case <-store.swept:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no sweep ran after the one that panicked")
+	}
+	cancel()
+	<-done
+}
+
+// Expired uploads are listed and removed a batch at a time, until a short
+// batch shows none are left.
+func TestTusStore_DeleteExpiredInBatches(t *testing.T) {
+	store, dir := newSQLiteTusStore(t)
+	store.(*tusStore).sweepBatch = 2
+	ctx := context.Background()
+	now := time.Now().Unix()
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		createTusUpload(t, store, id, 5, now+3600)
+		_, _ = store.AppendChunk(ctx, id, 0, []byte("x"))
+		expireTusUpload(t, store, id, now-1)
+	}
+	createTusUpload(t, store, "live", 5, now+3600)
+	_, _ = store.AppendChunk(ctx, "live", 0, []byte("y"))
+
+	n, err := store.DeleteExpired(ctx, now)
+	if err != nil {
+		t.Fatalf("DeleteExpired: %v", err)
+	}
+	if n != 5 {
+		t.Fatalf("removed %d uploads, want 5", n)
+	}
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		if _, err := store.Get(ctx, id); err != core.ErrTusUploadNotFound {
+			t.Fatalf("expired upload %s still there: %v", id, err)
+		}
+	}
+	if _, err := store.Get(ctx, "live"); err != nil {
+		t.Fatalf("live upload: %v", err)
+	}
+	if c := countObjects(t, dir); c != 1 {
+		t.Fatalf("%d objects left, want only the live upload's chunk", c)
+	}
+}
