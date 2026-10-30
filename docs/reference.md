@@ -428,6 +428,8 @@ Paid uploads via Lightning Network (BOLT-11) or Cashu (ecash).
 
 **Extensions:** creation, creation-with-upload, termination, concatenation
 
+**Rate limits:** a resumable upload is held to the upload limits. Each address gets about 30 upload-class requests a minute in production: the creating POST and every PATCH count. Until per-type counters ship (MR !82), every other request from the same address also counts toward those 30, tus HEADs included. Chunk bytes count toward the upload bandwidth cap (500 MB a minute per address). tus-js-client does not retry a 429 by default, so an app adopting tus must use chunks of at least 5 MB: that is 20 PATCHes for a 100 MB file, the maximum upload size.
+
 ### WebSocket Notifications
 
 | Method | Path | Auth | Description |
