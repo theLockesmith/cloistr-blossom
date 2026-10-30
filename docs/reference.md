@@ -422,13 +422,15 @@ Paid uploads via Lightning Network (BOLT-11) or Cashu (ecash).
 |--------|------|------|-------------|
 | OPTIONS | `/files` | No | Get capabilities |
 | POST | `/files` | Yes | Create upload |
-| HEAD | `/files/:id` | No | Get progress |
-| PATCH | `/files/:id` | No | Resume upload |
+| HEAD | `/files/:id` | Yes | Get progress |
+| PATCH | `/files/:id` | Yes | Resume upload |
 | DELETE | `/files/:id` | Yes | Terminate |
+
+HEAD, PATCH and DELETE take the same signed upload token as the creating POST and answer 403 unless the signer created the upload.
 
 **Extensions:** creation, creation-with-upload, termination, concatenation
 
-**Rate limits:** a resumable upload is held to the upload limits. Each address gets about 30 upload-class requests a minute in production: the creating POST and every PATCH count. Until per-type counters ship (MR !82), every other request from the same address also counts toward those 30, tus HEADs included. Chunk bytes count toward the upload bandwidth cap (500 MB a minute per address). tus-js-client does not retry a 429 by default, so an app adopting tus must use chunks of at least 5 MB: that is 20 PATCHes for a 100 MB file, the maximum upload size.
+**Rate limits:** a resumable upload is held to the upload limits. Each address gets about 30 upload-class requests a minute in production: the creating POST and every PATCH count. HEADs and other requests are counted separately and do not use up that allowance. Chunk bytes count toward the upload bandwidth cap (500 MB a minute per address). tus-js-client does not retry a 429 by default, so an app adopting tus must use chunks of at least 5 MB: that is 20 PATCHes for a 100 MB file, the maximum upload size.
 
 ### WebSocket Notifications
 
